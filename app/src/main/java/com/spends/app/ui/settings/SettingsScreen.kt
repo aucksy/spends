@@ -46,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.ThemeMode
+import com.spends.app.ui.backup.BackupSection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -147,10 +148,14 @@ fun SettingsScreen(
                 leading = { Icon(Icons.Filled.Delete, contentDescription = null) },
             )
 
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SectionHeader("Backup")
+            BackupSection()
+
             Spacer(Modifier.height(24.dp))
             Text(
-                "Capture (SMS & notifications), Google Drive backup, export, app lock and " +
-                    "recurring transactions arrive in upcoming updates.",
+                "Capture (SMS & notifications), export, app lock and recurring transactions arrive " +
+                    "in upcoming updates.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

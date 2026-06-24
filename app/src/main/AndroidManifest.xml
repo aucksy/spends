@@ -10,6 +10,10 @@
       captures will use a high-importance heads-up notification instead.
     -->
 
+    <!-- Drive backup: the only network the app does is the user's own Google Drive appData. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:name=".core.SpendsApp"
         android:allowBackup="true"

@@ -106,4 +106,21 @@ interface ExpenseDao {
 
     @Query("SELECT COUNT(*) FROM expenses")
     suspend fun totalCount(): Int
+
+    // ---- Backup / restore ----
+
+    @Query("SELECT * FROM expenses")
+    suspend fun getAllExpensesOnce(): List<ExpenseEntity>
+
+    @Query("SELECT * FROM allocations")
+    suspend fun getAllAllocationsOnce(): List<AllocationEntity>
+
+    @Insert
+    suspend fun insertExpenses(expenses: List<ExpenseEntity>)
+
+    @Query("DELETE FROM allocations")
+    suspend fun deleteAllAllocations()
+
+    @Query("DELETE FROM expenses")
+    suspend fun deleteAllExpenses()
 }

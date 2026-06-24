@@ -55,6 +55,19 @@ class SettingsRepository @Inject constructor(
     suspend fun setCarryForwardEnabled(value: Boolean) = edit { it[Keys.CARRY_FORWARD] = value }
     suspend fun setTrashRetentionDays(days: Int) = edit { it[Keys.TRASH_RETENTION_DAYS] = days.coerceIn(1, 365) }
 
+    /** Overwrite every preference from a restored snapshot. */
+    suspend fun restore(state: SettingsState) {
+        store.edit { prefs ->
+            prefs[Keys.ONBOARDING_COMPLETE] = state.onboardingComplete
+            prefs[Keys.THEME_MODE] = state.themeMode.name
+            prefs[Keys.DYNAMIC_COLOR] = state.dynamicColor
+            prefs[Keys.SALARY_DAY] = state.salaryCycleStartDay
+            prefs[Keys.DEFAULT_LANDING] = state.defaultLanding.name
+            prefs[Keys.CARRY_FORWARD] = state.carryForwardEnabled
+            prefs[Keys.TRASH_RETENTION_DAYS] = state.trashRetentionDays
+        }
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         store.edit(block)
     }

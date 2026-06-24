@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // Release signing is sourced from a local `keystore.properties` (never committed) for local builds,
@@ -37,8 +38,8 @@ android {
         applicationId = "com.spends.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -167,6 +168,11 @@ dependencies {
     // Legacy .xls (Monito export) reader. AWT-only paths are never hit on the read path; see
     // proguard-rules.pro for the -dontwarn that keeps release dexing/shrinking quiet.
     implementation(libs.jxl)
+
+    // Drive backup: AuthorizationClient (drive.appdata) + Drive REST (OkHttp) + gzip JSON snapshot
+    implementation(libs.play.services.auth)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)
