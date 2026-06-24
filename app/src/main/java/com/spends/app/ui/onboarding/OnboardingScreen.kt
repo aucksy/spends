@@ -3,6 +3,7 @@ package com.spends.app.ui.onboarding
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun OnboardingScreen(
+    onImport: () -> Unit,
     onFinished: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
@@ -65,7 +67,7 @@ fun OnboardingScreen(
             ) { current ->
                 when (current) {
                     0 -> WelcomeStep()
-                    1 -> DataSetupStep()
+                    1 -> DataSetupStep(onImport = onImport)
                     2 -> SalaryStep(salaryDay = salaryDay, onSelect = viewModel::setSalaryDay)
                     else -> CaptureStep()
                 }
@@ -125,7 +127,7 @@ private fun WelcomeStep() {
 }
 
 @Composable
-private fun DataSetupStep() {
+private fun DataSetupStep(onImport: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text("How do you want to start?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(16.dp))
@@ -139,24 +141,25 @@ private fun DataSetupStep() {
         SetupOption(
             icon = Icons.Filled.UploadFile,
             title = "Import from Excel",
-            subtitle = "Bring in your Monito or any Excel/CSV history. Available from Settings soon.",
-            enabled = false,
+            subtitle = "Bring in your Monito (.xls) or any CSV history — every category preserved.",
+            enabled = true,
+            onClick = onImport,
         )
         Spacer(Modifier.height(12.dp))
         SetupOption(
             icon = Icons.Filled.CloudDownload,
             title = "Restore from Google Drive",
-            subtitle = "Restore a previous full backup. Available from Settings soon.",
+            subtitle = "Restore a previous full backup. Available soon.",
             enabled = false,
         )
     }
 }
 
 @Composable
-private fun SetupOption(icon: ImageVector, title: String, subtitle: String, enabled: Boolean) {
+private fun SetupOption(icon: ImageVector, title: String, subtitle: String, enabled: Boolean, onClick: (() -> Unit)? = null) {
     val container = if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(if (enabled && onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = container),
     ) {

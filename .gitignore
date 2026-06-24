@@ -35,3 +35,6 @@ monito*
 /private/
 /raw-data/
 fixtures/raw/
+
+# Old-binary Excel exports (Monito) — sensitive personal data
+*.xls

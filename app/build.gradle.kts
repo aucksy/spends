@@ -37,8 +37,8 @@ android {
         applicationId = "com.spends.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -163,6 +163,10 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // Legacy .xls (Monito export) reader. AWT-only paths are never hit on the read path; see
+    // proguard-rules.pro for the -dontwarn that keeps release dexing/shrinking quiet.
+    implementation(libs.jxl)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)

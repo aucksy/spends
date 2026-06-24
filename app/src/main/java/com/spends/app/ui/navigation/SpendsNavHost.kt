@@ -11,6 +11,7 @@ import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.addedit.AddEditScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.home.HomeScreen
+import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
 import com.spends.app.ui.settings.SettingsScreen
 import com.spends.app.ui.trash.TrashScreen
@@ -30,6 +31,7 @@ fun SpendsNavHost(settings: SettingsState) {
     ) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
+                onImport = { navController.navigate(Routes.IMPORT) },
                 onFinished = {
                     navController.navigate(Routes.HOME) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
@@ -69,11 +71,19 @@ fun SpendsNavHost(settings: SettingsState) {
                 onBack = { navController.popBackStack() },
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
                 onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
+                onOpenImport = { navController.navigate(Routes.IMPORT) },
             )
         }
 
         composable(Routes.CATEGORIES) {
             CategoriesScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.IMPORT) {
+            ImportScreen(
+                onBack = { navController.popBackStack() },
+                onFinished = { navController.popBackStack() },
+            )
         }
     }
 }

@@ -10,6 +10,7 @@ object Routes {
     const val TRASH = "trash"
     const val SETTINGS = "settings"
     const val CATEGORIES = "categories"
+    const val IMPORT = "import"
 
     const val ADD_EDIT = "add_edit"
     const val ARG_EXPENSE_ID = "expenseId"

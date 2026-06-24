@@ -13,3 +13,9 @@
 # Kotlin metadata / coroutines
 -keepclassmembers class kotlin.Metadata { *; }
 -dontwarn kotlinx.coroutines.**
+
+# jxl (.xls reader): references desktop-only java.awt on its image/write paths, which the import
+# read path never touches. Silence the missing-class warnings so release dexing/shrinking is clean.
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-keep class jxl.** { *; }

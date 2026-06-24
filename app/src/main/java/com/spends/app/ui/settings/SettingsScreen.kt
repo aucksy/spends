@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -52,6 +53,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenTrash: () -> Unit,
     onOpenCategories: () -> Unit,
+    onOpenImport: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -133,6 +135,12 @@ fun SettingsScreen(
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Data")
             ClickableRow(
+                title = "Import data",
+                value = "Monito Excel (.xls) or CSV",
+                onClick = onOpenImport,
+                leading = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
+            )
+            ClickableRow(
                 title = "Trash",
                 value = "Auto-purge after ${state.trashRetentionDays} days",
                 onClick = onOpenTrash,
@@ -141,7 +149,7 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "Capture (SMS & notifications), Google Drive backup, import/export, app lock and " +
+                "Capture (SMS & notifications), Google Drive backup, export, app lock and " +
                     "recurring transactions arrive in upcoming updates.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

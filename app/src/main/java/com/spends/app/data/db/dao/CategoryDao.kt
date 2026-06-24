@@ -20,6 +20,9 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE id = :id")
     suspend fun getById(id: Long): CategoryEntity?
 
+    @Query("SELECT * FROM categories WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun getByName(name: String): CategoryEntity?
+
     @Query("SELECT colorHex FROM categories")
     suspend fun allColors(): List<String>
 

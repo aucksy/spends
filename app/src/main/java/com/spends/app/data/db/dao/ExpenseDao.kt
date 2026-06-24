@@ -98,4 +98,12 @@ interface ExpenseDao {
 
     @Query("DELETE FROM expenses WHERE deletedAt IS NOT NULL AND deletedAt < :cutoff")
     suspend fun purgeTrashOlderThan(cutoff: Long): Int
+
+    // ---- Import support ----
+
+    @Query("SELECT dedupeHash FROM expenses WHERE dedupeHash IS NOT NULL")
+    suspend fun allDedupeHashes(): List<String>
+
+    @Query("SELECT COUNT(*) FROM expenses")
+    suspend fun totalCount(): Int
 }
