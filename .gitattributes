@@ -1,0 +1,28 @@
+# Normalize line endings so the build is reproducible across Windows and the Linux CI runner.
+* text=auto
+
+# Source/text files
+*.kt    text
+*.kts   text
+*.java  text
+*.xml   text
+*.pro   text
+*.md    text
+*.toml  text
+*.properties text
+*.yml   text
+*.yaml  text
+
+# The Gradle wrapper script MUST stay LF or it fails on the Linux CI runner ("bad interpreter").
+gradlew text eol=lf
+# Windows batch wrapper must stay CRLF.
+*.bat   text eol=crlf
+
+# Binaries — never touch line endings.
+*.jar      binary
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.webp     binary
+*.keystore binary
+*.jks      binary

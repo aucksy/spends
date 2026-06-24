@@ -1,0 +1,101 @@
+package com.spends.app.data.db.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
+import com.spends.app.data.db.entity.AllocationEntity
+import com.spends.app.data.db.entity.CategorySpend
+import com.spends.app.data.db.entity.ExpenseEntity
+import com.spends.app.data.db.entity.ExpenseWithAllocations
+import com.spends.app.data.db.entity.KindSum
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface ExpenseDao {
+
+    // ---- Timeline (active, soft-deleted excluded) ----
+
+    @Transaction
+    @Query(
+        "SELECT * FROM expenses WHERE deletedAt IS NULL " +
+            "AND occurredAt >= :start AND occurredAt < :end ORDER BY occurredAt DESC, id DESC",
+    )
+    fun observeActiveBetween(start: Long, end: Long): Flow<List<ExpenseWithAllocations>>
+
+    @Transaction
+    @Query(
+        "SELECT * FROM expenses WHERE deletedAt IS NULL " +
+            "AND (:query = '' OR merchantRaw LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%') " +
+            "ORDER BY occurredAt DESC, id DESC",
+    )
+    fun observeActiveSearch(query: String): Flow<List<ExpenseWithAllocations>>
+
+    @Transaction
+    @Query("SELECT * FROM expenses WHERE id = :id")
+    suspend fun getByIdWithAllocations(id: Long): ExpenseWithAllocations?
+
+    // ---- Trash ----
+
+    @Transaction
+    @Query("SELECT * FROM expenses WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC, id DESC")
+    fun observeTrashed(): Flow<List<ExpenseWithAllocations>>
+
+    @Query("SELECT COUNT(*) FROM expenses WHERE deletedAt IS NOT NULL")
+    fun observeTrashCount(): Flow<Int>
+
+    // ---- Aggregations (SQL, period-bounded) ----
+
+    @Query(
+        "SELECT kind AS kind, SUM(amountMinor) AS total FROM expenses " +
+            "WHERE deletedAt IS NULL AND occurredAt >= :start AND occurredAt < :end GROUP BY kind",
+    )
+    fun observeKindSums(start: Long, end: Long): Flow<List<KindSum>>
+
+    /** Spend by category, already excluding transfers and excludeFromSpend categories (PRD §4.10). */
+    @Query(
+        "SELECT c.id AS categoryId, c.name AS name, c.colorHex AS colorHex, c.iconKey AS iconKey, " +
+            "SUM(a.amountMinor) AS total " +
+            "FROM allocations a " +
+            "JOIN expenses e ON e.id = a.expenseId " +
+            "JOIN categories c ON c.id = a.categoryId " +
+            "WHERE e.deletedAt IS NULL AND e.kind = 'EXPENSE' AND c.excludeFromSpend = 0 " +
+            "AND e.occurredAt >= :start AND e.occurredAt < :end " +
+            "GROUP BY c.id ORDER BY total DESC",
+    )
+    fun observeCategorySpend(start: Long, end: Long): Flow<List<CategorySpend>>
+
+    /** Running balance (income − expense) for everything strictly before [before] — for Carry Forward. */
+    @Query(
+        "SELECT COALESCE(SUM(CASE kind WHEN 'INCOME' THEN amountMinor WHEN 'EXPENSE' THEN -amountMinor ELSE 0 END), 0) " +
+            "FROM expenses WHERE deletedAt IS NULL AND occurredAt < :before",
+    )
+    fun observeBalanceBefore(before: Long): Flow<Long>
+
+    // ---- Mutations ----
+
+    @Insert
+    suspend fun insertExpense(expense: ExpenseEntity): Long
+
+    @Insert
+    suspend fun insertAllocations(allocations: List<AllocationEntity>)
+
+    @Update
+    suspend fun updateExpense(expense: ExpenseEntity)
+
+    @Query("DELETE FROM allocations WHERE expenseId = :expenseId")
+    suspend fun deleteAllocationsFor(expenseId: Long)
+
+    @Query("UPDATE expenses SET deletedAt = :ts, updatedAt = :ts WHERE id = :id")
+    suspend fun softDelete(id: Long, ts: Long)
+
+    @Query("UPDATE expenses SET deletedAt = NULL, updatedAt = :ts WHERE id = :id")
+    suspend fun restore(id: Long, ts: Long)
+
+    @Query("DELETE FROM expenses WHERE id = :id")
+    suspend fun deleteForever(id: Long)
+
+    @Query("DELETE FROM expenses WHERE deletedAt IS NOT NULL AND deletedAt < :cutoff")
+    suspend fun purgeTrashOlderThan(cutoff: Long): Int
+}

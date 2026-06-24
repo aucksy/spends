@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup/transfer rules. Cloud backup keeps the Room DB + preferences; device-to-device
+  transfer is allowed. Raw capture content is never device-backed-up off this device by the app
+  itself; the canonical backup is the user's own Drive appData snapshot (later phase).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="spends.db" />
+        <include domain="sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="spends.db" />
+        <include domain="sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>

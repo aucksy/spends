@@ -1,0 +1,37 @@
+# Built artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Gradle / build
+.gradle/
+build/
+local.properties
+captures/
+.kotlin/
+
+# Signing — never commit keys
+keystore.properties
+*.keystore
+*.jks
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# ---- Sensitive personal data — NEVER commit (PRD §4.3 / §4.13) ----
+# Raw SMS exports, bank/account numbers, Monito/Excel history exports, and any derived raw fixtures.
+# Only masked, derived fixtures belong in the repo.
+*.xml.bak
+sms-export*
+*SMS*Backup*
+*Monito*
+monito*
+*.xlsx
+*.csv
+/private/
+/raw-data/
+fixtures/raw/

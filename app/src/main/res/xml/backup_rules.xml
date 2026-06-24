@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy auto-backup rules (Android 11 and below). The app's canonical backup is the user's own
+  Google Drive appData snapshot (built in a later phase); device-level auto-backup is left enabled
+  as a convenience but excludes transient files.
+-->
+<full-backup-content>
+    <exclude domain="file" path="." />
+    <include domain="database" path="spends.db" />
+    <include domain="sharedpref" path="." />
+</full-backup-content>
