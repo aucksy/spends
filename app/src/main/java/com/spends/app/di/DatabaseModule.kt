@@ -21,7 +21,7 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): SpendsDatabase =
         Room.databaseBuilder(context, SpendsDatabase::class.java, SpendsDatabase.NAME)
             .addCallback(SpendsDatabase.SEED_CALLBACK)
-            .addMigrations(SpendsDatabase.MIGRATION_1_2)
+            .addMigrations(SpendsDatabase.MIGRATION_1_2, SpendsDatabase.MIGRATION_2_3)
             .build()
 
     @Provides

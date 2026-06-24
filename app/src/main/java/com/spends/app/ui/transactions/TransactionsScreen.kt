@@ -47,6 +47,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.money.Money
 import com.spends.app.core.theme.LocalSemanticColors
+import com.spends.app.core.theme.Numerals
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CategoryAvatar
 import kotlinx.coroutines.launch
@@ -142,7 +143,7 @@ private fun DayHeader(group: DayGroupUi) {
         val sign = if (group.netSubtotal > 0) "+" else if (group.netSubtotal < 0) "-" else ""
         Text(
             text = sign + Money.formatRupees(kotlin.math.abs(group.netSubtotal)),
-            style = MaterialTheme.typography.labelLarge,
+            style = Numerals.amountSmall,
             color = color,
         )
     }
@@ -235,14 +236,20 @@ private fun TransactionRow(row: TransactionRowUi, onClick: () -> Unit) {
             TxnKind.EXPENSE -> "-"
             TxnKind.TRANSFER -> ""
         }
-        Text(
-            text = prefix + Money.formatRupees(row.amountMinor),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = amountColor,
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = prefix + Money.formatRupees(row.amountMinor),
+                style = Numerals.amountRow,
+                color = amountColor,
+            )
+            Text(
+                text = row.kind.name.lowercase().replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.labelSmall,
+                color = amountColor.copy(alpha = 0.75f),
+            )
+        }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 }
 
 @Composable

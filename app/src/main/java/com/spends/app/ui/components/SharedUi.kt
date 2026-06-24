@@ -5,9 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,51 +21,58 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.spends.app.core.category.CategoryIcons
+import com.spends.app.core.category.ColorAssigner
 import com.spends.app.core.money.Money
+import com.spends.app.core.theme.LocalSemanticColors
+import com.spends.app.core.theme.Numerals
 import kotlin.math.abs
 
 /** Parse a "#RRGGBB" hex into a Compose Color, falling back to neutral stone on bad input. */
 fun parseHexColor(hex: String): Color = try {
     Color(android.graphics.Color.parseColor(hex))
 } catch (e: IllegalArgumentException) {
-    Color(0xFF78716C)
+    Color(0xFF57534E)
 }
 
-/** A rounded category avatar: the category icon tinted with its color over a soft tint. */
+/**
+ * A rounded-square category avatar (Design System: radius 12, fill at ~14% alpha, coloured icon).
+ * In dark mode the hue lifts to its dark-fill variant so it stays legible.
+ */
 @Composable
 fun CategoryAvatar(
     iconKey: String,
     colorHex: String,
     modifier: Modifier = Modifier,
-    size: Dp = 40.dp,
+    size: Dp = 42.dp,
 ) {
-    val color = parseHexColor(colorHex)
+    val dark = LocalSemanticColors.current.dark
+    val base = parseHexColor(if (dark) ColorAssigner.darkVariant(colorHex) else colorHex)
     Box(
         modifier = modifier
             .size(size)
-            .clip(CircleShape)
-            .background(color.copy(alpha = 0.16f)),
+            .clip(RoundedCornerShape(12.dp))
+            .background(base.copy(alpha = if (dark) 0.22f else 0.14f)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = CategoryIcons.vectorFor(iconKey),
             contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(size * 0.55f),
+            tint = base,
+            modifier = Modifier.size(size * 0.5f),
         )
     }
 }
 
 /**
- * A rupee value that smoothly tweens between updates (PRD's "animated counters"). The resting
- * value is exact — the float progress only drives the in-flight interpolation, never the final
- * displayed amount, so no precision is lost on money.
+ * A rupee value that smoothly tweens between updates (Design System: counter roll). The resting
+ * value is exact — float progress only drives the in-flight interpolation, never the final amount.
+ * Defaults to the tabular mono row style.
  */
 @Composable
 fun AnimatedRupee(
     minor: Long,
     modifier: Modifier = Modifier,
-    style: TextStyle = MaterialTheme.typography.headlineSmall,
+    style: TextStyle = Numerals.amountRow,
     color: Color = Color.Unspecified,
     withSign: Boolean = false,
     withSymbol: Boolean = true,
@@ -80,7 +86,7 @@ fun AnimatedRupee(
         start.longValue = current
         end.longValue = minor
         progress.snapTo(0f)
-        progress.animateTo(1f, animationSpec = tween(durationMillis = 450))
+        progress.animateTo(1f, animationSpec = tween(durationMillis = 600))
     }
 
     val shown = interpolate(start.longValue, end.longValue, progress.value)

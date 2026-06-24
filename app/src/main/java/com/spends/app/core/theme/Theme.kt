@@ -15,27 +15,70 @@ import androidx.compose.ui.platform.LocalContext
 import com.spends.app.domain.model.ThemeMode
 
 private val LightColors = lightColorScheme(
-    primary = BrandIndigo,
-    secondary = BrandTeal,
-    tertiary = Color(0xFF7C6CF0),
+    primary = LightPrimary,
+    onPrimary = LightOnPrimary,
+    primaryContainer = LightPrimaryContainer,
+    onPrimaryContainer = LightOnPrimaryContainer,
+    secondary = LightPrimary,
+    onSecondary = LightOnPrimary,
+    secondaryContainer = LightPrimaryContainer,
+    onSecondaryContainer = LightOnPrimaryContainer,
+    tertiary = NonConsumptionLight,
+    background = LightBackground,
+    onBackground = LightOnSurface,
+    surface = LightSurface,
+    onSurface = LightOnSurface,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightOnSurfaceVariant,
+    outline = LightOutline,
+    outlineVariant = LightOutlineVariant,
+    error = NegativeLight,
+    onError = Color.White,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = BrandIndigoDark,
-    secondary = BrandTeal,
-    tertiary = Color(0xFFB9AEFF),
+    primary = DarkPrimary,
+    onPrimary = DarkOnPrimary,
+    primaryContainer = DarkPrimaryContainer,
+    onPrimaryContainer = DarkOnPrimaryContainer,
+    secondary = DarkPrimary,
+    onSecondary = DarkOnPrimary,
+    secondaryContainer = DarkPrimaryContainer,
+    onSecondaryContainer = DarkOnPrimaryContainer,
+    tertiary = NonConsumptionDark,
+    background = DarkBackground,
+    onBackground = DarkOnSurface,
+    surface = DarkSurface,
+    onSurface = DarkOnSurface,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkOnSurfaceVariant,
+    outline = DarkOutline,
+    outlineVariant = DarkOutlineVariant,
+    error = NegativeDark,
+    onError = Color(0xFF3A0A0A),
 )
 
-/** Income/expense/transfer colors resolved for the current theme. */
+/** Money-semantic colours resolved for the current theme (kept outside the M3 scheme). */
 data class SemanticColors(
     val income: Color,
     val expense: Color,
+    val negative: Color,
     val transfer: Color,
+    val nonConsumption: Color,
+    val review: Color,
+    val dark: Boolean,
 )
 
-val LocalSemanticColors = staticCompositionLocalOf {
-    SemanticColors(IncomeGreenLight, ExpenseRedLight, TransferGrayLight)
-}
+private val LightSemantic = SemanticColors(
+    income = IncomeLight, expense = ExpenseInkLight, negative = NegativeLight,
+    transfer = TransferLight, nonConsumption = NonConsumptionLight, review = ReviewLight, dark = false,
+)
+private val DarkSemantic = SemanticColors(
+    income = IncomeDark, expense = ExpenseInkDark, negative = NegativeDark,
+    transfer = TransferDark, nonConsumption = NonConsumptionDark, review = ReviewDark, dark = true,
+)
+
+val LocalSemanticColors = staticCompositionLocalOf { LightSemantic }
 
 @Composable
 fun SpendsTheme(
@@ -55,16 +98,12 @@ fun SpendsTheme(
         dark -> DarkColors
         else -> LightColors
     }
-    val semantic = if (dark) {
-        SemanticColors(IncomeGreenDark, ExpenseRedDark, TransferGrayDark)
-    } else {
-        SemanticColors(IncomeGreenLight, ExpenseRedLight, TransferGrayLight)
-    }
 
-    CompositionLocalProvider(LocalSemanticColors provides semantic) {
+    CompositionLocalProvider(LocalSemanticColors provides if (dark) DarkSemantic else LightSemantic) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = SpendsTypography,
+            shapes = SpendsShapes,
             content = content,
         )
     }

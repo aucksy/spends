@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.ui.analytics.AnalyticsScreen
@@ -74,7 +75,10 @@ fun HomeScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddTransaction) {
+            FloatingActionButton(
+                onClick = onAddTransaction,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+            ) {
                 Icon(Icons.Filled.Add, contentDescription = "Add transaction")
             }
         },

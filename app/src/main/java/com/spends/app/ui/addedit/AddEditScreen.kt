@@ -39,6 +39,8 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
@@ -49,11 +51,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.money.Money
+import com.spends.app.core.theme.Numerals
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.domain.model.CategoryUsage
@@ -152,20 +157,42 @@ private fun AddEditForm(
             ) { Text("Income") }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(8.dp))
 
-        OutlinedTextField(
+        // Amount hero — big tabular-mono entry, centred (Design System).
+        Text(
+            "AMOUNT",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        TextField(
             value = amountText,
             onValueChange = { input -> amountText = input.filter { it.isDigit() || it == '.' } },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Amount (₹)") },
-            placeholder = { Text("0.00") },
+            textStyle = Numerals.balanceHero.copy(textAlign = TextAlign.Center),
+            placeholder = {
+                Text(
+                    "0",
+                    style = Numerals.balanceHero,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            },
+            prefix = { Text("₹", style = Numerals.balanceHero, color = MaterialTheme.colorScheme.onSurface) },
             singleLine = true,
-            textStyle = MaterialTheme.typography.headlineSmall,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+            ),
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
         Text("Category", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))

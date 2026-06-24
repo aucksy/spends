@@ -18,7 +18,7 @@ import com.spends.app.data.seed.CategorySeed
         ExpenseEntity::class,
         AllocationEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -70,6 +70,19 @@ abstract class SpendsDatabase : RoomDatabase() {
                             row.sortOrder,
                             row.usage.name,
                         ),
+                    )
+                }
+            }
+        }
+
+        /** v2 -> v3: recolour/re-icon the prebuilt categories to the Design-System palette
+         *  (custom categories keep their colours). */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for (row in CategorySeed.allRows()) {
+                    db.execSQL(
+                        "UPDATE categories SET colorHex = ?, iconKey = ? WHERE name = ? AND isCustom = 0",
+                        arrayOf<Any>(row.colorHex, row.iconKey, row.name),
                     )
                 }
             }

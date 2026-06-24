@@ -33,18 +33,27 @@ class AssignerTest {
         assertThat(ColorAssigner.colorFor("Food")).isIn(ColorAssigner.PALETTE)
     }
 
-    @Test fun colors_are_distinct_across_a_seed_set() {
+    @Test fun colors_are_distinct_up_to_palette_size() {
+        // The palette has a fixed number of hues; the first PALETTE.size categories are all distinct.
         val names = listOf(
             "Food", "Groceries", "Shopping", "Entertainment", "Health", "Fitness",
             "Travel", "Fuel", "Utilities", "Bills", "Rent", "Subscriptions",
             "Personal Care", "Education", "Investments", "Loan/EMI", "Gifts", "Transport",
-        )
+        ).take(ColorAssigner.PALETTE.size)
         val taken = mutableSetOf<String>()
         val assigned = names.map { name ->
             ColorAssigner.colorFor(name, taken).also { taken.add(it) }
         }
-        // Up to PALETTE.size names get fully distinct colors.
         assertThat(assigned.toSet()).hasSize(names.size)
+    }
+
+    @Test fun dark_variant_is_valid_hex_for_every_palette_color() {
+        val hexRegex = Regex("^#[0-9A-Fa-f]{6}$")
+        ColorAssigner.PALETTE.forEach {
+            assertThat(ColorAssigner.darkVariant(it)).matches(hexRegex.pattern)
+        }
+        // Unknown colours get an algorithmic lift, still valid hex.
+        assertThat(ColorAssigner.darkVariant("#123456")).matches(hexRegex.pattern)
     }
 
     @Test fun collision_avoidance_probes_to_a_free_slot() {
