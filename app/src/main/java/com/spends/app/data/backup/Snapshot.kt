@@ -39,6 +39,7 @@ data class SnapshotSettings(
     val defaultLanding: String,
     val carryForwardEnabled: Boolean,
     val trashRetentionDays: Int,
+    val autoBackupEnabled: Boolean = false,
 )
 
 @Serializable

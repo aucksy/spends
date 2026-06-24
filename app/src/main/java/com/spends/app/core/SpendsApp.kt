@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.spends.app.work.BackupWorker
 import com.spends.app.work.RecurringWorker
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
@@ -31,11 +32,12 @@ class SpendsApp : Application(), Configuration.Provider {
         super.onCreate()
         // Daily backstop for materialising recurring rules. KEEP keeps an existing schedule intact
         // across launches. (getInstance triggers on-demand WorkManager init using our config above.)
+        val wm = WorkManager.getInstance(this)
         val daily = PeriodicWorkRequestBuilder<RecurringWorker>(1, TimeUnit.DAYS).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            RecurringWorker.UNIQUE_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
-            daily,
-        )
+        wm.enqueueUniquePeriodicWork(RecurringWorker.UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, daily)
+
+        // Daily Drive auto-backup is always scheduled; the worker self-gates on the user's toggle.
+        val backup = PeriodicWorkRequestBuilder<BackupWorker>(1, TimeUnit.DAYS).build()
+        wm.enqueueUniquePeriodicWork(BackupWorker.UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, backup)
     }
 }

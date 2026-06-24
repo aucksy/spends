@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.ui.backup.BackupSection
+import com.spends.app.ui.components.NumberWheelPicker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -234,17 +235,19 @@ private fun SalaryDayDialog(current: Int, onSelect: (Int) -> Unit, onDismiss: ()
         onDismissRequest = onDismiss,
         title = { Text("Salary day") },
         text = {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 4.dp),
-            ) {
-                items((1..31).toList()) { day ->
-                    FilterChip(
-                        selected = day == current,
-                        onClick = { onSelect(day) },
-                        label = { Text(day.toString()) },
-                    )
-                }
+            Column {
+                Text(
+                    "Spin to the day you usually get paid.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                NumberWheelPicker(
+                    value = current,
+                    range = 1..31,
+                    onValueChange = onSelect,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         },
         confirmButton = {

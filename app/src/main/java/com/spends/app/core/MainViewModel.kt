@@ -2,6 +2,7 @@ package com.spends.app.core
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.repo.RecurringRepository
 import com.spends.app.data.settings.SettingsRepository
@@ -25,6 +26,7 @@ class MainViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val expenseRepository: ExpenseRepository,
     private val recurringRepository: RecurringRepository,
+    private val categoryRepository: CategoryRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<MainUiState> = settingsRepository.settings
@@ -44,6 +46,7 @@ class MainViewModel @Inject constructor(
                 expenseRepository.purgeTrashOlderThan(days)
             }
             runCatching { recurringRepository.materializeDue(System.currentTimeMillis()) }
+            runCatching { categoryRepository.refreshAutoIcons() }
         }
     }
 }

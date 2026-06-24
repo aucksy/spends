@@ -15,11 +15,15 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Obtains a client-side OAuth access token for the **drive.appdata** scope via Google's
+ * Obtains a client-side OAuth access token for the **drive.file** scope via Google's
  * AuthorizationClient (PRD §4.12). No Web client id / Credential Manager needed for a client-side
  * token — it is authorized against the Android OAuth client (app package + signing SHA-1) the user
  * registers in Google Cloud. First use shows an account-pick + consent screen via a resolution
  * intent the UI launches.
+ *
+ * drive.file (not drive.appdata) so backups land in a real, user-visible "Spends Backup" folder in
+ * My Drive. drive.file still restricts the app to only the files/folders it itself created — it can
+ * never see the rest of the user's Drive.
  */
 @Singleton
 class DriveAuthManager @Inject constructor(
@@ -27,9 +31,7 @@ class DriveAuthManager @Inject constructor(
 ) {
     private val authClient = Identity.getAuthorizationClient(context)
 
-    // Use the literal scope string (the GMS Scopes constant for this is DRIVE_APPFOLDER, easy to
-    // mis-name) — least privilege: the app's own hidden Drive appData folder only.
-    private val driveAppDataScope = Scope("https://www.googleapis.com/auth/drive.appdata")
+    private val driveFileScope = Scope("https://www.googleapis.com/auth/drive.file")
 
     sealed interface AuthResult {
         data class Authorized(val accessToken: String) : AuthResult
@@ -38,7 +40,7 @@ class DriveAuthManager @Inject constructor(
 
     suspend fun authorize(): AuthResult {
         val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(driveAppDataScope))
+            .setRequestedScopes(listOf(driveFileScope))
             .build()
         val result = authClient.authorize(request).await()
         val pendingIntent = result.pendingIntent

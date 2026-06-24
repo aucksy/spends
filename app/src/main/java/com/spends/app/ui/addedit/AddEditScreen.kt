@@ -144,8 +144,10 @@ private fun AddEditForm(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            // imePadding BEFORE verticalScroll so the IME shrinks the scroll viewport (under
+            // edge-to-edge), letting the focused Merchant/Note field auto-scroll above the keyboard.
             .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 8.dp),
     ) {
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {

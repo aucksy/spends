@@ -94,8 +94,8 @@ fun CategoryPickerSheet(
     categories: List<CategoryEntity>,
     selectedId: Long?,
     onSelect: (Long) -> Unit,
-    onAddNew: () -> Unit,
     onDismiss: () -> Unit,
+    onAddNew: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // Local snapshot state so the cursor never jumps while typing.
@@ -130,8 +130,10 @@ fun CategoryPickerSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item(key = "__add_new__") {
-                    AddNewCell(onClick = onAddNew)
+                if (onAddNew != null) {
+                    item(key = "__add_new__") {
+                        AddNewCell(onClick = onAddNew)
+                    }
                 }
                 items(filtered, key = { it.id }) { category ->
                     CategoryCell(

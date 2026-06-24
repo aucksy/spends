@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.spends.app.ui.components.NumberWheelPicker
 
 @Composable
 fun OnboardingScreen(
@@ -260,18 +261,12 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
     ) {
         Text("Salary day", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
-        ) {
-            items((1..31).toList()) { day ->
-                FilterChip(
-                    selected = day == salaryDay,
-                    onClick = { onSelect(day) },
-                    label = { Text(day.toString()) },
-                )
-            }
-        }
+        NumberWheelPicker(
+            value = salaryDay,
+            range = 1..31,
+            onValueChange = onSelect,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(12.dp))
         Text(
             "You get paid on the ${ordinal(salaryDay)}. You can change this anytime in Settings.",

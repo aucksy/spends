@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,6 +86,7 @@ fun RecurringScreen(
     // null = list view; non-null = editor. Editing(null rule) is "add new".
     var editing by remember { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<RecurringRuleEntity?>(null) }
+    var sortByDate by rememberSaveable { mutableStateOf(true) }
 
     if (editing) {
         RecurringEditor(
@@ -121,16 +123,50 @@ fun RecurringScreen(
             EmptyState(modifier = Modifier.fillMaxSize().padding(padding))
         } else {
             val byId = categories.associateBy { it.id }
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                items(rules, key = { it.id }) { rule ->
-                    RecurringRow(
-                        rule = rule,
-                        category = byId[rule.categoryId],
-                        onClick = { editTarget = rule; editing = true },
-                        onToggle = { viewModel.setActive(rule.id, it) },
-                    )
+            val sorted = remember(rules, categories, sortByDate) {
+                if (sortByDate) {
+                    rules.sortedWith(compareByDescending<RecurringRuleEntity> { it.active }.thenBy { it.nextRunAt })
+                } else {
+                    rules.sortedBy {
+                        (it.merchant?.takeIf { m -> m.isNotBlank() } ?: byId[it.categoryId]?.name ?: "Recurring").lowercase()
+                    }
                 }
             }
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                SortToggle(sortByDate = sortByDate, onChange = { sortByDate = it })
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(sorted, key = { it.id }) { rule ->
+                        RecurringRow(
+                            rule = rule,
+                            category = byId[rule.categoryId],
+                            onClick = { editTarget = rule; editing = true },
+                            onToggle = { viewModel.setActive(rule.id, it) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SortToggle(sortByDate: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Sort", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        SingleChoiceSegmentedButtonRow {
+            SegmentedButton(
+                selected = sortByDate,
+                onClick = { onChange(true) },
+                shape = SegmentedButtonDefaults.itemShape(0, 2),
+            ) { Text("By date") }
+            SegmentedButton(
+                selected = !sortByDate,
+                onClick = { onChange(false) },
+                shape = SegmentedButtonDefaults.itemShape(1, 2),
+            ) { Text("A–Z") }
         }
     }
 }
@@ -249,8 +285,9 @@ private fun RecurringEditor(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                // imePadding before verticalScroll so focused fields scroll above the keyboard.
                 .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 8.dp),
         ) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {

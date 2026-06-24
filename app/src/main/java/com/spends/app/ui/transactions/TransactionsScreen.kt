@@ -1,5 +1,6 @@
 package com.spends.app.ui.transactions
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,10 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,10 +33,12 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,8 +56,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.money.Money
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
+import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.components.AutoSizeRupee
 import com.spends.app.ui.components.CategoryAvatar
+import com.spends.app.ui.components.CategoryPickerSheet
 import kotlinx.coroutines.launch
 
 @Composable
@@ -60,18 +71,31 @@ fun TransactionsScreen(
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val categories by viewModel.categories.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     // Search text is owned locally (synchronous snapshot state) so the cursor never jumps; the
     // ViewModel is fed for filtering only.
     var searchText by rememberSaveable { mutableStateOf("") }
 
+    val listState = rememberLazyListState()
+    // Collapse the full header once the list is scrolled at all; a slim balance bar takes its place.
+    val collapsed by remember { derivedStateOf { listState.canScrollBackward } }
+
+    var pendingDelete by remember { mutableStateOf<TransactionRowUi?>(null) }
+    var changeCategoryFor by remember { mutableStateOf<TransactionRowUi?>(null) }
+
     Column(modifier = modifier.fillMaxSize()) {
-        SummaryHeader(
-            state = state,
-            onPrevious = viewModel::stepPrevious,
-            onNext = viewModel::stepNext,
-            modifier = Modifier.padding(top = 2.dp),
-        )
+        AnimatedVisibility(visible = !collapsed) {
+            SummaryHeader(
+                state = state,
+                onPrevious = viewModel::stepPrevious,
+                onNext = viewModel::stepNext,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        AnimatedVisibility(visible = collapsed) {
+            CompactBalanceBar(state)
+        }
 
         TextField(
             value = searchText,
@@ -93,6 +117,7 @@ fun TransactionsScreen(
             state.loading -> Unit
             state.isEmpty -> EmptyTimeline(searching = state.search.isNotBlank())
             else -> LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 96.dp),
             ) {
@@ -104,22 +129,77 @@ fun TransactionsScreen(
                         SwipeableRow(
                             row = row,
                             onClick = { onEditTransaction(row.id) },
-                            onDelete = {
-                                viewModel.moveToTrash(row.id)
-                                scope.launch {
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = "Moved to Trash",
-                                        actionLabel = "Undo",
-                                    )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        viewModel.restore(row.id)
-                                    }
-                                }
-                            },
+                            onRequestDelete = { pendingDelete = row },
+                            onRequestChangeCategory = { changeCategoryFor = row },
                         )
                     }
                 }
             }
+        }
+    }
+
+    // Delete confirmation (swipe is easy to trigger, so always confirm).
+    pendingDelete?.let { row ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete this transaction?") },
+            text = { Text("\"${row.title}\" moves to Trash — you can restore it from Settings → Trash.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDelete = null
+                    viewModel.moveToTrash(row.id)
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(message = "Moved to Trash", actionLabel = "Undo")
+                        if (result == SnackbarResult.ActionPerformed) viewModel.restore(row.id)
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
+        )
+    }
+
+    // Right-swipe → change category.
+    changeCategoryFor?.let { row ->
+        val usageFilter = if (row.kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
+        val visible = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
+        CategoryPickerSheet(
+            categories = visible,
+            selectedId = row.primary?.categoryId,
+            onSelect = { id -> viewModel.changeCategory(row.id, id); changeCategoryFor = null },
+            onDismiss = { changeCategoryFor = null },
+        )
+    }
+}
+
+@Composable
+private fun CompactBalanceBar(state: TransactionsUiState) {
+    val semantic = LocalSemanticColors.current
+    val balance = if (state.carryForward != null) (state.balanceWithCarry ?: 0) else state.totals.balance
+    val negative = balance < 0
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (negative) semantic.negativeContainer else MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "BALANCE",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            AutoSizeRupee(
+                minor = balance,
+                style = Numerals.amountLg,
+                color = if (negative) semantic.negative else MaterialTheme.colorScheme.onSurface,
+                withSign = true,
+                modifier = Modifier.weight(1f).padding(start = 16.dp),
+            )
         }
     }
 }
@@ -153,37 +233,63 @@ private fun DayHeader(group: DayGroupUi) {
 private fun SwipeableRow(
     row: TransactionRowUi,
     onClick: () -> Unit,
-    onDelete: () -> Unit,
+    onRequestDelete: () -> Unit,
+    onRequestChangeCategory: () -> Unit,
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
+        // Both directions only *request* an action and snap back (return false) — the actual delete
+        // is gated behind a confirmation dialog, and right-swipe opens the category picker.
         confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete(); true
-            } else {
-                false
+            when (value) {
+                SwipeToDismissBoxValue.EndToStart -> { onRequestDelete(); false }
+                SwipeToDismissBoxValue.StartToEnd -> { onRequestChangeCategory(); false }
+                else -> false
             }
         },
     )
+    val semantic = LocalSemanticColors.current
     SwipeToDismissBox(
         state = dismissState,
-        enableDismissFromStartToEnd = false,
         backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(LocalSemanticColors.current.expense.copy(alpha = 0.18f))
-                    .padding(horizontal = 24.dp),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Icon(
-                    Icons.Filled.Delete,
-                    contentDescription = "Delete",
-                    tint = LocalSemanticColors.current.expense,
+            when (dismissState.dismissDirection) {
+                SwipeToDismissBoxValue.EndToStart -> SwipeBg(
+                    color = semantic.expense.copy(alpha = 0.18f),
+                    icon = Icons.Filled.Delete,
+                    tint = semantic.expense,
+                    alignEnd = true,
+                    label = "Delete",
                 )
+                SwipeToDismissBoxValue.StartToEnd -> SwipeBg(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                    icon = Icons.Filled.SwapHoriz,
+                    tint = MaterialTheme.colorScheme.primary,
+                    alignEnd = false,
+                    label = "Category",
+                )
+                else -> Box(Modifier.fillMaxSize())
             }
         },
     ) {
         TransactionRow(row = row, onClick = onClick)
+    }
+}
+
+@Composable
+private fun SwipeBg(color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, alignEnd: Boolean, label: String) {
+    Row(
+        modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+    ) {
+        if (!alignEnd) {
+            Icon(icon, contentDescription = label, tint = tint)
+            Spacer(Modifier.width(8.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
+        } else {
+            Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
+            Spacer(Modifier.width(8.dp))
+            Icon(icon, contentDescription = label, tint = tint)
+        }
     }
 }
 
@@ -224,6 +330,17 @@ private fun TransactionRow(row: TransactionRowUi, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            // Show the note when present and not already used as the row title.
+            val note = row.note?.takeIf { it.isNotBlank() && it != row.title }
+            if (note != null) {
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         val amountColor = when (row.kind) {

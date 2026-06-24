@@ -42,6 +42,7 @@ fun HomeScreen(
     onEditTransaction: (Long) -> Unit,
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenRecurring: () -> Unit,
 ) {
     val initialTab = if (settings.defaultLanding == DefaultLanding.ANALYTICS) HomeTab.ANALYTICS else HomeTab.TRANSACTIONS
     var tab by rememberSaveable { mutableStateOf(initialTab) }
@@ -90,7 +91,7 @@ fun HomeScreen(
                     snackbarHostState = snackbarHostState,
                     onEditTransaction = onEditTransaction,
                 )
-                HomeTab.ANALYTICS -> AnalyticsScreen()
+                HomeTab.ANALYTICS -> AnalyticsScreen(onOpenRecurring = onOpenRecurring)
             }
         }
     }

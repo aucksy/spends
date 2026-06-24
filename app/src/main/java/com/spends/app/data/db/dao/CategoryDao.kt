@@ -68,6 +68,9 @@ interface CategoryDao {
     @Query("UPDATE categories SET name = :name WHERE id = :id")
     suspend fun rename(id: Long, name: String)
 
+    @Query("UPDATE categories SET iconKey = :iconKey WHERE id = :id")
+    suspend fun updateIcon(id: Long, iconKey: String)
+
     @Query("UPDATE categories SET isArchived = :archived WHERE id = :id")
     suspend fun setArchived(id: Long, archived: Boolean)
 

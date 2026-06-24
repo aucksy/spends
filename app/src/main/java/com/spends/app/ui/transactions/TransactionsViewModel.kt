@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.CycleWindow
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
+import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
@@ -29,7 +31,12 @@ import javax.inject.Inject
 class TransactionsViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val settingsRepository: SettingsRepository,
+    categoryRepository: CategoryRepository,
 ) : ViewModel() {
+
+    /** Categories (most-used first) for the quick swipe-to-change-category picker. */
+    val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val rangeFormatter = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
     private val rangeFormatterWithYear = DateTimeFormatter.ofPattern("d MMM yy", Locale.ENGLISH)
@@ -64,6 +71,9 @@ class TransactionsViewModel @Inject constructor(
     fun moveToTrash(id: Long) = viewModelScope.launch { expenseRepository.moveToTrash(id) }
 
     fun restore(id: Long) = viewModelScope.launch { expenseRepository.restore(id) }
+
+    fun changeCategory(id: Long, categoryId: Long) =
+        viewModelScope.launch { expenseRepository.reassignCategory(id, categoryId) }
 
     private fun computeWindow(salaryDay: Int, offset: Int): CycleWindow {
         var window = CycleUtils.windowFor(LocalDate.now(DateUtils.ZONE), salaryDay)

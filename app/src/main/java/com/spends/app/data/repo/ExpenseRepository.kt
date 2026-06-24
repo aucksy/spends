@@ -106,6 +106,19 @@ class ExpenseRepository @Inject constructor(
         dao.insertAllocations(input.allocations.toEntities(id))
     }
 
+    /**
+     * Replace a transaction's category with a single allocation for [categoryId] over the full
+     * amount (quick category fix from the timeline). Collapses a split into one category by design.
+     */
+    suspend fun reassignCategory(expenseId: Long, categoryId: Long) = db.withTransaction {
+        val existing = dao.getByIdWithAllocations(expenseId) ?: return@withTransaction
+        dao.deleteAllocationsFor(expenseId)
+        dao.insertAllocations(
+            listOf(AllocationEntity(expenseId = expenseId, categoryId = categoryId, amountMinor = existing.expense.amountMinor)),
+        )
+        dao.updateExpense(existing.expense.copy(updatedAt = DateUtils.nowMillis()))
+    }
+
     suspend fun moveToTrash(id: Long) = dao.softDelete(id, DateUtils.nowMillis())
 
     suspend fun restore(id: Long) = dao.restore(id, DateUtils.nowMillis())

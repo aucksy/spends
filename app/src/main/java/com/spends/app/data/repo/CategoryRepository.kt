@@ -50,6 +50,18 @@ class CategoryRepository @Inject constructor(
         if (trimmed.isNotEmpty()) dao.rename(id, trimmed)
     }
 
+    /**
+     * Re-derive the auto icon for every category from its name. Run on launch so categories created
+     * by older imports (when the keyword rules were thinner) pick up the better-matching icons —
+     * fixes "all imported categories look the same". Idempotent: only writes when the key changes.
+     */
+    suspend fun refreshAutoIcons() {
+        dao.getAllOnce().forEach { cat ->
+            val key = IconAssigner.keyFor(cat.name)
+            if (key != cat.iconKey) dao.updateIcon(cat.id, key)
+        }
+    }
+
     suspend fun setArchived(id: Long, archived: Boolean) = dao.setArchived(id, archived)
 
     suspend fun setExcludeFromSpend(category: CategoryEntity, exclude: Boolean) =

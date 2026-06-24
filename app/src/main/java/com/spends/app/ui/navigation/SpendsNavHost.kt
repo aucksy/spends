@@ -48,6 +48,7 @@ fun SpendsNavHost(settings: SettingsState) {
                 onEditTransaction = { id -> navController.navigate(Routes.addEdit(id)) },
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenRecurring = { navController.navigate(Routes.RECURRING) },
             )
         }
 

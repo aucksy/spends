@@ -4,9 +4,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Flight
@@ -27,6 +30,7 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -62,6 +66,12 @@ object CategoryIcons {
         "refund" -> Icons.Filled.Replay
         "interest" -> Icons.Filled.Savings
         "cashback" -> Icons.Filled.Redeem
+        "car" -> Icons.Filled.DirectionsCar
+        "maintenance" -> Icons.Filled.Build
+        "office" -> Icons.Filled.Work
+        "adjustment" -> Icons.Filled.Tune
+        "clothing" -> Icons.Filled.Checkroom
+        "fastfood" -> Icons.Filled.Fastfood
         else -> Icons.Filled.Category
     }
 }

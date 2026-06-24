@@ -83,38 +83,53 @@ class BackupRepository @Inject constructor(
         settingsRepository.restore(snapshot.data.settings.toState())
     }
 
+    // ---- Local file backup (no network) ----
+
+    /** Gzip-JSON bytes of the current full snapshot — for writing to a user-picked local file. */
+    suspend fun buildBackupBytes(): ByteArray = BackupCodec.encode(buildSnapshot())
+
+    /** Decode + apply a backup read from a local file (replaces all current data). */
+    suspend fun restoreFromBytes(bytes: ByteArray) = applySnapshot(BackupCodec.decode(bytes))
+
     // ---- Drive operations (token supplied by the caller) ----
 
-    /** Upload a fresh snapshot, validate the round-trip, prune to 60 rolling copies. Returns its time. */
+    /** Upload a fresh snapshot to the "Spends Backup" folder, validate, prune to 60. Returns its time. */
     suspend fun backupNow(token: String): Long {
+        val folderId = driveClient.ensureBackupFolder(token)
         val snapshot = buildSnapshot()
         val bytes = BackupCodec.encode(snapshot)
         val name = BackupCodec.FILE_NAME_PREFIX + stamp(snapshot.createdAt) + BackupCodec.FILE_EXTENSION
-        val fileId = driveClient.create(token, name, bytes)
+        val fileId = driveClient.create(token, name, bytes, folderId)
         // Validate: re-download + decode (cheap guard against truncation).
         BackupCodec.decode(driveClient.download(token, fileId))
-        runCatching { prune(token) }
+        runCatching { prune(token, folderId) }
         setLastBackupAt(snapshot.createdAt)
         return snapshot.createdAt
     }
 
-    suspend fun listBackups(token: String): List<DriveFile> =
-        driveClient.list(token).filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
+    suspend fun listBackups(token: String): List<DriveFile> {
+        val folderId = driveClient.ensureBackupFolder(token)
+        return driveClient.list(token, folderId).filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
+    }
 
     /** Download + decode a chosen backup, take a pre-restore safety copy, then apply it. */
     suspend fun restoreFrom(token: String, fileId: String) {
         val snapshot = BackupCodec.decode(driveClient.download(token, fileId))
         runCatching {
+            val folderId = driveClient.ensureBackupFolder(token)
             val safety = buildSnapshot()
             val safetyName = BackupCodec.FILE_NAME_PREFIX + "presafety-" + stamp(safety.createdAt) + BackupCodec.FILE_EXTENSION
-            driveClient.create(token, safetyName, BackupCodec.encode(safety))
+            driveClient.create(token, safetyName, BackupCodec.encode(safety), folderId)
         }
         applySnapshot(snapshot)
     }
 
-    private suspend fun prune(token: String, keep: Int = 60) {
+    private suspend fun prune(token: String, folderId: String, keep: Int = 60) {
         // list() returns newest-first; delete everything beyond the newest `keep` snapshots.
-        listBackups(token).drop(keep).forEach { runCatching { driveClient.delete(token, it.id) } }
+        driveClient.list(token, folderId)
+            .filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
+            .drop(keep)
+            .forEach { runCatching { driveClient.delete(token, it.id) } }
     }
 
     private suspend fun setLastBackupAt(millis: Long) {
@@ -174,7 +189,7 @@ private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
 
 private fun SettingsState.toSnapshot() = SnapshotSettings(
     onboardingComplete, themeMode.name, dynamicColor, salaryCycleStartDay, defaultLanding.name,
-    carryForwardEnabled, trashRetentionDays,
+    carryForwardEnabled, trashRetentionDays, autoBackupEnabled,
 )
 
 private fun SnapshotSettings.toState() = SettingsState(
@@ -185,4 +200,5 @@ private fun SnapshotSettings.toState() = SettingsState(
     defaultLanding = runCatching { DefaultLanding.valueOf(defaultLanding) }.getOrDefault(DefaultLanding.TRANSACTIONS),
     carryForwardEnabled = carryForwardEnabled,
     trashRetentionDays = trashRetentionDays,
+    autoBackupEnabled = autoBackupEnabled,
 )

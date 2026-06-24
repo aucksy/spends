@@ -16,13 +16,14 @@ import javax.inject.Singleton
 
 class DriveException(message: String) : Exception(message)
 
-/** A file in the app's private Drive appDataFolder. */
+/** A backup file inside the app's "Spends Backup" Drive folder. */
 data class DriveFile(val id: String, val name: String, val modifiedTime: String?, val size: Long?)
 
 /**
- * Minimal Google Drive REST v3 client for the appDataFolder space (PRD §4.12). Uses only the OAuth
- * access token + OkHttp — no heavy google-api-client. The appDataFolder is per-app and hidden from
- * the user's normal Drive view, so Spends can never see the rest of their Drive.
+ * Minimal Google Drive REST v3 client (PRD §4.12). Uses only the OAuth access token + OkHttp — no
+ * heavy google-api-client. With the **drive.file** scope the app can only see files/folders it
+ * created, so it keeps backups in a visible "Spends Backup" folder in My Drive without ever seeing
+ * the rest of the user's Drive.
  */
 @Singleton
 class DriveClient @Inject constructor() {
@@ -33,10 +34,43 @@ class DriveClient @Inject constructor() {
 
     private val gzipType = "application/gzip".toMediaType()
     private val jsonType = "application/json; charset=UTF-8".toMediaType()
+    private val folderMime = "application/vnd.google-apps.folder"
 
-    suspend fun list(token: String): List<DriveFile> = withContext(Dispatchers.IO) {
+    /** Find the "Spends Backup" folder, creating it if missing. Returns its file id. */
+    suspend fun ensureBackupFolder(token: String): String = withContext(Dispatchers.IO) {
+        val q = "mimeType='$folderMime' and name='$FOLDER_NAME' and trashed=false"
         val url = "https://www.googleapis.com/drive/v3/files".toHttpUrl().newBuilder()
-            .addQueryParameter("spaces", "appDataFolder")
+            .addQueryParameter("q", q)
+            .addQueryParameter("spaces", "drive")
+            .addQueryParameter("fields", "files(id,name)")
+            .build()
+        val lookup = Request.Builder().url(url).header("Authorization", "Bearer $token").get().build()
+        val existing = client.newCall(lookup).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) throw DriveException("Drive folder lookup failed (${resp.code})")
+            val files = JSONObject(body).optJSONArray("files") ?: JSONArray()
+            if (files.length() > 0) files.getJSONObject(0).getString("id") else null
+        }
+        existing ?: run {
+            val metadata = JSONObject().put("name", FOLDER_NAME).put("mimeType", folderMime).toString()
+            val create = Request.Builder()
+                .url("https://www.googleapis.com/drive/v3/files?fields=id")
+                .header("Authorization", "Bearer $token")
+                .post(metadata.toRequestBody(jsonType))
+                .build()
+            client.newCall(create).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) throw DriveException("Drive folder create failed (${resp.code})")
+                JSONObject(body).getString("id")
+            }
+        }
+    }
+
+    /** List backup files inside [folderId], newest first. */
+    suspend fun list(token: String, folderId: String): List<DriveFile> = withContext(Dispatchers.IO) {
+        val url = "https://www.googleapis.com/drive/v3/files".toHttpUrl().newBuilder()
+            .addQueryParameter("q", "'$folderId' in parents and trashed=false")
+            .addQueryParameter("spaces", "drive")
             .addQueryParameter("orderBy", "modifiedTime desc")
             .addQueryParameter("fields", "files(id,name,modifiedTime,size)")
             .build()
@@ -57,11 +91,11 @@ class DriveClient @Inject constructor() {
         }
     }
 
-    /** Create a new file in appDataFolder (multipart: metadata + bytes). Returns the new file id. */
-    suspend fun create(token: String, name: String, bytes: ByteArray): String = withContext(Dispatchers.IO) {
+    /** Create a new file inside [folderId] (multipart: metadata + bytes). Returns the new file id. */
+    suspend fun create(token: String, name: String, bytes: ByteArray, folderId: String): String = withContext(Dispatchers.IO) {
         val metadata = JSONObject()
             .put("name", name)
-            .put("parents", JSONArray().put("appDataFolder"))
+            .put("parents", JSONArray().put(folderId))
             .toString()
         val body = MultipartBody.Builder().setType("multipart/related".toMediaType())
             .addPart(metadata.toRequestBody(jsonType))
@@ -100,5 +134,9 @@ class DriveClient @Inject constructor() {
         client.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful && resp.code != 404) throw DriveException("Drive delete failed (${resp.code})")
         }
+    }
+
+    companion object {
+        const val FOLDER_NAME = "Spends Backup"
     }
 }
