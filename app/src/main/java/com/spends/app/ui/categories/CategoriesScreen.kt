@@ -23,6 +23,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -202,16 +205,16 @@ private fun AddCategoryDialog(onConfirm: (String, CategoryUsage) -> Unit, onDism
                     singleLine = true,
                 )
                 Spacer(Modifier.size(12.dp))
-                androidx.compose.material3.SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    androidx.compose.material3.SegmentedButton(
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
                         selected = !income,
                         onClick = { income = false },
-                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(0, 2),
+                        shape = SegmentedButtonDefaults.itemShape(0, 2),
                     ) { Text("Spending") }
-                    androidx.compose.material3.SegmentedButton(
+                    SegmentedButton(
                         selected = income,
                         onClick = { income = true },
-                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(1, 2),
+                        shape = SegmentedButtonDefaults.itemShape(1, 2),
                     ) { Text("Income") }
                 }
             }
