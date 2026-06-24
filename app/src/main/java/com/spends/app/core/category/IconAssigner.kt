@@ -19,8 +19,11 @@ object IconAssigner {
         listOf("refund", "reversal", "reimburse") to "refund",
         listOf("interest", "dividend", "savings") to "interest",
         listOf("business", "freelance", "consulting", "client", "invoice") to "business",
-        listOf("dog", "cat", "pet", "puppy", "kitten", "paw", "vet") to "pet",
-        listOf("guitar", "music", "instrument", "spotify", "song", "promotion") to "music",
+        // No bare "cat" — it is a substring of eduCATion / vaCATion / catering etc.
+        listOf("dog", "pet", "puppy", "kitten", "paw", "vet") to "pet",
+        // No bare "promotion" — collides with marketing/sales categories. "Music Promotion" still
+        // matches via "music".
+        listOf("guitar", "music", "instrument", "spotify", "song") to "music",
         // Specific multi-word names (Monito categories etc.) before the generic single words.
         listOf("car maintenance", "car service", "car repair", "vehicle", "automobile") to "car",
         listOf("house maint", "maintenance", "household", "home repair", "plumber", "carpenter", "appliance", "furniture") to "maintenance",
@@ -38,7 +41,8 @@ object IconAssigner {
         listOf("subscription", "subscriptions", "membership", "prime", "netflix", "hotstar") to "subscriptions",
         listOf("util", "electricity", "water", "broadband", "wifi", "internet", "dth") to "utilities",
         listOf("bill", "recharge", "postpaid", "prepaid") to "bills",
-        listOf("transport", "taxi", "uber", "ola", "cab", "metro", "bus", "train", "auto", "ride", "rapido") to "transport",
+        // No bare "auto" (Autopay/Auto-debit) or "ride" (Pride/Bride); use rickshaw forms instead.
+        listOf("transport", "taxi", "uber", "ola", "cab", "metro", "bus", "train", "rickshaw", "auto rickshaw", "rapido") to "transport",
         listOf("travel", "trip", "flight", "hotel", "vacation", "airbnb", "makemytrip", "irctc") to "travel",
         listOf("education", "course", "tuition", "school", "college", "book", "learn", "udemy") to "education",
         listOf("personal care", "bodycare", "body care", "skincare", "cosmetic", "makeup", "salon", "spa", "grooming", "haircut", "barber") to "personal_care",

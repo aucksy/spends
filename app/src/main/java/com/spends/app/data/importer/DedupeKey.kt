@@ -23,6 +23,18 @@ object DedupeKey {
         return sha256Hex(raw)
     }
 
+    /**
+     * Stable hash for one occurrence of a recurring rule, namespaced by rule id + day so a rule can
+     * never materialise the same date twice — the durable idempotency backstop for [materializeDue]
+     * against edit-rewinds, concurrent passes, and partial-failure retries.
+     */
+    fun forRecurring(ruleId: Long, occurredAt: Long, amountMinor: Long, kind: TxnKind): String {
+        val day = occurredAt / DAY_MS
+        val raw = listOf("recurring", ruleId.toString(), day.toString(), amountMinor.toString(), kind.name)
+            .joinToString("|")
+        return sha256Hex(raw)
+    }
+
     private fun sha256Hex(input: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
         return buildString { bytes.forEach { append("%02x".format(it)) } }

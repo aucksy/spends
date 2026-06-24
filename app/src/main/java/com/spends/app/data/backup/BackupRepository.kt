@@ -26,6 +26,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -50,6 +52,10 @@ class BackupRepository @Inject constructor(
     private val categoryDao = db.categoryDao()
     private val expenseDao = db.expenseDao()
     private val recurringDao = db.recurringDao()
+
+    // Serialises Drive operations so the daily worker and a user-tapped "Back up now" can't race
+    // (e.g. both create the "Spends Backup" folder at once).
+    private val driveMutex = Mutex()
 
     val lastBackupAt: Flow<Long?> = context.backupMetaStore.data.map { it[LAST_BACKUP_AT] }
 
@@ -94,7 +100,7 @@ class BackupRepository @Inject constructor(
     // ---- Drive operations (token supplied by the caller) ----
 
     /** Upload a fresh snapshot to the "Spends Backup" folder, validate, prune to 60. Returns its time. */
-    suspend fun backupNow(token: String): Long {
+    suspend fun backupNow(token: String): Long = driveMutex.withLock {
         val folderId = driveClient.ensureBackupFolder(token)
         val snapshot = buildSnapshot()
         val bytes = BackupCodec.encode(snapshot)
@@ -104,31 +110,35 @@ class BackupRepository @Inject constructor(
         BackupCodec.decode(driveClient.download(token, fileId))
         runCatching { prune(token, folderId) }
         setLastBackupAt(snapshot.createdAt)
-        return snapshot.createdAt
+        snapshot.createdAt
     }
 
-    suspend fun listBackups(token: String): List<DriveFile> {
+    suspend fun listBackups(token: String): List<DriveFile> = driveMutex.withLock {
         val folderId = driveClient.ensureBackupFolder(token)
-        return driveClient.list(token, folderId).filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
+        driveClient.list(token, folderId).filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
     }
 
     /** Download + decode a chosen backup, take a pre-restore safety copy, then apply it. */
-    suspend fun restoreFrom(token: String, fileId: String) {
+    suspend fun restoreFrom(token: String, fileId: String) = driveMutex.withLock {
         val snapshot = BackupCodec.decode(driveClient.download(token, fileId))
         runCatching {
             val folderId = driveClient.ensureBackupFolder(token)
             val safety = buildSnapshot()
-            val safetyName = BackupCodec.FILE_NAME_PREFIX + "presafety-" + stamp(safety.createdAt) + BackupCodec.FILE_EXTENSION
+            val safetyName = BackupCodec.SAFETY_NAME_PREFIX + stamp(safety.createdAt) + BackupCodec.FILE_EXTENSION
             driveClient.create(token, safetyName, BackupCodec.encode(safety), folderId)
         }
         applySnapshot(snapshot)
     }
 
     private suspend fun prune(token: String, folderId: String, keep: Int = 60) {
-        // list() returns newest-first; delete everything beyond the newest `keep` snapshots.
-        driveClient.list(token, folderId)
-            .filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
+        // list() returns newest-first. Real backups and safety copies are pruned on separate budgets
+        // so a burst of restores can't evict real backups.
+        val files = driveClient.list(token, folderId)
+        files.filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
             .drop(keep)
+            .forEach { runCatching { driveClient.delete(token, it.id) } }
+        files.filter { it.name.startsWith(BackupCodec.SAFETY_NAME_PREFIX) }
+            .drop(10)
             .forEach { runCatching { driveClient.delete(token, it.id) } }
     }
 

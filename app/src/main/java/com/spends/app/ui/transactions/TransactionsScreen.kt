@@ -78,8 +78,10 @@ fun TransactionsScreen(
     var searchText by rememberSaveable { mutableStateOf("") }
 
     val listState = rememberLazyListState()
-    // Collapse the full header once the list is scrolled at all; a slim balance bar takes its place.
-    val collapsed by remember { derivedStateOf { listState.canScrollBackward } }
+    // Collapse once the first list item has scrolled off the top. Keyed on firstVisibleItemIndex
+    // (not canScrollBackward) so that removing the header — which grows the viewport — can't flip the
+    // trigger back and cause the header to oscillate/pop at the boundary.
+    val collapsed by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
 
     var pendingDelete by remember { mutableStateOf<TransactionRowUi?>(null) }
     var changeCategoryFor by remember { mutableStateOf<TransactionRowUi?>(null) }

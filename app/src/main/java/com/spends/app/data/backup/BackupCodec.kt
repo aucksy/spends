@@ -10,6 +10,9 @@ import java.util.zip.GZIPOutputStream
 object BackupCodec {
 
     val FILE_NAME_PREFIX = "spends-backup-"
+    // Pre-restore safety copies use a prefix that is NOT a prefix of FILE_NAME_PREFIX, so they are
+    // excluded from the restore picker and from the rolling 60-keep prune of real backups.
+    const val SAFETY_NAME_PREFIX = "spends-presafety-"
     const val FILE_EXTENSION = ".json.gz"
 
     private val json = Json {

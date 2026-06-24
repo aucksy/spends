@@ -42,6 +42,9 @@ class DriveClient @Inject constructor() {
         val url = "https://www.googleapis.com/drive/v3/files".toHttpUrl().newBuilder()
             .addQueryParameter("q", q)
             .addQueryParameter("spaces", "drive")
+            // Oldest first, so if a duplicate folder ever exists every caller deterministically
+            // resolves to the same (original) one.
+            .addQueryParameter("orderBy", "createdTime")
             .addQueryParameter("fields", "files(id,name)")
             .build()
         val lookup = Request.Builder().url(url).header("Authorization", "Bearer $token").get().build()

@@ -29,6 +29,7 @@ data class TransactionInput(
     val allocations: List<AllocationInput>,
     val paymentMethodId: Long? = null,
     val source: TxnSource = TxnSource.MANUAL,
+    val dedupeHash: String? = null,
 )
 
 @Singleton
@@ -60,6 +61,9 @@ class ExpenseRepository @Inject constructor(
 
     suspend fun getById(id: Long): ExpenseWithAllocations? = dao.getByIdWithAllocations(id)
 
+    /** All non-null dedupe hashes already in the DB — used to make recurring/import idempotent. */
+    suspend fun existingDedupeHashes(): HashSet<String> = dao.allDedupeHashes().toHashSet()
+
     // ---- Writes ----
 
     /** `direction` is derived from `kind` for manual entry: income = credit, otherwise debit. */
@@ -79,6 +83,7 @@ class ExpenseRepository @Inject constructor(
                 kind = input.kind,
                 direction = directionFor(input.kind),
                 parseConfidence = 100,
+                dedupeHash = input.dedupeHash,
                 createdAt = now,
                 updatedAt = now,
             ),
