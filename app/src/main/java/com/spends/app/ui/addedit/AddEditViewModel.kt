@@ -10,44 +10,26 @@ import com.spends.app.data.repo.AllocationInput
 import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.repo.TransactionInput
+import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private data class AddEditForm(
-    val amountText: String = "",
-    val kind: TxnKind = TxnKind.EXPENSE,
-    val selectedCategoryId: Long? = null,
-    val merchant: String = "",
-    val note: String = "",
-    val occurredAt: Long = DateUtils.nowMillis(),
-    val saving: Boolean = false,
-    val finished: Boolean = false,
+/** The values used to seed the editable form (defaults for a new txn, or the loaded row for edit). */
+data class AddEditInitial(
+    val amountText: String,
+    val kind: TxnKind,
+    val categoryId: Long?,
+    val merchant: String,
+    val note: String,
+    val occurredAt: Long,
 )
-
-data class AddEditUiState(
-    val isEdit: Boolean = false,
-    val amountText: String = "",
-    val kind: TxnKind = TxnKind.EXPENSE,
-    val selectedCategoryId: Long? = null,
-    val merchant: String = "",
-    val note: String = "",
-    val occurredAt: Long = DateUtils.nowMillis(),
-    val categories: List<CategoryEntity> = emptyList(),
-    val saving: Boolean = false,
-    val finished: Boolean = false,
-) {
-    val amountMinor: Long? get() = Money.parseRupeesToMinor(amountText)?.takeIf { it > 0 }
-    val canSave: Boolean get() = amountMinor != null && selectedCategoryId != null && !saving
-}
 
 @HiltViewModel
 class AddEditViewModel @Inject constructor(
@@ -57,77 +39,82 @@ class AddEditViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val expenseId: Long = savedStateHandle[Routes.ARG_EXPENSE_ID] ?: Routes.NO_EXPENSE_ID
-    private val isEdit: Boolean = expenseId != Routes.NO_EXPENSE_ID
+    val isEdit: Boolean = expenseId != Routes.NO_EXPENSE_ID
 
-    private val form = MutableStateFlow(AddEditForm())
+    val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val uiState: StateFlow<AddEditUiState> =
-        combine(form, categoryRepository.observeActive()) { f, categories ->
-            AddEditUiState(
-                isEdit = isEdit,
-                amountText = f.amountText,
-                kind = f.kind,
-                selectedCategoryId = f.selectedCategoryId,
-                merchant = f.merchant,
-                note = f.note,
-                occurredAt = f.occurredAt,
-                categories = categories,
-                saving = f.saving,
-                finished = f.finished,
-            )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddEditUiState(isEdit = isEdit))
+    /** Null until the initial form is ready (immediately for new, after load for edit). */
+    private val _initial = MutableStateFlow<AddEditInitial?>(null)
+    val initial: StateFlow<AddEditInitial?> = _initial
+
+    private val _saving = MutableStateFlow(false)
+    val saving: StateFlow<Boolean> = _saving
+
+    private val _finished = MutableStateFlow(false)
+    val finished: StateFlow<Boolean> = _finished
 
     init {
         if (isEdit) {
             viewModelScope.launch {
-                expenseRepository.getById(expenseId)?.let { e ->
-                    form.update {
-                        it.copy(
-                            amountText = Money.toEditString(e.expense.amountMinor),
-                            kind = e.expense.kind,
-                            selectedCategoryId = e.allocations.firstOrNull()?.category?.id,
-                            merchant = e.expense.merchantRaw.orEmpty(),
-                            note = e.expense.note.orEmpty(),
-                            occurredAt = e.expense.occurredAt,
-                        )
-                    }
+                val e = expenseRepository.getById(expenseId)
+                _initial.value = if (e != null) {
+                    AddEditInitial(
+                        amountText = Money.toEditString(e.expense.amountMinor),
+                        kind = e.expense.kind,
+                        categoryId = e.allocations.firstOrNull()?.category?.id,
+                        merchant = e.expense.merchantRaw.orEmpty(),
+                        note = e.expense.note.orEmpty(),
+                        occurredAt = e.expense.occurredAt,
+                    )
+                } else {
+                    newInitial()
                 }
             }
+        } else {
+            _initial.value = newInitial()
         }
     }
 
-    fun setAmount(value: String) = form.update { it.copy(amountText = value.filter { c -> c.isDigit() || c == '.' }) }
-    fun setKind(kind: TxnKind) = form.update { it.copy(kind = kind) }
-    fun selectCategory(id: Long) = form.update { it.copy(selectedCategoryId = id) }
-    fun setMerchant(value: String) = form.update { it.copy(merchant = value) }
-    fun setNote(value: String) = form.update { it.copy(note = value) }
-    fun setDate(millis: Long) = form.update { it.copy(occurredAt = millis) }
+    private fun newInitial() = AddEditInitial(
+        amountText = "",
+        kind = TxnKind.EXPENSE,
+        categoryId = null,
+        merchant = "",
+        note = "",
+        occurredAt = DateUtils.nowMillis(),
+    )
 
-    fun addCategory(name: String) {
+    fun addCategory(name: String, usage: CategoryUsage, onCreated: (Long) -> Unit) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            val id = categoryRepository.addCustom(name)
-            form.update { it.copy(selectedCategoryId = id) }
+            val id = categoryRepository.addCustom(name, usage)
+            onCreated(id)
         }
     }
 
-    fun save() {
-        val current = uiState.value
-        val amount = current.amountMinor ?: return
-        val categoryId = current.selectedCategoryId ?: return
-        if (current.saving) return
-        form.update { it.copy(saving = true) }
+    fun save(
+        amountMinor: Long,
+        kind: TxnKind,
+        categoryId: Long,
+        merchant: String,
+        note: String,
+        occurredAt: Long,
+    ) {
+        if (_saving.value) return
+        _saving.value = true
         viewModelScope.launch {
             val input = TransactionInput(
-                amountMinor = amount,
-                kind = current.kind,
-                occurredAt = current.occurredAt,
-                merchantRaw = current.merchant.ifBlank { null },
-                note = current.note.ifBlank { null },
-                allocations = listOf(AllocationInput(categoryId, amount)),
+                amountMinor = amountMinor,
+                kind = kind,
+                occurredAt = occurredAt,
+                merchantRaw = merchant.ifBlank { null },
+                note = note.ifBlank { null },
+                allocations = listOf(AllocationInput(categoryId, amountMinor)),
             )
             if (isEdit) expenseRepository.update(expenseId, input) else expenseRepository.create(input)
-            form.update { it.copy(saving = false, finished = true) }
+            _saving.value = false
+            _finished.value = true
         }
     }
 }

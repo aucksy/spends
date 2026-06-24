@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.addedit.AddEditScreen
+import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.home.HomeScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
 import com.spends.app.ui.settings.SettingsScreen
@@ -67,7 +68,12 @@ fun SpendsNavHost(settings: SettingsState) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
+                onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
             )
+        }
+
+        composable(Routes.CATEGORIES) {
+            CategoriesScreen(onBack = { navController.popBackStack() })
         }
     }
 }

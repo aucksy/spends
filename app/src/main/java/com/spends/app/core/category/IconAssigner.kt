@@ -13,6 +13,12 @@ object IconAssigner {
 
     // Ordered: first matching rule wins.
     private val rules: List<Pair<List<String>, String>> = listOf(
+        // Income-leaning keywords first so they win over generic spend words.
+        listOf("salary", "payroll", "wages", "stipend") to "salary",
+        listOf("cashback", "reward", "bonus") to "cashback",
+        listOf("refund", "reversal", "reimburse") to "refund",
+        listOf("interest", "dividend", "savings") to "interest",
+        listOf("business", "freelance", "consulting", "client", "invoice") to "business",
         listOf("dog", "cat", "pet", "puppy", "kitten", "paw", "vet") to "pet",
         listOf("guitar", "music", "instrument", "spotify", "song") to "music",
         listOf("grocery", "groceries", "supermarket", "kirana", "bigbasket", "blinkit", "zepto") to "grocery",

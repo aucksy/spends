@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,6 +51,7 @@ import com.spends.app.domain.model.ThemeMode
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenCategories: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -117,6 +119,15 @@ fun SettingsScreen(
                 subtitle = "Roll each period's leftover into the next.",
                 checked = state.carryForwardEnabled,
                 onChange = viewModel::setCarryForward,
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SectionHeader("Categories")
+            ClickableRow(
+                title = "Manage categories",
+                value = "Add, rename, archive or delete",
+                onClick = onOpenCategories,
+                leading = { Icon(Icons.Filled.Category, contentDescription = null) },
             )
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))

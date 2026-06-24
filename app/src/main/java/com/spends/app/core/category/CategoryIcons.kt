@@ -15,14 +15,19 @@ import androidx.compose.material.icons.filled.LocalGroceryStore
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Redeem
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Weekend
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /** Maps the pure icon keys from [IconAssigner] to concrete Compose icons. */
@@ -49,6 +54,11 @@ object CategoryIcons {
         "music" -> Icons.Filled.MusicNote
         "coffee" -> Icons.Filled.LocalCafe
         "pet" -> Icons.Filled.Pets
+        "salary" -> Icons.Filled.Payments
+        "business" -> Icons.Filled.Work
+        "refund" -> Icons.Filled.Replay
+        "interest" -> Icons.Filled.Savings
+        "cashback" -> Icons.Filled.Redeem
         else -> Icons.Filled.Label
     }
 }

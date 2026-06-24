@@ -17,6 +17,12 @@ enum class TxnSource { MANUAL, SMS, NOTIFICATION, RECURRING, IMPORT }
 /** Instrument type for a payment method (PRD §3). */
 enum class PaymentMethodType { CREDIT_CARD, DEBIT_CARD, BANK_ACCOUNT, UPI, WALLET }
 
+/**
+ * Which transaction kinds a category applies to, so the picker shows income-relevant categories
+ * for income and spend categories for expenses. [BOTH] appears in both pickers.
+ */
+enum class CategoryUsage { EXPENSE, INCOME, BOTH }
+
 /** Which screen the app opens on (PRD §4.19). */
 enum class DefaultLanding { TRANSACTIONS, ANALYTICS }
 
