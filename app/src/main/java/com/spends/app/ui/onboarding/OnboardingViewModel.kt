@@ -20,6 +20,15 @@ class OnboardingViewModel @Inject constructor(
 
     fun setSalaryDay(day: Int) = _salaryDay.update { day.coerceIn(1, 31) }
 
+    /**
+     * Persist the chosen salary day immediately. Called when advancing past the salary step so that
+     * an importing user (who finishes onboarding via the import flow, not [finish]) still gets their
+     * salary cycle configured rather than silently left on the default.
+     */
+    fun persistSalaryDay() {
+        viewModelScope.launch { settingsRepository.setSalaryCycleStartDay(_salaryDay.value) }
+    }
+
     fun finish(onDone: () -> Unit) {
         viewModelScope.launch {
             settingsRepository.setSalaryCycleStartDay(_salaryDay.value)

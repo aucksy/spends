@@ -29,17 +29,18 @@ val PlexMono = FontFamily(
  * align across the breakdown. These live outside the Material Typography because money is special.
  */
 object Numerals {
+    // Sizes mirror the design system's type/* tokens exactly (Plex Mono, tabular).
     val balanceHero = TextStyle(
         fontFamily = PlexMono, fontWeight = FontWeight.SemiBold,
-        fontSize = 40.sp, lineHeight = 46.sp, letterSpacing = (-0.02).em, fontFeatureSettings = "tnum",
+        fontSize = 46.sp, lineHeight = 52.sp, letterSpacing = (-0.02).em, fontFeatureSettings = "tnum",
     )
     val amountLg = TextStyle(
         fontFamily = PlexMono, fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp, lineHeight = 28.sp, fontFeatureSettings = "tnum",
+        fontSize = 28.sp, lineHeight = 34.sp, fontFeatureSettings = "tnum",
     )
     val amountRow = TextStyle(
         fontFamily = PlexMono, fontWeight = FontWeight.Medium,
-        fontSize = 15.sp, lineHeight = 20.sp, fontFeatureSettings = "tnum",
+        fontSize = 14.sp, lineHeight = 20.sp, fontFeatureSettings = "tnum",
     )
     val amountSmall = TextStyle(
         fontFamily = PlexMono, fontWeight = FontWeight.Medium,

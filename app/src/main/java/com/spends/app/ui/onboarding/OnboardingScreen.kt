@@ -24,12 +24,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,6 +63,8 @@ fun OnboardingScreen(
 ) {
     // Saveable so a side-trip (e.g. into Import) returns to the same step instead of step 0.
     var step by rememberSaveable { mutableIntStateOf(0) }
+    // Data-setup choice: 0 = start fresh, 1 = import from Excel (Int so it survives config changes).
+    var dataChoice by rememberSaveable { mutableIntStateOf(0) }
     val lastStep = 3
     val salaryDay by viewModel.salaryDay.collectAsStateWithLifecycle()
 
@@ -74,8 +78,10 @@ fun OnboardingScreen(
             ) { current ->
                 when (current) {
                     0 -> WelcomeStep()
-                    1 -> DataSetupStep(onImport = onImport)
-                    2 -> SalaryStep(salaryDay = salaryDay, onSelect = viewModel::setSalaryDay)
+                    // Salary BEFORE data-setup so importing users (who finish via the import flow,
+                    // skipping later steps) still configure their salary cycle.
+                    1 -> SalaryStep(salaryDay = salaryDay, onSelect = viewModel::setSalaryDay)
+                    2 -> DataSetupStep(selectedIndex = dataChoice, onSelect = { dataChoice = it })
                     else -> CaptureStep()
                 }
             }
@@ -93,9 +99,20 @@ fun OnboardingScreen(
                 } else {
                     Spacer(Modifier.width(1.dp))
                 }
-                Button(onClick = {
-                    if (step < lastStep) step++ else viewModel.finish(onFinished)
-                }) {
+                Button(
+                    shape = RoundedCornerShape(999.dp),
+                    onClick = {
+                        when {
+                            // Data-setup step (2): "Import from Excel" routes into the import flow.
+                            step == 2 && dataChoice == 1 -> onImport()
+                            step < lastStep -> {
+                                if (step == 1) viewModel.persistSalaryDay() // leaving the salary step
+                                step++
+                            }
+                            else -> viewModel.finish(onFinished)
+                        }
+                    },
+                ) {
                     Text(if (step < lastStep) "Continue" else "Get started")
                     Spacer(Modifier.width(8.dp))
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -182,71 +199,97 @@ private fun WelcomeStep() {
 }
 
 @Composable
-private fun DataSetupStep(onImport: () -> Unit) {
-    StepScaffold(
-        badge = Icons.Filled.UploadFile,
-        title = "How do you want to start?",
-        subtitle = "Bring your history in, or begin with a clean slate — you can always import later.",
-    ) {
-        SetupOption(
-            icon = Icons.Filled.UploadFile,
-            title = "Import from Excel",
-            subtitle = "Bring in your Monito (.xls) or any CSV history — every category preserved.",
-            enabled = true,
-            onClick = onImport,
+private fun DataSetupStep(selectedIndex: Int, onSelect: (Int) -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Spacer(Modifier.height(8.dp))
+        Text("How do you want to start?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "You can always change this later. Nothing leaves your phone.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(12.dp))
-        SetupOption(
-            icon = Icons.Filled.NoteAdd,
+        Spacer(Modifier.height(20.dp))
+
+        SetupOptionCard(
+            selected = selectedIndex == 0,
+            enabled = true,
+            icon = Icons.Filled.AutoAwesome,
+            badgeBg = MaterialTheme.colorScheme.primaryContainer,
+            badgeTint = MaterialTheme.colorScheme.onPrimaryContainer,
             title = "Start fresh",
-            subtitle = "Begin clean and add transactions as they happen. Tap Continue.",
-            enabled = true,
+            subtitle = "Add transactions as they happen. Recommended.",
+            onClick = { onSelect(0) },
         )
         Spacer(Modifier.height(12.dp))
-        SetupOption(
-            icon = Icons.Filled.CloudDownload,
-            title = "Restore from Google Drive",
-            subtitle = "Restore a previous full backup from Settings once you're set up.",
+        SetupOptionCard(
+            selected = selectedIndex == 1,
+            enabled = true,
+            icon = Icons.Filled.TableChart,
+            badgeBg = MaterialTheme.colorScheme.surfaceVariant,
+            badgeTint = androidx.compose.ui.graphics.Color(0xFF3F6212), // design olive accent
+            title = "Import from Excel",
+            subtitle = "Bring your Monito (.xls) or any CSV history — every category preserved.",
+            onClick = { onSelect(1) },
+        )
+        Spacer(Modifier.height(12.dp))
+        SetupOptionCard(
+            selected = false,
             enabled = false,
+            icon = Icons.Filled.CloudDownload,
+            badgeBg = MaterialTheme.colorScheme.surfaceVariant,
+            badgeTint = MaterialTheme.colorScheme.outline,
+            title = "Restore from Drive",
+            subtitle = "Available from Settings → Backup once you're set up.",
+            onClick = {},
         )
     }
 }
 
 @Composable
-private fun SetupOption(icon: ImageVector, title: String, subtitle: String, enabled: Boolean, onClick: (() -> Unit)? = null) {
-    val container = if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
-    Card(
-        modifier = Modifier.fillMaxWidth().then(if (enabled && onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = container),
+private fun SetupOptionCard(
+    selected: Boolean,
+    enabled: Boolean,
+    icon: ImageVector,
+    badgeBg: androidx.compose.ui.graphics.Color,
+    badgeTint: androidx.compose.ui.graphics.Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val border = androidx.compose.foundation.BorderStroke(
+        1.5.dp,
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+    )
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxWidth().then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = border,
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (enabled) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                    ),
+                modifier = Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)).background(badgeBg),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(22.dp),
-                )
+                Icon(icon, contentDescription = null, tint = badgeTint, modifier = Modifier.size(24.dp))
             }
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
                 )
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Spacer(Modifier.width(10.dp))
+            Icon(
+                if (selected) Icons.Filled.RadioButtonChecked else Icons.Filled.RadioButtonUnchecked,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            )
         }
     }
 }
