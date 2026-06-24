@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.IntentSender
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
-import com.google.android.gms.common.Scopes
 import com.google.android.gms.common.api.Scope
 import com.google.android.gms.tasks.Task
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,6 +27,10 @@ class DriveAuthManager @Inject constructor(
 ) {
     private val authClient = Identity.getAuthorizationClient(context)
 
+    // Use the literal scope string (the GMS Scopes constant for this is DRIVE_APPFOLDER, easy to
+    // mis-name) — least privilege: the app's own hidden Drive appData folder only.
+    private val driveAppDataScope = Scope("https://www.googleapis.com/auth/drive.appdata")
+
     sealed interface AuthResult {
         data class Authorized(val accessToken: String) : AuthResult
         data class NeedsConsent(val intentSender: IntentSender) : AuthResult
@@ -35,7 +38,7 @@ class DriveAuthManager @Inject constructor(
 
     suspend fun authorize(): AuthResult {
         val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(Scopes.DRIVE_APPDATA)))
+            .setRequestedScopes(listOf(driveAppDataScope))
             .build()
         val result = authClient.authorize(request).await()
         val pendingIntent = result.pendingIntent
