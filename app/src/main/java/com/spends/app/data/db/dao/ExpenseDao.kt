@@ -36,6 +36,17 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE id = :id")
     suspend fun getByIdWithAllocations(id: Long): ExpenseWithAllocations?
 
+    /** Low-confidence SMS captures awaiting a quick confirm (PRD §4.3 review queue). */
+    @Transaction
+    @Query(
+        "SELECT * FROM expenses WHERE deletedAt IS NULL AND source = 'SMS' AND parseConfidence < :threshold " +
+            "ORDER BY occurredAt DESC, id DESC",
+    )
+    fun observeNeedsReview(threshold: Int): Flow<List<ExpenseWithAllocations>>
+
+    @Query("UPDATE expenses SET parseConfidence = :value, updatedAt = :ts WHERE id = :id")
+    suspend fun setParseConfidence(id: Long, value: Int, ts: Long)
+
     // ---- Trash ----
 
     @Transaction

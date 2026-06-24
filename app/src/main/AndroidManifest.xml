@@ -10,9 +10,14 @@
       captures will use a high-importance heads-up notification instead.
     -->
 
-    <!-- Drive backup: the only network the app does is the user's own Google Drive appData. -->
+    <!-- Drive backup: the only network the app does is the user's own Google Drive. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- SMS capture (PRD §4.1): read bank transaction texts, on-device only, behind a rationale +
+         runtime grant. Parsing happens locally; nothing is uploaded. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
 
     <application
         android:name=".core.SpendsApp"
@@ -38,6 +43,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Live SMS capture receiver. BROADCAST_SMS permission ensures only the system delivers it. -->
+        <receiver
+            android:name=".receiver.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
 
         <!--
           Disable WorkManager's default initializer so it uses our Hilt-aware Configuration.Provider

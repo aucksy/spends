@@ -30,6 +30,7 @@ data class TransactionInput(
     val paymentMethodId: Long? = null,
     val source: TxnSource = TxnSource.MANUAL,
     val dedupeHash: String? = null,
+    val parseConfidence: Int = 100,
 )
 
 @Singleton
@@ -47,6 +48,12 @@ class ExpenseRepository @Inject constructor(
         dao.observeActiveSearch(query.trim())
 
     fun observeTrashed(): Flow<List<ExpenseWithAllocations>> = dao.observeTrashed()
+
+    /** Low-confidence SMS captures needing a quick confirm. */
+    fun observeNeedsReview(): Flow<List<ExpenseWithAllocations>> = dao.observeNeedsReview(SMS_REVIEW_THRESHOLD)
+
+    /** Mark a captured transaction as confirmed (full confidence → leaves the review queue). */
+    suspend fun markReviewed(id: Long) = dao.setParseConfidence(id, 100, DateUtils.nowMillis())
 
     fun observeTrashCount(): Flow<Int> = dao.observeTrashCount()
 
@@ -82,7 +89,7 @@ class ExpenseRepository @Inject constructor(
                 source = input.source,
                 kind = input.kind,
                 direction = directionFor(input.kind),
-                parseConfidence = 100,
+                parseConfidence = input.parseConfidence,
                 dedupeHash = input.dedupeHash,
                 createdAt = now,
                 updatedAt = now,
@@ -138,4 +145,9 @@ class ExpenseRepository @Inject constructor(
 
     private fun List<AllocationInput>.toEntities(expenseId: Long): List<AllocationEntity> =
         map { AllocationEntity(expenseId = expenseId, categoryId = it.categoryId, amountMinor = it.amountMinor) }
+
+    companion object {
+        /** SMS captures below this parse confidence surface in the review queue. */
+        const val SMS_REVIEW_THRESHOLD = 70
+    }
 }

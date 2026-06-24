@@ -19,9 +19,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -58,6 +63,7 @@ import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.domain.model.TxnSource
 import com.spends.app.ui.components.AutoSizeRupee
 import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryPickerSheet
@@ -325,13 +331,23 @@ private fun TransactionRow(row: TransactionRowUi, onClick: () -> Unit) {
                 append(" · ")
                 append(row.timeLabel)
             }
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                sourceIcon(row.source)?.let { glyph ->
+                    Icon(
+                        glyph,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(13.dp).padding(end = 3.dp),
+                    )
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             // Show the note when present and not already used as the row title.
             val note = row.note?.takeIf { it.isNotBlank() && it != row.title }
             if (note != null) {
@@ -369,6 +385,15 @@ private fun TransactionRow(row: TransactionRowUi, onClick: () -> Unit) {
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+}
+
+/** Small glyph showing where a transaction came from (manual entries get none). */
+private fun sourceIcon(source: TxnSource): androidx.compose.ui.graphics.vector.ImageVector? = when (source) {
+    TxnSource.SMS -> Icons.Filled.Sms
+    TxnSource.NOTIFICATION -> Icons.Filled.Notifications
+    TxnSource.RECURRING -> Icons.Filled.Autorenew
+    TxnSource.IMPORT -> Icons.Filled.UploadFile
+    TxnSource.MANUAL -> Icons.Filled.Edit
 }
 
 @Composable

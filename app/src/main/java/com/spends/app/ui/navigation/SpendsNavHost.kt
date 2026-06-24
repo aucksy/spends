@@ -14,6 +14,7 @@ import com.spends.app.ui.home.HomeScreen
 import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
 import com.spends.app.ui.recurring.RecurringScreen
+import com.spends.app.ui.review.ReviewScreen
 import com.spends.app.ui.settings.SettingsScreen
 import com.spends.app.ui.trash.TrashScreen
 
@@ -75,6 +76,7 @@ fun SpendsNavHost(settings: SettingsState) {
                 onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
                 onOpenImport = { navController.navigate(Routes.importRoute(fromOnboarding = false)) },
                 onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+                onOpenReview = { navController.navigate(Routes.REVIEW) },
             )
         }
 
@@ -84,6 +86,10 @@ fun SpendsNavHost(settings: SettingsState) {
 
         composable(Routes.RECURRING) {
             RecurringScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.REVIEW) {
+            ReviewScreen(onBack = { navController.popBackStack() })
         }
 
         composable(

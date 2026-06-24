@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.RateReview
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.ui.backup.BackupSection
+import com.spends.app.ui.capture.CaptureSection
 import com.spends.app.ui.components.NumberWheelPicker
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,6 +60,7 @@ fun SettingsScreen(
     onOpenCategories: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenRecurring: () -> Unit,
+    onOpenReview: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -137,6 +140,16 @@ fun SettingsScreen(
             )
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SectionHeader("Capture")
+            CaptureSection()
+            ClickableRow(
+                title = "Review captured",
+                value = "Confirm category for auto-captured transactions",
+                onClick = onOpenReview,
+                leading = { Icon(Icons.Filled.RateReview, contentDescription = null) },
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Automation")
             ClickableRow(
                 title = "Recurring transactions",
@@ -166,7 +179,7 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "Capture (SMS & notifications), export and app lock arrive in upcoming updates.",
+                "Notification capture, export and app lock arrive in upcoming updates.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

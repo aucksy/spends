@@ -2,6 +2,7 @@ package com.spends.app.ui.transactions
 
 import com.spends.app.core.time.CycleWindow
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.domain.model.TxnSource
 import java.time.LocalDate
 
 /** Period totals for the summary header (PRD §4.17). Balance = income − expense; transfers ignored. */
@@ -30,6 +31,7 @@ data class TransactionRowUi(
     val title: String,
     val note: String?,
     val timeLabel: String,
+    val source: TxnSource,
     val categories: List<CategoryChipUi>,
 ) {
     val primary: CategoryChipUi? get() = categories.firstOrNull()

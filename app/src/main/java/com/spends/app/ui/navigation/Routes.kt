@@ -11,6 +11,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val CATEGORIES = "categories"
     const val RECURRING = "recurring"
+    const val REVIEW = "review"
 
     const val IMPORT = "import"
     const val ARG_FROM_ONBOARDING = "fromOnboarding"

@@ -26,6 +26,7 @@ data class SettingsState(
     val carryForwardEnabled: Boolean = false,
     val trashRetentionDays: Int = 30,
     val autoBackupEnabled: Boolean = false,
+    val smsCaptureEnabled: Boolean = false,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -46,6 +47,7 @@ class SettingsRepository @Inject constructor(
             carryForwardEnabled = prefs[Keys.CARRY_FORWARD] ?: false,
             trashRetentionDays = prefs[Keys.TRASH_RETENTION_DAYS] ?: 30,
             autoBackupEnabled = prefs[Keys.AUTO_BACKUP] ?: false,
+            smsCaptureEnabled = prefs[Keys.SMS_CAPTURE] ?: false,
         )
     }
 
@@ -57,6 +59,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setCarryForwardEnabled(value: Boolean) = edit { it[Keys.CARRY_FORWARD] = value }
     suspend fun setTrashRetentionDays(days: Int) = edit { it[Keys.TRASH_RETENTION_DAYS] = days.coerceIn(1, 365) }
     suspend fun setAutoBackupEnabled(value: Boolean) = edit { it[Keys.AUTO_BACKUP] = value }
+    suspend fun setSmsCaptureEnabled(value: Boolean) = edit { it[Keys.SMS_CAPTURE] = value }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -91,5 +94,6 @@ class SettingsRepository @Inject constructor(
         val CARRY_FORWARD = booleanPreferencesKey("carry_forward_enabled")
         val TRASH_RETENTION_DAYS = intPreferencesKey("trash_retention_days")
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
+        val SMS_CAPTURE = booleanPreferencesKey("sms_capture_enabled")
     }
 }

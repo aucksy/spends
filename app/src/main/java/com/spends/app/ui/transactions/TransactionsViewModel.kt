@@ -164,6 +164,7 @@ class TransactionsViewModel @Inject constructor(
             title = title,
             note = expense.note,
             timeLabel = DateUtils.formatTime(expense.occurredAt),
+            source = expense.source,
             categories = chips,
         )
     }
