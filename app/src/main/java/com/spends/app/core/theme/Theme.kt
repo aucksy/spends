@@ -63,6 +63,7 @@ data class SemanticColors(
     val income: Color,
     val expense: Color,
     val negative: Color,
+    val negativeContainer: Color,
     val transfer: Color,
     val nonConsumption: Color,
     val review: Color,
@@ -71,10 +72,12 @@ data class SemanticColors(
 
 private val LightSemantic = SemanticColors(
     income = IncomeLight, expense = ExpenseInkLight, negative = NegativeLight,
+    negativeContainer = NegativeContainerLight,
     transfer = TransferLight, nonConsumption = NonConsumptionLight, review = ReviewLight, dark = false,
 )
 private val DarkSemantic = SemanticColors(
     income = IncomeDark, expense = ExpenseInkDark, negative = NegativeDark,
+    negativeContainer = NegativeContainerDark,
     transfer = TransferDark, nonConsumption = NonConsumptionDark, review = ReviewDark, dark = true,
 )
 

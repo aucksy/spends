@@ -9,6 +9,7 @@ import com.spends.app.data.importer.ImportException
 import com.spends.app.data.importer.ImportRepository
 import com.spends.app.data.importer.ImportSummary
 import com.spends.app.data.importer.ParsedImport
+import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -31,10 +32,16 @@ sealed interface ImportUiState {
 class ImportViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: ImportRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ImportUiState>(ImportUiState.Idle)
     val state: StateFlow<ImportUiState> = _state
+
+    /** Mark onboarding done so a later launch lands in the app (used when import is the first step). */
+    fun completeOnboarding() {
+        viewModelScope.launch { settingsRepository.setOnboardingComplete(true) }
+    }
 
     fun onFilePicked(uri: Uri) {
         _state.value = ImportUiState.Parsing

@@ -18,12 +18,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -36,7 +41,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +58,8 @@ fun OnboardingScreen(
     onFinished: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
-    var step by remember { mutableIntStateOf(0) }
+    // Saveable so a side-trip (e.g. into Import) returns to the same step instead of step 0.
+    var step by rememberSaveable { mutableIntStateOf(0) }
     val lastStep = 3
     val salaryDay by viewModel.salaryDay.collectAsStateWithLifecycle()
 
@@ -104,40 +110,83 @@ private fun slideInFade() = androidx.compose.animation.fadeIn() +
 private fun slideOutFade() = androidx.compose.animation.fadeOut() +
     androidx.compose.animation.slideOutHorizontally(targetOffsetX = { -it / 4 })
 
+/** A large rounded-square icon badge in the primary tint — the recurring visual anchor per step. */
 @Composable
-private fun WelcomeStep() {
-    Column(verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
-        Text("Welcome to Spends", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
+private fun StepBadge(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(32.dp),
+        )
+    }
+}
+
+@Composable
+private fun StepScaffold(
+    badge: ImageVector,
+    title: String,
+    subtitle: String,
+    content: @Composable () -> Unit = {},
+) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Spacer(Modifier.height(8.dp))
+        StepBadge(badge)
+        Spacer(Modifier.height(20.dp))
+        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(10.dp))
         Text(
-            "Track every rupee, effortlessly — income, spends and transfers in one calm place.",
+            subtitle,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(24.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-            Text(
-                "Your privacy promise: everything stays on your device. No account, no ads, no tracking.",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
+        Spacer(Modifier.height(20.dp))
+        content()
+    }
+}
+
+@Composable
+private fun WelcomeStep() {
+    StepScaffold(
+        badge = Icons.Filled.Savings,
+        title = "Welcome to Spends",
+        subtitle = "Track every rupee, effortlessly — income, spends and transfers in one calm place.",
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        ) {
+            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    "Your privacy promise: everything stays on your device. No account, no ads, no tracking.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun DataSetupStep(onImport: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text("How do you want to start?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(16.dp))
-        SetupOption(
-            icon = Icons.Filled.NoteAdd,
-            title = "Start fresh",
-            subtitle = "Begin with a clean slate and add transactions as they happen.",
-            enabled = true,
-        )
-        Spacer(Modifier.height(12.dp))
+    StepScaffold(
+        badge = Icons.Filled.UploadFile,
+        title = "How do you want to start?",
+        subtitle = "Bring your history in, or begin with a clean slate — you can always import later.",
+    ) {
         SetupOption(
             icon = Icons.Filled.UploadFile,
             title = "Import from Excel",
@@ -147,9 +196,16 @@ private fun DataSetupStep(onImport: () -> Unit) {
         )
         Spacer(Modifier.height(12.dp))
         SetupOption(
+            icon = Icons.Filled.NoteAdd,
+            title = "Start fresh",
+            subtitle = "Begin clean and add transactions as they happen. Tap Continue.",
+            enabled = true,
+        )
+        Spacer(Modifier.height(12.dp))
+        SetupOption(
             icon = Icons.Filled.CloudDownload,
             title = "Restore from Google Drive",
-            subtitle = "Restore a previous full backup. Available soon.",
+            subtitle = "Restore a previous full backup from Settings once you're set up.",
             enabled = false,
         )
     }
@@ -160,17 +216,29 @@ private fun SetupOption(icon: ImageVector, title: String, subtitle: String, enab
     val container = if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     Card(
         modifier = Modifier.fillMaxWidth().then(if (enabled && onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = container),
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-            )
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (enabled) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
             Spacer(Modifier.width(16.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(
                     subtitle,
@@ -184,17 +252,12 @@ private fun SetupOption(icon: ImageVector, title: String, subtitle: String, enab
 
 @Composable
 private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text("When do you usually get paid?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Your cards bill on different dates, so a calendar month isn't your real spending picture. " +
-                "We'll group each card's spending by its own bill date, and your bank and UPI spending by your " +
-                "salary date — so the total you see is what you're actually about to pay.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(20.dp))
+    StepScaffold(
+        badge = Icons.Filled.Savings,
+        title = "When do you get paid?",
+        subtitle = "Your bank and UPI spending is grouped by your salary date — so the total you see is " +
+            "what you're actually about to pay this cycle, not just this calendar month.",
+    ) {
         Text("Salary day", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))
         LazyRow(
@@ -220,20 +283,19 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
 
 @Composable
 private fun CaptureStep() {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text("Automatic capture", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Soon, Spends can read bank SMS and UPI app notifications to pre-fill your transactions — " +
-                "you just pick a category and save. We'll ask for those permissions only when you turn capture " +
-                "on, and nothing ever leaves your device.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+    StepScaffold(
+        badge = Icons.Filled.NotificationsActive,
+        title = "Automatic capture",
+        subtitle = "Soon, Spends can read bank SMS and UPI app notifications to pre-fill your transactions — " +
+            "you just pick a category and save. Permissions are asked only when you turn capture on, and " +
+            "nothing ever leaves your device.",
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        ) {
             Text(
-                "For now, add transactions manually with the + button. Everything else is ready to go.",
+                "For now, add transactions with the + button, or import your history. Everything else is ready to go.",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,

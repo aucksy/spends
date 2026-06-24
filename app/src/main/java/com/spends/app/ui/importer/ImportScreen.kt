@@ -45,11 +45,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun ImportScreen(
     onBack: () -> Unit,
     onFinished: () -> Unit,
+    fromOnboarding: Boolean = false,
     viewModel: ImportViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::onFilePicked)
+    }
+    // When import is the first thing the user does, completing it should also finish onboarding.
+    val finish: () -> Unit = {
+        if (fromOnboarding) viewModel.completeOnboarding()
+        onFinished()
     }
 
     Scaffold(
@@ -70,7 +76,7 @@ fun ImportScreen(
                 is ImportUiState.Parsing -> CenteredProgress("Reading your file…")
                 is ImportUiState.Preview -> PreviewContent(s, onConfirm = viewModel::confirm, onCancel = viewModel::reset)
                 is ImportUiState.Committing -> CommittingContent(s)
-                is ImportUiState.Done -> DoneContent(s, onFinished)
+                is ImportUiState.Done -> DoneContent(s, finish)
                 is ImportUiState.Error -> ErrorContent(s, onRetry = viewModel::reset)
             }
         }

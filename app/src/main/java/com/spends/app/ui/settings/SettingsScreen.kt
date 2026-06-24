@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.UploadFile
@@ -55,6 +56,7 @@ fun SettingsScreen(
     onOpenTrash: () -> Unit,
     onOpenCategories: () -> Unit,
     onOpenImport: () -> Unit,
+    onOpenRecurring: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -134,6 +136,15 @@ fun SettingsScreen(
             )
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SectionHeader("Automation")
+            ClickableRow(
+                title = "Recurring transactions",
+                value = "Rent, salary, EMIs & subscriptions on a schedule",
+                onClick = onOpenRecurring,
+                leading = { Icon(Icons.Filled.Autorenew, contentDescription = null) },
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Data")
             ClickableRow(
                 title = "Import data",
@@ -154,8 +165,7 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "Capture (SMS & notifications), export, app lock and recurring transactions arrive " +
-                    "in upcoming updates.",
+                "Capture (SMS & notifications), export and app lock arrive in upcoming updates.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

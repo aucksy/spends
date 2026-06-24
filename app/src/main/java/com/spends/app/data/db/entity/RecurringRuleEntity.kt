@@ -1,0 +1,38 @@
+package com.spends.app.data.db.entity
+
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+import com.spends.app.domain.model.RecurrenceFreq
+import com.spends.app.domain.model.TxnKind
+
+/**
+ * A rule that auto-creates a transaction on a schedule (PRD §4.8). It is *not* a transaction itself —
+ * a worker/launch hook materialises real [ExpenseEntity] rows (source = RECURRING) for each due date
+ * and advances [nextRunAt]. No FK on [categoryId] (mirrors [ExpenseEntity.paymentMethodId]) so a
+ * rule survives independently; the picker only ever selects an existing category.
+ *
+ * [anchorDay] is the day-of-month (1..31) for MONTHLY/YEARLY, or day-of-week (1=Mon..7=Sun) for
+ * WEEKLY; it is ignored for DAILY. [startDate]/[nextRunAt] are epoch-millis (IST).
+ */
+@Entity(
+    tableName = "recurring_rules",
+    indices = [Index("nextRunAt"), Index("active")],
+)
+data class RecurringRuleEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val amountMinor: Long,
+    val kind: TxnKind,
+    val categoryId: Long,
+    val merchant: String? = null,
+    val note: String? = null,
+    val frequency: RecurrenceFreq,
+    val intervalCount: Int = 1,
+    val anchorDay: Int = 1,
+    val startDate: Long,
+    val nextRunAt: Long,
+    val lastRunAt: Long? = null,
+    val active: Boolean = true,
+    val createdAt: Long,
+    val updatedAt: Long,
+)

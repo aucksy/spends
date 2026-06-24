@@ -4,6 +4,7 @@ import androidx.room.TypeConverter
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.Direction
 import com.spends.app.domain.model.PaymentMethodType
+import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
 
@@ -23,4 +24,7 @@ class Converters {
 
     @TypeConverter fun pmTypeToString(value: PaymentMethodType): String = value.name
     @TypeConverter fun stringToPmType(value: String): PaymentMethodType = PaymentMethodType.valueOf(value)
+
+    @TypeConverter fun freqToString(value: RecurrenceFreq): String = value.name
+    @TypeConverter fun stringToFreq(value: String): RecurrenceFreq = RecurrenceFreq.valueOf(value)
 }

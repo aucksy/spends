@@ -12,11 +12,13 @@ import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
+import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.Direction
+import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
@@ -47,6 +49,7 @@ class BackupRepository @Inject constructor(
 ) {
     private val categoryDao = db.categoryDao()
     private val expenseDao = db.expenseDao()
+    private val recurringDao = db.recurringDao()
 
     val lastBackupAt: Flow<Long?> = context.backupMetaStore.data.map { it[LAST_BACKUP_AT] }
 
@@ -61,6 +64,7 @@ class BackupRepository @Inject constructor(
                 categories = categoryDao.getAllOnce().map { it.toSnapshot() },
                 expenses = expenseDao.getAllExpensesOnce().map { it.toSnapshot() },
                 allocations = expenseDao.getAllAllocationsOnce().map { it.toSnapshot() },
+                recurring = recurringDao.getAllOnce().map { it.toSnapshot() },
             ),
         )
     }
@@ -69,10 +73,12 @@ class BackupRepository @Inject constructor(
         db.withTransaction {
             expenseDao.deleteAllAllocations()
             expenseDao.deleteAllExpenses()
+            recurringDao.deleteAll()
             categoryDao.deleteAll()
             categoryDao.insertAll(snapshot.data.categories.map { it.toEntity() })
             expenseDao.insertExpenses(snapshot.data.expenses.map { it.toEntity() })
             expenseDao.insertAllocations(snapshot.data.allocations.map { it.toEntity() })
+            recurringDao.insertAll(snapshot.data.recurring.map { it.toEntity() })
         }
         settingsRepository.restore(snapshot.data.settings.toState())
     }
@@ -149,6 +155,22 @@ private fun SnapshotExpense.toEntity() = ExpenseEntity(
 private fun AllocationEntity.toSnapshot() = SnapshotAllocation(id, expenseId, categoryId, amountMinor)
 
 private fun SnapshotAllocation.toEntity() = AllocationEntity(id, expenseId, categoryId, amountMinor)
+
+private fun RecurringRuleEntity.toSnapshot() = SnapshotRecurring(
+    id = id, amountMinor = amountMinor, kind = kind.name, categoryId = categoryId, merchant = merchant,
+    note = note, frequency = frequency.name, intervalCount = intervalCount, anchorDay = anchorDay,
+    startDate = startDate, nextRunAt = nextRunAt, lastRunAt = lastRunAt, active = active,
+    createdAt = createdAt, updatedAt = updatedAt,
+)
+
+private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
+    id = id, amountMinor = amountMinor,
+    kind = runCatching { TxnKind.valueOf(kind) }.getOrDefault(TxnKind.EXPENSE),
+    categoryId = categoryId, merchant = merchant, note = note,
+    frequency = runCatching { RecurrenceFreq.valueOf(frequency) }.getOrDefault(RecurrenceFreq.MONTHLY),
+    intervalCount = intervalCount, anchorDay = anchorDay, startDate = startDate, nextRunAt = nextRunAt,
+    lastRunAt = lastRunAt, active = active, createdAt = createdAt, updatedAt = updatedAt,
+)
 
 private fun SettingsState.toSnapshot() = SnapshotSettings(
     onboardingComplete, themeMode.name, dynamicColor, salaryCycleStartDay, defaultLanding.name,

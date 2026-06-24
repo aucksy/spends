@@ -64,6 +64,8 @@ import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CategoryAvatar
+import com.spends.app.ui.components.CategoryPickerField
+import com.spends.app.ui.components.CategoryPickerSheet
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,9 +132,11 @@ private fun AddEditForm(
     var occurredAt by rememberSaveable { mutableStateOf(initial.occurredAt) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showAddCategory by remember { mutableStateOf(false) }
+    var showCategoryPicker by remember { mutableStateOf(false) }
 
     val usageFilter = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
+    val selectedCategory = visibleCategories.firstOrNull { it.id == selectedCategoryId }
 
     val amountMinor = Money.parseRupeesToMinor(amountText)?.takeIf { it > 0 }
     val canSave = amountMinor != null && selectedCategoryId != null && !saving
@@ -196,28 +200,11 @@ private fun AddEditForm(
 
         Text("Category", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(8.dp))
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 2.dp),
-        ) {
-            items(visibleCategories, key = { it.id }) { category ->
-                FilterChip(
-                    selected = selectedCategoryId == category.id,
-                    onClick = { selectedCategoryId = category.id },
-                    label = { Text(category.name) },
-                    leadingIcon = { CategoryAvatar(category.iconKey, category.colorHex, size = 22.dp) },
-                )
-            }
-            item {
-                FilterChip(
-                    selected = false,
-                    onClick = { showAddCategory = true },
-                    label = { Text("New") },
-                    leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                )
-            }
-        }
+        CategoryPickerField(
+            selected = selectedCategory,
+            placeholder = "Pick a category",
+            onClick = { showCategoryPicker = true },
+        )
 
         Spacer(Modifier.height(16.dp))
 
@@ -287,6 +274,16 @@ private fun AddEditForm(
         ) {
             DatePicker(state = pickerState)
         }
+    }
+
+    if (showCategoryPicker) {
+        CategoryPickerSheet(
+            categories = visibleCategories,
+            selectedId = selectedCategoryId,
+            onSelect = { id -> selectedCategoryId = id; showCategoryPicker = false },
+            onAddNew = { showCategoryPicker = false; showAddCategory = true },
+            onDismiss = { showCategoryPicker = false },
+        )
     }
 
     if (showAddCategory) {

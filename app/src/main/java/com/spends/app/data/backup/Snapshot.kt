@@ -15,7 +15,9 @@ data class Snapshot(
     val data: SnapshotData,
 ) {
     companion object {
-        const val CURRENT_SCHEMA = 1
+        // v2 adds `recurring`. Decoders use ignoreUnknownKeys + default empty lists, so v1 backups
+        // still restore cleanly.
+        const val CURRENT_SCHEMA = 2
     }
 }
 
@@ -25,6 +27,7 @@ data class SnapshotData(
     val categories: List<SnapshotCategory>,
     val expenses: List<SnapshotExpense>,
     val allocations: List<SnapshotAllocation>,
+    val recurring: List<SnapshotRecurring> = emptyList(),
 )
 
 @Serializable
@@ -76,4 +79,23 @@ data class SnapshotAllocation(
     val expenseId: Long,
     val categoryId: Long,
     val amountMinor: Long,
+)
+
+@Serializable
+data class SnapshotRecurring(
+    val id: Long,
+    val amountMinor: Long,
+    val kind: String,
+    val categoryId: Long,
+    val merchant: String? = null,
+    val note: String? = null,
+    val frequency: String,
+    val intervalCount: Int,
+    val anchorDay: Int,
+    val startDate: Long,
+    val nextRunAt: Long,
+    val lastRunAt: Long? = null,
+    val active: Boolean,
+    val createdAt: Long,
+    val updatedAt: Long,
 )

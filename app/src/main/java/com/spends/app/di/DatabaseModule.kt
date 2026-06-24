@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
+import com.spends.app.data.db.dao.RecurringDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -21,7 +22,11 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): SpendsDatabase =
         Room.databaseBuilder(context, SpendsDatabase::class.java, SpendsDatabase.NAME)
             .addCallback(SpendsDatabase.SEED_CALLBACK)
-            .addMigrations(SpendsDatabase.MIGRATION_1_2, SpendsDatabase.MIGRATION_2_3)
+            .addMigrations(
+                SpendsDatabase.MIGRATION_1_2,
+                SpendsDatabase.MIGRATION_2_3,
+                SpendsDatabase.MIGRATION_3_4,
+            )
             .build()
 
     @Provides
@@ -29,4 +34,7 @@ object DatabaseModule {
 
     @Provides
     fun provideExpenseDao(db: SpendsDatabase): ExpenseDao = db.expenseDao()
+
+    @Provides
+    fun provideRecurringDao(db: SpendsDatabase): RecurringDao = db.recurringDao()
 }

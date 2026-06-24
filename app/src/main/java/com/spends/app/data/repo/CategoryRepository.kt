@@ -18,6 +18,9 @@ class CategoryRepository @Inject constructor(
 ) {
     fun observeActive(): Flow<List<CategoryEntity>> = dao.observeActive()
 
+    /** Active categories, most-used first (for the quick picker). */
+    fun observeActiveByUsage(): Flow<List<CategoryEntity>> = dao.observeActiveByUsage()
+
     fun observeAll(): Flow<List<CategoryEntity>> = dao.observeAll()
 
     suspend fun getById(id: Long): CategoryEntity? = dao.getById(id)

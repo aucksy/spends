@@ -23,6 +23,9 @@ enum class PaymentMethodType { CREDIT_CARD, DEBIT_CARD, BANK_ACCOUNT, UPI, WALLE
  */
 enum class CategoryUsage { EXPENSE, INCOME, BOTH }
 
+/** How often a recurring rule repeats (PRD §4.8). [intervalCount] on the rule multiplies this. */
+enum class RecurrenceFreq { DAILY, WEEKLY, MONTHLY, YEARLY }
+
 /** Which screen the app opens on (PRD §4.19). */
 enum class DefaultLanding { TRANSACTIONS, ANALYTICS }
 

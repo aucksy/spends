@@ -41,7 +41,8 @@ class AddEditViewModel @Inject constructor(
     private val expenseId: Long = savedStateHandle[Routes.ARG_EXPENSE_ID] ?: Routes.NO_EXPENSE_ID
     val isEdit: Boolean = expenseId != Routes.NO_EXPENSE_ID
 
-    val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActive()
+    // Most-used categories first, so the picker surfaces the user's frequent ones at the top.
+    val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Null until the initial form is ready (immediately for new, after load for edit). */

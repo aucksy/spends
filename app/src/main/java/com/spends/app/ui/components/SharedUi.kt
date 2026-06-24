@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -17,9 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.spends.app.core.category.CategoryIcons
 import com.spends.app.core.category.ColorAssigner
 import com.spends.app.core.money.Money
@@ -101,3 +104,54 @@ fun AnimatedRupee(
 
 private fun interpolate(from: Long, to: Long, fraction: Float): Long =
     if (fraction >= 1f) to else from + ((to - from).toDouble() * fraction).toLong()
+
+/**
+ * A single-line text that shrinks its font size just enough to fit the available width, so big
+ * amounts (₹6,57,011.00) never truncate with an ellipsis. Measures once per width/text with a
+ * [TextMeasurer] and scales [style] down to at most [minScale]. Never grows past the base size.
+ */
+@Composable
+fun AutoSizeText(
+    text: String,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+    minScale: Float = 0.45f,
+) {
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier) {
+        val maxW = constraints.maxWidth
+        var resolved = style
+        if (maxW in 1 until Int.MAX_VALUE && style.fontSize.isSp) {
+            val measured = measurer.measure(text = text, style = style, maxLines = 1, softWrap = false)
+            val w = measured.size.width
+            if (w > maxW) {
+                val scale = (maxW.toFloat() / w).coerceIn(minScale, 1f)
+                resolved = style.copy(
+                    fontSize = (style.fontSize.value * scale).sp,
+                    lineHeight = if (style.lineHeight.isSp) (style.lineHeight.value * scale).sp else style.lineHeight,
+                )
+            }
+        }
+        Text(text = text, style = resolved, color = color, maxLines = 1, softWrap = false)
+    }
+}
+
+/** Auto-sizing rupee amount (no count animation — sizing wins over the roll for headline figures). */
+@Composable
+fun AutoSizeRupee(
+    minor: Long,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+    withSign: Boolean = false,
+    minScale: Float = 0.45f,
+) {
+    val text = if (withSign) {
+        val sign = if (minor > 0) "+" else if (minor < 0) "-" else ""
+        sign + Money.formatRupees(abs(minor))
+    } else {
+        Money.formatRupees(minor)
+    }
+    AutoSizeText(text = text, style = style, color = color, modifier = modifier, minScale = minScale)
+}

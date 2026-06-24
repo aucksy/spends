@@ -10,7 +10,16 @@ object Routes {
     const val TRASH = "trash"
     const val SETTINGS = "settings"
     const val CATEGORIES = "categories"
+    const val RECURRING = "recurring"
+
     const val IMPORT = "import"
+    const val ARG_FROM_ONBOARDING = "fromOnboarding"
+
+    /** Route to the import flow. When launched from onboarding, finishing it completes onboarding. */
+    fun importRoute(fromOnboarding: Boolean = false): String =
+        "$IMPORT?$ARG_FROM_ONBOARDING=$fromOnboarding"
+
+    const val IMPORT_PATTERN = "$IMPORT?$ARG_FROM_ONBOARDING={$ARG_FROM_ONBOARDING}"
 
     const val ADD_EDIT = "add_edit"
     const val ARG_EXPENSE_ID = "expenseId"

@@ -13,6 +13,7 @@ import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.home.HomeScreen
 import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
+import com.spends.app.ui.recurring.RecurringScreen
 import com.spends.app.ui.settings.SettingsScreen
 import com.spends.app.ui.trash.TrashScreen
 
@@ -31,7 +32,7 @@ fun SpendsNavHost(settings: SettingsState) {
     ) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
-                onImport = { navController.navigate(Routes.IMPORT) },
+                onImport = { navController.navigate(Routes.importRoute(fromOnboarding = true)) },
                 onFinished = {
                     navController.navigate(Routes.HOME) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
@@ -71,7 +72,8 @@ fun SpendsNavHost(settings: SettingsState) {
                 onBack = { navController.popBackStack() },
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
                 onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
-                onOpenImport = { navController.navigate(Routes.IMPORT) },
+                onOpenImport = { navController.navigate(Routes.importRoute(fromOnboarding = false)) },
+                onOpenRecurring = { navController.navigate(Routes.RECURRING) },
             )
         }
 
@@ -79,10 +81,34 @@ fun SpendsNavHost(settings: SettingsState) {
             CategoriesScreen(onBack = { navController.popBackStack() })
         }
 
-        composable(Routes.IMPORT) {
+        composable(Routes.RECURRING) {
+            RecurringScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(
+            route = Routes.IMPORT_PATTERN,
+            arguments = listOf(
+                navArgument(Routes.ARG_FROM_ONBOARDING) {
+                    type = NavType.BoolType
+                    defaultValue = false
+                },
+            ),
+        ) { entry ->
+            val fromOnboarding = entry.arguments?.getBoolean(Routes.ARG_FROM_ONBOARDING) ?: false
             ImportScreen(
+                fromOnboarding = fromOnboarding,
                 onBack = { navController.popBackStack() },
-                onFinished = { navController.popBackStack() },
+                onFinished = {
+                    if (fromOnboarding) {
+                        // Finishing import during onboarding drops the user straight into the app
+                        // with their data, instead of bouncing back to the welcome step.
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.ONBOARDING) { inclusive = true }
+                        }
+                    } else {
+                        navController.popBackStack()
+                    }
+                },
             )
         }
     }

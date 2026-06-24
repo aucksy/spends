@@ -70,7 +70,7 @@ fun TransactionsScreen(
             state = state,
             onPrevious = viewModel::stepPrevious,
             onNext = viewModel::stepNext,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = 2.dp),
         )
 
         TextField(
@@ -78,7 +78,7 @@ fun TransactionsScreen(
             onValueChange = { searchText = it; viewModel.setSearch(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             placeholder = { Text("Search transactions") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             singleLine = true,

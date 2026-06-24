@@ -1,11 +1,15 @@
 package com.spends.app.ui.transactions
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -13,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -28,7 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
-import com.spends.app.ui.components.AnimatedRupee
+import com.spends.app.ui.components.AutoSizeRupee
 
 @Composable
 fun SummaryHeader(
@@ -39,8 +44,26 @@ fun SummaryHeader(
 ) {
     val semantic = LocalSemanticColors.current
     val scheme = MaterialTheme.colorScheme
+
+    // Tiles shown in the horizontally-scrollable strip. Expense + Income always; Carry forward and
+    // Transfers join only when relevant, so two fill the width and extras scroll into view.
+    val tiles = buildList {
+        add(Tile("Expense", state.totals.expense, semantic.expense, Icons.Filled.ArrowDownward, withSign = false))
+        add(Tile("Income", state.totals.income, semantic.income, Icons.Filled.ArrowUpward, withSign = false))
+        if (state.carryForward != null) {
+            add(Tile("Carry forward", state.carryForward, semantic.transfer, Icons.AutoMirrored.Filled.ArrowForward, withSign = true))
+        }
+        if (state.totals.transfer > 0) {
+            add(Tile("Transfers", state.totals.transfer, semantic.transfer, Icons.Filled.SwapHoriz, withSign = false))
+        }
+    }
+
+    // The headline balance: with carry-forward on, the meaningful figure is the rolled-in balance.
+    val heroBalance = if (state.carryForward != null) (state.balanceWithCarry ?: 0) else state.totals.balance
+    val negative = heroBalance < 0
+
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        // Period stepper
+        // Period stepper (compact)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -59,115 +82,86 @@ fun SummaryHeader(
             }
         }
 
-        // Expense + Income tiles
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            StatTile(
-                label = "Expense",
-                minor = state.totals.expense,
-                accent = semantic.expense,
-                icon = Icons.Filled.ArrowDownward,
-                modifier = Modifier.weight(1f),
-            )
-            StatTile(
-                label = "Income",
-                minor = state.totals.income,
-                accent = semantic.income,
-                icon = Icons.Filled.ArrowUpward,
-                modifier = Modifier.weight(1f),
-            )
+        // Stat tiles — exactly two fill the row; any extras (carry forward / transfers) scroll.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
+            val gap = 10.dp
+            val tileW = (maxWidth - gap) / 2
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                tiles.forEach { tile ->
+                    StatTile(tile = tile, modifier = Modifier.width(tileW))
+                }
+            }
         }
 
-        // Balance hero
-        val heroBg = if (semantic.dark) scheme.primaryContainer else scheme.primary
-        val heroOn = if (semantic.dark) scheme.onPrimaryContainer else scheme.onPrimary
+        // Balance hero — teal when in the black, soft-rose with red ink when in deficit.
+        val heroBg = when {
+            negative -> semantic.negativeContainer
+            semantic.dark -> scheme.primaryContainer
+            else -> scheme.primary
+        }
+        val heroOn = when {
+            negative -> semantic.negative
+            semantic.dark -> scheme.onPrimaryContainer
+            else -> scheme.onPrimary
+        }
         Card(
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = heroBg),
         ) {
-            Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
                 Text(
                     text = "BALANCE · ${state.periodLabel}",
                     style = MaterialTheme.typography.labelMedium,
                     color = heroOn.copy(alpha = 0.85f),
                 )
-                AnimatedRupee(
-                    minor = state.totals.balance,
+                AutoSizeRupee(
+                    minor = heroBalance,
                     style = Numerals.balanceHero,
                     color = heroOn,
                     withSign = true,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 )
             }
-        }
-
-        // Carry forward (when enabled)
-        if (state.carryForward != null) {
-            val cf = state.carryForward
-            val withCf = state.balanceWithCarry ?: 0
-            CarryRow("Carry forward", cf, semantic.transfer)
-            CarryRow("With carry forward", withCf, if (withCf < 0) semantic.negative else semantic.income)
-        }
-        if (state.totals.transfer > 0) {
-            CarryRow("Transfers", state.totals.transfer, semantic.transfer)
         }
     }
 }
 
+private data class Tile(
+    val label: String,
+    val minor: Long,
+    val accent: Color,
+    val icon: ImageVector,
+    val withSign: Boolean,
+)
+
 @Composable
-private fun StatTile(
-    label: String,
-    minor: Long,
-    accent: Color,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-) {
+private fun StatTile(tile: Tile, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+                Icon(tile.icon, contentDescription = null, tint = tile.accent, modifier = Modifier.size(16.dp))
                 Text(
-                    label,
+                    tile.label,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                 )
             }
-            AnimatedRupee(
-                minor = minor,
+            AutoSizeRupee(
+                minor = tile.minor,
                 style = Numerals.amountLg,
-                color = accent,
-                modifier = Modifier.padding(top = 4.dp),
+                color = tile.accent,
+                withSign = tile.withSign,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
-        }
-    }
-}
-
-@Composable
-private fun CarryRow(label: String, minor: Long, accent: Color) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            AnimatedRupee(minor = minor, style = Numerals.amountRow, color = accent, withSign = true)
         }
     }
 }

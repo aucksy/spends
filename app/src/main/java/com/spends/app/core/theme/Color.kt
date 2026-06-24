@@ -41,6 +41,10 @@ internal val ExpenseInkLight = Color(0xFF1C1C1A)
 internal val ExpenseInkDark = Color(0xFFECEAE3)
 internal val NegativeLight = Color(0xFFB91C1C)
 internal val NegativeDark = Color(0xFFF08A8A)
+// Soft rose surface behind a negative balance, so red reads as "deficit" without the harsh
+// red-on-blue clash. Pairs with the Negative ink for the number itself.
+internal val NegativeContainerLight = Color(0xFFFCE7E7)
+internal val NegativeContainerDark = Color(0xFF3A1A1A)
 internal val TransferLight = Color(0xFF94908A)
 internal val TransferDark = Color(0xFF6E6A64)
 internal val NonConsumptionLight = Color(0xFF5B5BD6)
