@@ -23,18 +23,15 @@ keystore.properties
 .DS_Store
 
 # ---- Sensitive personal data — NEVER commit (PRD §4.3 / §4.13) ----
-# Raw SMS exports, bank/account numbers, Monito/Excel history exports, and any derived raw fixtures.
-# Only masked, derived fixtures belong in the repo.
-*.xml.bak
-sms-export*
-*SMS*Backup*
-*Monito*
-monito*
+# Block by FILE TYPE and a dedicated private/ folder — NOT by name substrings like "Monito"/"SMS",
+# which would also (case-insensitively on Windows) swallow source files such as MonitoAdapter.kt.
+# Raw SMS exports, account numbers, Monito/Excel history exports, and any derived raw fixtures.
+*.xls
 *.xlsx
 *.csv
+*.xml.bak
+SMS Backup*.xml
+sms-export*.xml
 /private/
 /raw-data/
 fixtures/raw/
-
-# Old-binary Excel exports (Monito) — sensitive personal data
-*.xls
