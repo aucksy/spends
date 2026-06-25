@@ -16,15 +16,18 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.RateReview
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -33,6 +36,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,11 +50,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.spends.app.core.money.Money
+import com.spends.app.core.time.DateUtils
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.ui.backup.BackupSection
-import com.spends.app.ui.capture.CaptureSection
 import com.spends.app.ui.components.NumberWheelPicker
+import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,11 +66,13 @@ fun SettingsScreen(
     onOpenCategories: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenRecurring: () -> Unit,
-    onOpenReview: () -> Unit,
+    onOpenCapture: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showSalaryDialog by remember { mutableStateOf(false) }
+    var showAnchorPicker by remember { mutableStateOf(false) }
+    var showOpeningDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -129,6 +137,33 @@ fun SettingsScreen(
                 checked = state.carryForwardEnabled,
                 onChange = viewModel::setCarryForward,
             )
+            if (state.carryForwardEnabled) {
+                ClickableRow(
+                    title = "Carry forward from",
+                    value = if (state.carryForwardAnchorEpochDay > 0) {
+                        DateUtils.formatDay(DateUtils.startOfDayMillis(LocalDate.ofEpochDay(state.carryForwardAnchorEpochDay)))
+                    } else {
+                        "Beginning of your data"
+                    },
+                    onClick = { showAnchorPicker = true },
+                )
+                ClickableRow(
+                    title = "Opening balance",
+                    value = if (state.carryForwardAnchorEpochDay > 0) {
+                        Money.formatRupees(state.carryForwardOpeningMinor)
+                    } else {
+                        "Set a start date first"
+                    },
+                    onClick = { if (state.carryForwardAnchorEpochDay > 0) showOpeningDialog = true },
+                )
+                Text(
+                    "Fixes a wrong carry-forward from incomplete old months: only transactions on/after this date count, " +
+                        "starting from your opening balance.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Categories")
@@ -141,12 +176,11 @@ fun SettingsScreen(
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Capture")
-            CaptureSection()
             ClickableRow(
-                title = "Review captured",
-                value = "Confirm category for auto-captured transactions",
-                onClick = onOpenReview,
-                leading = { Icon(Icons.Filled.RateReview, contentDescription = null) },
+                title = "Capture from SMS",
+                value = "Review & add bank transactions from your texts",
+                onClick = onOpenCapture,
+                leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
             )
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
@@ -179,7 +213,7 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "Notification capture, export and app lock arrive in upcoming updates.",
+                "Notification capture and app lock arrive in upcoming updates.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -192,6 +226,59 @@ fun SettingsScreen(
             current = state.salaryCycleStartDay,
             onSelect = { viewModel.setSalaryDay(it); showSalaryDialog = false },
             onDismiss = { showSalaryDialog = false },
+        )
+    }
+
+    if (showAnchorPicker) {
+        val initial = if (state.carryForwardAnchorEpochDay > 0) {
+            DateUtils.toPickerUtcMillis(DateUtils.startOfDayMillis(LocalDate.ofEpochDay(state.carryForwardAnchorEpochDay)))
+        } else {
+            null
+        }
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initial)
+        DatePickerDialog(
+            onDismissRequest = { showAnchorPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { utc ->
+                        viewModel.setCarryForwardAnchor(DateUtils.toLocalDate(DateUtils.fromPickerUtcMillis(utc)).toEpochDay())
+                    }
+                    showAnchorPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showAnchorPicker = false }) { Text("Cancel") } },
+        ) { DatePicker(state = pickerState) }
+    }
+
+    if (showOpeningDialog) {
+        var amountText by remember { mutableStateOf(Money.toEditString(state.carryForwardOpeningMinor)) }
+        AlertDialog(
+            onDismissRequest = { showOpeningDialog = false },
+            title = { Text("Opening balance") },
+            text = {
+                Column {
+                    Text(
+                        "Your balance at the start of the carry-forward date. Can be negative.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = amountText,
+                        onValueChange = { input -> amountText = input.filter { it.isDigit() || it == '.' || it == '-' } },
+                        label = { Text("Amount (₹)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setCarryForwardOpening(Money.parseRupeesToMinor(amountText) ?: 0L)
+                    showOpeningDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showOpeningDialog = false }) { Text("Cancel") } },
         )
     }
 }

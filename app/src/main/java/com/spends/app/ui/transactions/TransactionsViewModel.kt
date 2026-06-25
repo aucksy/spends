@@ -2,8 +2,12 @@ package com.spends.app.ui.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.spends.app.core.time.CycleUtils
-import com.spends.app.core.time.CycleWindow
+import com.spends.app.core.period.PeriodRange
+import com.spends.app.core.period.PeriodResolver
+import com.spends.app.core.period.PeriodSelection
+import com.spends.app.core.period.PeriodType
+import com.spends.app.core.period.ResolvedPeriod
+import com.spends.app.core.period.SmartCycleDetector
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
@@ -13,6 +17,7 @@ import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.domain.model.TxnSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,8 +28,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -38,33 +41,53 @@ class TransactionsViewModel @Inject constructor(
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val rangeFormatter = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
-    private val rangeFormatterWithYear = DateTimeFormatter.ofPattern("d MMM yy", Locale.ENGLISH)
+    private val selection = MutableStateFlow(PeriodSelection())
+    val periodSelection: StateFlow<PeriodSelection> = selection
 
-    private val periodOffset = MutableStateFlow(0)
     private val searchQuery = MutableStateFlow("")
 
-    private val windowFlow: StateFlow<CycleWindow> =
-        combine(settingsRepository.settings, periodOffset) { settings, offset ->
-            computeWindow(settings.salaryCycleStartDay, offset)
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, computeWindow(1, 0))
+    // Resolve (type, range) into a concrete window, reacting to salary-day, the auto-detected smart day,
+    // and the earliest transaction (for "All").
+    private val resolvedFlow: StateFlow<ResolvedPeriod> =
+        combine(
+            selection,
+            settingsRepository.settings,
+            expenseRepository.observeIncomeOccurredAt(),
+            expenseRepository.observeEarliestDay(),
+        ) { sel, settings, income, earliest ->
+            val smartDay = SmartCycleDetector.detectSalaryDay(income, settings.salaryCycleStartDay)
+            PeriodResolver.resolve(
+                type = sel.type,
+                range = sel.range,
+                salaryDay = settings.salaryCycleStartDay,
+                smartDay = smartDay,
+                today = LocalDate.now(DateUtils.ZONE),
+                earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
+                customStartMillis = sel.customStartMillis,
+                customEndExclusiveMillis = sel.customEndExclusiveMillis,
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, currentSalaryCycle())
 
     val uiState: StateFlow<TransactionsUiState> =
-        combine(windowFlow, settingsRepository.settings, searchQuery) { window, settings, query ->
-            Triple(window, settings, query)
-        }.flatMapLatest { (window, settings, query) ->
+        combine(resolvedFlow, settingsRepository.settings, searchQuery) { resolved, settings, query ->
+            Triple(resolved, settings, query)
+        }.flatMapLatest { (resolved, settings, query) ->
+            val anchorMillis = if (settings.carryForwardAnchorEpochDay > 0) {
+                DateUtils.startOfDayMillis(LocalDate.ofEpochDay(settings.carryForwardAnchorEpochDay))
+            } else {
+                0L
+            }
             combine(
-                expenseRepository.observeBetween(window),
-                expenseRepository.observeKindSums(window),
-                expenseRepository.observeCarryForwardInto(window),
-            ) { items, kindSums, carryBefore ->
-                buildState(window, settings, query, items, kindSums, carryBefore)
+                expenseRepository.observeBetween(resolved.startMillis, resolved.endExclusiveMillis),
+                expenseRepository.observeKindSums(resolved.startMillis, resolved.endExclusiveMillis),
+                expenseRepository.observeBalanceBefore(resolved.startMillis),
+                expenseRepository.observeBalanceBefore(anchorMillis),
+            ) { items, kindSums, carryBeforePeriod, carryBeforeAnchor ->
+                buildState(resolved, settings, query, items, kindSums, carryBeforePeriod, carryBeforeAnchor, anchorMillis)
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionsUiState())
 
-    fun stepPrevious() = periodOffset.update { it - 1 }
-
-    fun stepNext() = periodOffset.update { if (it < 0) it + 1 else it }
+    fun applySelection(sel: PeriodSelection) = selection.update { sel }
 
     fun setSearch(value: String) = searchQuery.update { value }
 
@@ -75,25 +98,33 @@ class TransactionsViewModel @Inject constructor(
     fun changeCategory(id: Long, categoryId: Long) =
         viewModelScope.launch { expenseRepository.reassignCategory(id, categoryId) }
 
-    private fun computeWindow(salaryDay: Int, offset: Int): CycleWindow {
-        var window = CycleUtils.windowFor(LocalDate.now(DateUtils.ZONE), salaryDay)
-        var remaining = offset
-        while (remaining < 0) {
-            window = CycleUtils.previousWindow(window, salaryDay); remaining++
-        }
-        while (remaining > 0) {
-            window = CycleUtils.nextWindow(window, salaryDay); remaining--
-        }
-        return window
-    }
+    fun bulkMoveToTrash(ids: Set<Long>) = viewModelScope.launch { ids.forEach { expenseRepository.moveToTrash(it) } }
+
+    fun bulkRestore(ids: Set<Long>) = viewModelScope.launch { ids.forEach { expenseRepository.restore(it) } }
+
+    fun bulkChangeCategory(ids: Set<Long>, categoryId: Long) =
+        viewModelScope.launch { ids.forEach { expenseRepository.reassignCategory(it, categoryId) } }
+
+    private fun currentSalaryCycle(): ResolvedPeriod = PeriodResolver.resolve(
+        type = PeriodType.SALARY_CYCLE,
+        range = PeriodRange.CURRENT,
+        salaryDay = 1,
+        smartDay = 1,
+        today = LocalDate.now(DateUtils.ZONE),
+        earliestDataDay = null,
+        customStartMillis = null,
+        customEndExclusiveMillis = null,
+    )
 
     private fun buildState(
-        window: CycleWindow,
+        resolved: ResolvedPeriod,
         settings: SettingsState,
         query: String,
         items: List<ExpenseWithAllocations>,
         kindSums: List<KindSum>,
-        carryBefore: Long,
+        carryBeforePeriod: Long,
+        carryBeforeAnchor: Long,
+        anchorMillis: Long,
     ): TransactionsUiState {
         val totals = SummaryTotals(
             income = kindSums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0,
@@ -102,7 +133,9 @@ class TransactionsViewModel @Inject constructor(
         )
 
         val trimmed = query.trim().lowercase()
-        val filtered = if (trimmed.isEmpty()) items else items.filter { it.matches(trimmed) }
+        val searched = if (trimmed.isEmpty()) items else items.filter { it.matches(trimmed) }
+        // #4: optionally keep SMS-captured transactions out of the timeline list (still in the totals/balance).
+        val filtered = if (settings.hideCapturedInLists) searched.filter { it.expense.source != TxnSource.SMS } else searched
 
         val groups = filtered
             .groupBy { DateUtils.toLocalDate(it.expense.occurredAt) }
@@ -121,12 +154,18 @@ class TransactionsViewModel @Inject constructor(
 
         return TransactionsUiState(
             loading = false,
-            window = window,
-            periodLabel = formatRange(window),
-            canStepForward = periodOffset.value < 0,
+            window = null,
+            periodLabel = resolved.label,
+            canStepForward = false,
             search = query,
             totals = totals,
-            carryForward = if (settings.carryForwardEnabled) carryBefore else null,
+            carryForward = when {
+                !settings.carryForwardEnabled -> null
+                // Suppress only for periods that start STRICTLY before the anchor; a period starting on
+                // the anchor carries in the opening balance (opening + 0).
+                anchorMillis > 0 && resolved.startMillis < anchorMillis -> null
+                else -> settings.carryForwardOpeningMinor + carryBeforePeriod - carryBeforeAnchor
+            },
             groups = groups,
         )
     }
@@ -167,11 +206,5 @@ class TransactionsViewModel @Inject constructor(
             source = expense.source,
             categories = chips,
         )
-    }
-
-    private fun formatRange(window: CycleWindow): String {
-        val sameYear = window.start.year == window.endInclusive.year
-        val startFmt = if (sameYear) rangeFormatter else rangeFormatterWithYear
-        return "${startFmt.format(window.start)} – ${rangeFormatterWithYear.format(window.endInclusive)}"
     }
 }

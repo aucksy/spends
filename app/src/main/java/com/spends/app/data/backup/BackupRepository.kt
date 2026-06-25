@@ -264,6 +264,7 @@ private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
 private fun SettingsState.toSnapshot() = SnapshotSettings(
     onboardingComplete, themeMode.name, dynamicColor, salaryCycleStartDay, defaultLanding.name,
     carryForwardEnabled, trashRetentionDays, autoBackupEnabled,
+    carryForwardAnchorEpochDay, carryForwardOpeningMinor, hideCapturedInLists,
 )
 
 private fun SnapshotSettings.toState() = SettingsState(
@@ -275,4 +276,7 @@ private fun SnapshotSettings.toState() = SettingsState(
     carryForwardEnabled = carryForwardEnabled,
     trashRetentionDays = trashRetentionDays,
     autoBackupEnabled = autoBackupEnabled,
+    carryForwardAnchorEpochDay = carryForwardAnchorEpochDay,
+    carryForwardOpeningMinor = carryForwardOpeningMinor,
+    hideCapturedInLists = hideCapturedInLists,
 )

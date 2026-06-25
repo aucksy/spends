@@ -13,15 +13,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,8 +35,6 @@ import com.spends.app.ui.components.AutoSizeRupee
 @Composable
 fun SummaryHeader(
     state: TransactionsUiState,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val semantic = LocalSemanticColors.current
@@ -63,25 +58,6 @@ fun SummaryHeader(
     val negative = heroBalance < 0
 
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        // Period stepper (compact)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            IconButton(onClick = onPrevious) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous period")
-            }
-            Text(
-                text = state.periodLabel,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            IconButton(onClick = onNext, enabled = state.canStepForward) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next period")
-            }
-        }
-
         // Stat tiles — exactly two fill the row; any extras (carry forward / transfers) scroll.
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
             val gap = 10.dp

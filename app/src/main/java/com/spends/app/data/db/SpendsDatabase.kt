@@ -7,10 +7,12 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
+import com.spends.app.data.db.dao.PendingCaptureDao
 import com.spends.app.data.db.dao.RecurringDao
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
+import com.spends.app.data.db.entity.PendingCaptureEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.seed.CategorySeed
 
@@ -20,8 +22,9 @@ import com.spends.app.data.seed.CategorySeed
         ExpenseEntity::class,
         AllocationEntity::class,
         RecurringRuleEntity::class,
+        PendingCaptureEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -30,6 +33,7 @@ abstract class SpendsDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun expenseDao(): ExpenseDao
     abstract fun recurringDao(): RecurringDao
+    abstract fun pendingCaptureDao(): PendingCaptureDao
 
     companion object {
         const val NAME = "spends.db"
@@ -117,6 +121,33 @@ abstract class SpendsDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_recurring_rules_nextRunAt` ON `recurring_rules` (`nextRunAt`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_recurring_rules_active` ON `recurring_rules` (`active`)")
+            }
+        }
+
+        /** v4 -> v5: add the review-only `pending_captures` table (PRD §4.1). DDL must mirror Room's
+         *  generated schema for [PendingCaptureEntity] exactly so validation passes. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `pending_captures` (" +
+                        "`id` INTEGER NOT NULL, " +
+                        "`amountMinor` INTEGER NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`occurredAt` INTEGER NOT NULL, " +
+                        "`merchant` TEXT, " +
+                        "`last4` TEXT, " +
+                        "`institution` TEXT, " +
+                        "`categoryId` INTEGER NOT NULL, " +
+                        "`parseConfidence` INTEGER NOT NULL, " +
+                        "`dedupeHash` TEXT NOT NULL, " +
+                        "`receivedAt` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_pending_captures_dedupeHash` " +
+                        "ON `pending_captures` (`dedupeHash`)",
+                )
             }
         }
     }

@@ -102,6 +102,14 @@ interface ExpenseDao {
     )
     fun observeBalanceBefore(before: Long): Flow<Long>
 
+    /** Earliest active transaction time — the lower bound for the cycle selector's "All" range. */
+    @Query("SELECT MIN(occurredAt) FROM expenses WHERE deletedAt IS NULL")
+    fun observeEarliestOccurredAt(): Flow<Long?>
+
+    /** Income timestamps — used to auto-detect the salary day for the Smart cycle. */
+    @Query("SELECT occurredAt FROM expenses WHERE deletedAt IS NULL AND kind = 'INCOME'")
+    fun observeIncomeOccurredAt(): Flow<List<Long>>
+
     // ---- Mutations ----
 
     @Insert
@@ -127,6 +135,17 @@ interface ExpenseDao {
 
     @Query("DELETE FROM expenses WHERE deletedAt IS NOT NULL AND deletedAt < :cutoff")
     suspend fun purgeTrashOlderThan(cutoff: Long): Int
+
+    // ---- Capture cleanup (#5: delete all SMS-captured transactions) ----
+
+    @Query("SELECT COUNT(*) FROM expenses WHERE source = 'SMS'")
+    suspend fun countCaptured(): Int
+
+    @Query("DELETE FROM allocations WHERE expenseId IN (SELECT id FROM expenses WHERE source = 'SMS')")
+    suspend fun deleteCapturedAllocations()
+
+    @Query("DELETE FROM expenses WHERE source = 'SMS'")
+    suspend fun deleteCapturedExpenses()
 
     // ---- Import support ----
 

@@ -40,6 +40,10 @@ data class SnapshotSettings(
     val carryForwardEnabled: Boolean,
     val trashRetentionDays: Int,
     val autoBackupEnabled: Boolean = false,
+    // Added in v0.10.0; defaults keep older backups deserialising (ignoreUnknownKeys + these defaults).
+    val carryForwardAnchorEpochDay: Long = 0,
+    val carryForwardOpeningMinor: Long = 0,
+    val hideCapturedInLists: Boolean = false,
 )
 
 @Serializable

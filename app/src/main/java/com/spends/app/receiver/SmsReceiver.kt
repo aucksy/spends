@@ -7,7 +7,6 @@ import android.provider.Telephony
 import com.spends.app.data.capture.CaptureNotifier
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.settings.SettingsRepository
-import com.spends.app.domain.model.SmsCaptureMode
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -52,16 +51,10 @@ class SmsReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                val s = settings.settings.first()
-                if (s.smsCaptureEnabled) {
-                    when (s.smsCaptureMode) {
-                        SmsCaptureMode.AUTO_ADD -> runCatching { capture.capture(sender, body, receivedAt) }
-                        SmsCaptureMode.REVIEW_PROMPT -> {
-                            // Don't save yet — prompt the user with Add / Edit / Ignore.
-                            capture.preview(sender, body, receivedAt)?.let {
-                                notifier.postCapturePrompt(sender, body, receivedAt, it)
-                            }
-                        }
+                // Review-only: never auto-add. A parseable bank SMS always prompts the user (Add/Edit/Ignore).
+                if (settings.settings.first().smsCaptureEnabled) {
+                    capture.preview(sender, body, receivedAt)?.let {
+                        notifier.postCapturePrompt(sender, body, receivedAt, it)
                     }
                 }
             } finally {

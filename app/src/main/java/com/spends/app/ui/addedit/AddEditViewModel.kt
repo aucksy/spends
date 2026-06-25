@@ -118,4 +118,15 @@ class AddEditViewModel @Inject constructor(
             _finished.value = true
         }
     }
+
+    /** Move the edited transaction to Trash, then close the editor. */
+    fun delete() {
+        if (!isEdit || _saving.value) return
+        _saving.value = true
+        viewModelScope.launch {
+            expenseRepository.moveToTrash(expenseId)
+            _saving.value = false
+            _finished.value = true
+        }
+    }
 }

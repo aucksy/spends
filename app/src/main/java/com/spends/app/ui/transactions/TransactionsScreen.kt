@@ -1,8 +1,10 @@
 package com.spends.app.ui.transactions
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Notifications
@@ -32,6 +36,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -54,8 +59,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -68,6 +76,7 @@ import com.spends.app.domain.model.TxnSource
 import com.spends.app.ui.components.AutoSizeRupee
 import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryPickerSheet
+import com.spends.app.ui.components.PeriodSelectorBar
 import kotlinx.coroutines.launch
 
 @Composable
@@ -79,6 +88,7 @@ fun TransactionsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     // Search text is owned locally (synchronous snapshot state) so the cursor never jumps; the
     // ViewModel is fed for filtering only.
@@ -100,14 +110,32 @@ fun TransactionsScreen(
     var pendingDelete by remember { mutableStateOf<TransactionRowUi?>(null) }
     var changeCategoryFor by remember { mutableStateOf<TransactionRowUi?>(null) }
 
+    // Multi-select (#9): long-press a row to start; tap toggles; bulk delete / change category.
+    var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
+    val selectionMode = selectedIds.isNotEmpty()
+    var showBulkDelete by remember { mutableStateOf(false) }
+    var showBulkCategory by remember { mutableStateOf(false) }
+    fun toggle(id: Long) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
+
     Column(modifier = modifier.fillMaxSize()) {
-        AnimatedVisibility(visible = !collapsed && !searching) {
-            SummaryHeader(
-                state = state,
-                onPrevious = viewModel::stepPrevious,
-                onNext = viewModel::stepNext,
-                modifier = Modifier.padding(top = 2.dp),
+        if (selectionMode) {
+            SelectionBar(
+                count = selectedIds.size,
+                onClear = { selectedIds = emptySet() },
+                onChangeCategory = { showBulkCategory = true },
+                onDelete = { showBulkDelete = true },
             )
+        } else {
+            // Period selector — always visible so the cycle/range can be changed any time.
+            PeriodSelectorBar(
+                selection = selection,
+                label = state.periodLabel,
+                onSelect = viewModel::applySelection,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+        }
+        AnimatedVisibility(visible = !collapsed && !searching) {
+            SummaryHeader(state = state, modifier = Modifier.padding(top = 2.dp))
         }
         AnimatedVisibility(visible = collapsed && !searching) {
             CompactBalanceBar(state)
@@ -144,7 +172,10 @@ fun TransactionsScreen(
                     items(group.rows, key = { it.id }) { row ->
                         SwipeableRow(
                             row = row,
-                            onClick = { onEditTransaction(row.id) },
+                            selectionMode = selectionMode,
+                            selected = row.id in selectedIds,
+                            onClick = { if (selectionMode) toggle(row.id) else onEditTransaction(row.id) },
+                            onLongClick = { if (selectionMode) toggle(row.id) else selectedIds = setOf(row.id) },
                             onRequestDelete = { pendingDelete = row },
                             onRequestChangeCategory = { changeCategoryFor = row },
                         )
@@ -184,6 +215,70 @@ fun TransactionsScreen(
             onSelect = { id -> viewModel.changeCategory(row.id, id); changeCategoryFor = null },
             onDismiss = { changeCategoryFor = null },
         )
+    }
+
+    // Bulk delete (multi-select).
+    if (showBulkDelete) {
+        val ids = selectedIds
+        AlertDialog(
+            onDismissRequest = { showBulkDelete = false },
+            title = { Text("Delete ${ids.size} transactions?") },
+            text = { Text("They move to Trash — you can restore them from Settings → Trash.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBulkDelete = false
+                    selectedIds = emptySet()
+                    viewModel.bulkMoveToTrash(ids)
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(message = "Moved ${ids.size} to Trash", actionLabel = "Undo")
+                        if (result == SnackbarResult.ActionPerformed) viewModel.bulkRestore(ids)
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { showBulkDelete = false }) { Text("Cancel") } },
+        )
+    }
+
+    // Bulk change-category (multi-select). Shows all active categories since the selection may be mixed.
+    if (showBulkCategory) {
+        val ids = selectedIds
+        CategoryPickerSheet(
+            categories = categories,
+            selectedId = null,
+            onSelect = { id ->
+                showBulkCategory = false
+                selectedIds = emptySet()
+                viewModel.bulkChangeCategory(ids, id)
+            },
+            onDismiss = { showBulkCategory = false },
+        )
+    }
+}
+
+@Composable
+private fun SelectionBar(count: Int, onClear: () -> Unit, onChangeCategory: () -> Unit, onDelete: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onClear) {
+            Icon(Icons.Filled.Close, contentDescription = "Clear selection", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Text(
+            "$count selected",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onChangeCategory) {
+            Icon(Icons.Filled.Category, contentDescription = "Change category", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Filled.Delete, contentDescription = "Delete selected", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
     }
 }
 
@@ -248,10 +343,18 @@ private fun DayHeader(group: DayGroupUi) {
 @Composable
 private fun SwipeableRow(
     row: TransactionRowUi,
+    selectionMode: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onRequestDelete: () -> Unit,
     onRequestChangeCategory: () -> Unit,
 ) {
+    // In selection mode the swipe gestures are disabled — tap toggles, long-press already active.
+    if (selectionMode) {
+        TransactionRow(row = row, selected = selected, onClick = onClick, onLongClick = onLongClick)
+        return
+    }
     val dismissState = rememberSwipeToDismissBoxState(
         // Both directions only *request* an action and snap back (return false) — the actual delete
         // is gated behind a confirmation dialog, and right-swipe opens the category picker.
@@ -289,7 +392,7 @@ private fun SwipeableRow(
             }
         },
     ) {
-        TransactionRow(row = row, onClick = onClick)
+        TransactionRow(row = row, selected = false, onClick = onClick, onLongClick = onLongClick)
     }
 }
 
@@ -312,14 +415,16 @@ private fun SwipeBg(color: Color, icon: androidx.compose.ui.graphics.vector.Imag
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TransactionRow(row: TransactionRowUi, onClick: () -> Unit) {
+private fun TransactionRow(row: TransactionRowUi, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val semantic = LocalSemanticColors.current
+    val rowBg = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onClick)
+            .background(rowBg)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -329,11 +434,18 @@ private fun TransactionRow(row: TransactionRowUi, onClick: () -> Unit) {
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
+            // Merchant + note share one line (note muted); only wraps to a 2nd line when too long —
+            // no dedicated note row, so the card stays compact.
+            val note = row.note?.takeIf { it.isNotBlank() && it != row.title }
+            val muted = MaterialTheme.colorScheme.onSurfaceVariant
             Text(
-                text = row.title,
+                text = buildAnnotatedString {
+                    append(row.title)
+                    if (note != null) withStyle(SpanStyle(color = muted)) { append("  ·  $note") }
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val subtitle = buildString {
@@ -355,17 +467,6 @@ private fun TransactionRow(row: TransactionRowUi, onClick: () -> Unit) {
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            // Show the note when present and not already used as the row title.
-            val note = row.note?.takeIf { it.isNotBlank() && it != row.title }
-            if (note != null) {
-                Text(
-                    text = note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

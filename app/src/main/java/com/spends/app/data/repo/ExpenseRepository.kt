@@ -44,6 +44,22 @@ class ExpenseRepository @Inject constructor(
     fun observeBetween(window: CycleWindow): Flow<List<ExpenseWithAllocations>> =
         dao.observeActiveBetween(window.startMillis(), window.endExclusiveMillis())
 
+    /** Period-bounded reads by raw millis — used by the type×range cycle selector. */
+    fun observeBetween(startMillis: Long, endExclusiveMillis: Long): Flow<List<ExpenseWithAllocations>> =
+        dao.observeActiveBetween(startMillis, endExclusiveMillis)
+
+    fun observeKindSums(startMillis: Long, endExclusiveMillis: Long): Flow<List<KindSum>> =
+        dao.observeKindSums(startMillis, endExclusiveMillis)
+
+    fun observeCategorySpend(startMillis: Long, endExclusiveMillis: Long): Flow<List<CategorySpend>> =
+        dao.observeCategorySpend(startMillis, endExclusiveMillis)
+
+    /** Earliest active transaction time (null if none) — lower bound for the "All" range. */
+    fun observeEarliestDay(): Flow<Long?> = dao.observeEarliestOccurredAt()
+
+    /** Income timestamps — to auto-detect the Smart cycle's salary day. */
+    fun observeIncomeOccurredAt(): Flow<List<Long>> = dao.observeIncomeOccurredAt()
+
     fun observeSearch(query: String): Flow<List<ExpenseWithAllocations>> =
         dao.observeActiveSearch(query.trim())
 
@@ -73,6 +89,9 @@ class ExpenseRepository @Inject constructor(
 
     fun observeCarryForwardInto(window: CycleWindow): Flow<Long> =
         dao.observeBalanceBefore(window.startMillis())
+
+    /** Running balance (income − expense) of everything strictly before [beforeMillis]; 0 for before-epoch. */
+    fun observeBalanceBefore(beforeMillis: Long): Flow<Long> = dao.observeBalanceBefore(beforeMillis)
 
     suspend fun getById(id: Long): ExpenseWithAllocations? = dao.getByIdWithAllocations(id)
 

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,6 +78,7 @@ fun AddEditScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val saving by viewModel.saving.collectAsStateWithLifecycle()
     val finished by viewModel.finished.collectAsStateWithLifecycle()
+    var showDelete by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(finished) { if (finished) onDone() }
 
@@ -87,6 +89,13 @@ fun AddEditScreen(
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel")
+                    }
+                },
+                actions = {
+                    if (viewModel.isEdit) {
+                        IconButton(onClick = { showDelete = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete transaction")
+                        }
                     }
                 },
             )
@@ -110,6 +119,18 @@ fun AddEditScreen(
                 },
             )
         }
+    }
+
+    if (showDelete) {
+        AlertDialog(
+            onDismissRequest = { showDelete = false },
+            title = { Text("Delete this transaction?") },
+            text = { Text("It moves to Trash — you can restore it from Settings → Trash.") },
+            confirmButton = {
+                TextButton(onClick = { showDelete = false; viewModel.delete() }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } },
+        )
     }
 }
 

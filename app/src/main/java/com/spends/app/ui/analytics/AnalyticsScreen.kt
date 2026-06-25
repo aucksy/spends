@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -27,7 +26,6 @@ import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,7 +47,7 @@ import com.spends.app.core.theme.Numerals
 import com.spends.app.ui.components.AutoSizeRupee
 import com.spends.app.ui.components.DonutChart
 import com.spends.app.ui.components.DonutSlice
-import com.spends.app.ui.components.PillSegmentedControl
+import com.spends.app.ui.components.PeriodSelectorBar
 import com.spends.app.ui.components.SectionLabel
 import com.spends.app.ui.components.SpendsCard
 import com.spends.app.ui.components.WeeklyBars
@@ -62,6 +60,7 @@ fun AnalyticsScreen(
     viewModel: AnalyticsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
 
     Column(
@@ -72,28 +71,15 @@ fun AnalyticsScreen(
     ) {
         Spacer(Modifier.height(4.dp))
         Text("Analytics", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
-        PillSegmentedControl(
-            options = listOf("Salary cycle", "Month"),
-            selectedIndex = if (state.periodMode == PeriodMode.CALENDAR_MONTH) 1 else 0,
-            onSelect = { viewModel.setMode(if (it == 1) PeriodMode.CALENDAR_MONTH else PeriodMode.SALARY_CYCLE) },
+        PeriodSelectorBar(
+            selection = selection,
+            label = state.periodLabel,
+            onSelect = viewModel::applySelection,
             modifier = Modifier.fillMaxWidth(),
         )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            IconButton(onClick = viewModel::stepPrevious) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous period")
-            }
-            Text(state.periodLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            IconButton(onClick = viewModel::stepNext, enabled = state.canStepForward) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next period")
-            }
-        }
+        Spacer(Modifier.height(8.dp))
 
         if (state.isEmpty) {
             EmptyAnalytics()

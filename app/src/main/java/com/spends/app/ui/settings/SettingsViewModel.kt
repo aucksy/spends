@@ -26,5 +26,7 @@ class SettingsViewModel @Inject constructor(
     fun setSalaryDay(day: Int) = viewModelScope.launch { settingsRepository.setSalaryCycleStartDay(day) }
     fun setDefaultLanding(landing: DefaultLanding) = viewModelScope.launch { settingsRepository.setDefaultLanding(landing) }
     fun setCarryForward(value: Boolean) = viewModelScope.launch { settingsRepository.setCarryForwardEnabled(value) }
+    fun setCarryForwardAnchor(epochDay: Long) = viewModelScope.launch { settingsRepository.setCarryForwardAnchor(epochDay) }
+    fun setCarryForwardOpening(minor: Long) = viewModelScope.launch { settingsRepository.setCarryForwardOpening(minor) }
     fun setTrashRetentionDays(days: Int) = viewModelScope.launch { settingsRepository.setTrashRetentionDays(days) }
 }

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.spends.app.domain.model.DefaultLanding
@@ -25,10 +26,15 @@ data class SettingsState(
     val salaryCycleStartDay: Int = 1,
     val defaultLanding: DefaultLanding = DefaultLanding.TRANSACTIONS,
     val carryForwardEnabled: Boolean = false,
+    // Carry-forward only counts from this anchor date onward (0 = no anchor → count everything), with an
+    // optional opening balance as of that date. Fixes a hugely-negative carry-forward from incomplete history.
+    val carryForwardAnchorEpochDay: Long = 0,
+    val carryForwardOpeningMinor: Long = 0,
     val trashRetentionDays: Int = 30,
     val autoBackupEnabled: Boolean = false,
     val smsCaptureEnabled: Boolean = false,
     val smsCaptureMode: SmsCaptureMode = SmsCaptureMode.AUTO_ADD,
+    val hideCapturedInLists: Boolean = false,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -47,10 +53,13 @@ class SettingsRepository @Inject constructor(
             salaryCycleStartDay = prefs[Keys.SALARY_DAY] ?: 1,
             defaultLanding = prefs[Keys.DEFAULT_LANDING]?.toLanding() ?: DefaultLanding.TRANSACTIONS,
             carryForwardEnabled = prefs[Keys.CARRY_FORWARD] ?: false,
+            carryForwardAnchorEpochDay = prefs[Keys.CARRY_FORWARD_ANCHOR] ?: 0,
+            carryForwardOpeningMinor = prefs[Keys.CARRY_FORWARD_OPENING] ?: 0,
             trashRetentionDays = prefs[Keys.TRASH_RETENTION_DAYS] ?: 30,
             autoBackupEnabled = prefs[Keys.AUTO_BACKUP] ?: false,
             smsCaptureEnabled = prefs[Keys.SMS_CAPTURE] ?: false,
             smsCaptureMode = prefs[Keys.SMS_CAPTURE_MODE]?.toCaptureMode() ?: SmsCaptureMode.AUTO_ADD,
+            hideCapturedInLists = prefs[Keys.HIDE_CAPTURED] ?: false,
         )
     }
 
@@ -60,10 +69,13 @@ class SettingsRepository @Inject constructor(
     suspend fun setSalaryCycleStartDay(day: Int) = edit { it[Keys.SALARY_DAY] = day.coerceIn(1, 31) }
     suspend fun setDefaultLanding(landing: DefaultLanding) = edit { it[Keys.DEFAULT_LANDING] = landing.name }
     suspend fun setCarryForwardEnabled(value: Boolean) = edit { it[Keys.CARRY_FORWARD] = value }
+    suspend fun setCarryForwardAnchor(epochDay: Long) = edit { it[Keys.CARRY_FORWARD_ANCHOR] = epochDay }
+    suspend fun setCarryForwardOpening(minor: Long) = edit { it[Keys.CARRY_FORWARD_OPENING] = minor }
     suspend fun setTrashRetentionDays(days: Int) = edit { it[Keys.TRASH_RETENTION_DAYS] = days.coerceIn(1, 365) }
     suspend fun setAutoBackupEnabled(value: Boolean) = edit { it[Keys.AUTO_BACKUP] = value }
     suspend fun setSmsCaptureEnabled(value: Boolean) = edit { it[Keys.SMS_CAPTURE] = value }
     suspend fun setSmsCaptureMode(mode: SmsCaptureMode) = edit { it[Keys.SMS_CAPTURE_MODE] = mode.name }
+    suspend fun setHideCapturedInLists(value: Boolean) = edit { it[Keys.HIDE_CAPTURED] = value }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -74,8 +86,11 @@ class SettingsRepository @Inject constructor(
             prefs[Keys.SALARY_DAY] = state.salaryCycleStartDay
             prefs[Keys.DEFAULT_LANDING] = state.defaultLanding.name
             prefs[Keys.CARRY_FORWARD] = state.carryForwardEnabled
+            prefs[Keys.CARRY_FORWARD_ANCHOR] = state.carryForwardAnchorEpochDay
+            prefs[Keys.CARRY_FORWARD_OPENING] = state.carryForwardOpeningMinor
             prefs[Keys.TRASH_RETENTION_DAYS] = state.trashRetentionDays
             prefs[Keys.AUTO_BACKUP] = state.autoBackupEnabled
+            prefs[Keys.HIDE_CAPTURED] = state.hideCapturedInLists
         }
     }
 
@@ -99,9 +114,12 @@ class SettingsRepository @Inject constructor(
         val SALARY_DAY = intPreferencesKey("salary_cycle_start_day")
         val DEFAULT_LANDING = stringPreferencesKey("default_landing")
         val CARRY_FORWARD = booleanPreferencesKey("carry_forward_enabled")
+        val CARRY_FORWARD_ANCHOR = longPreferencesKey("carry_forward_anchor_epoch_day")
+        val CARRY_FORWARD_OPENING = longPreferencesKey("carry_forward_opening_minor")
         val TRASH_RETENTION_DAYS = intPreferencesKey("trash_retention_days")
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val SMS_CAPTURE = booleanPreferencesKey("sms_capture_enabled")
         val SMS_CAPTURE_MODE = stringPreferencesKey("sms_capture_mode")
+        val HIDE_CAPTURED = booleanPreferencesKey("hide_captured_in_lists")
     }
 }

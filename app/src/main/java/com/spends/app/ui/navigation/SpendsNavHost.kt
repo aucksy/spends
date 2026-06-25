@@ -10,6 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.addedit.AddEditScreen
+import com.spends.app.ui.capture.CaptureSettingsScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
 import com.spends.app.ui.home.HomeScreen
@@ -104,6 +105,13 @@ fun SpendsNavHost(
                 onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
                 onOpenImport = { navController.navigate(Routes.importRoute(fromOnboarding = false)) },
                 onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+                onOpenCapture = { navController.navigate(Routes.CAPTURE) },
+            )
+        }
+
+        composable(Routes.CAPTURE) {
+            CaptureSettingsScreen(
+                onBack = { navController.popBackStack() },
                 onOpenReview = { navController.navigate(Routes.REVIEW) },
             )
         }

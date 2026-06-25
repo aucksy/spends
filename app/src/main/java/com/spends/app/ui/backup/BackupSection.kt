@@ -143,12 +143,12 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
                 onClick = { exportLauncher.launch(viewModel.exportFileName) },
                 enabled = !state.working,
                 modifier = Modifier.weight(1f),
-            ) { Text("Export to file") }
+            ) { Text("Export file", maxLines = 1) }
             OutlinedButton(
                 onClick = { importLauncher.launch(arrayOf("application/octet-stream", "application/gzip", "*/*")) },
                 enabled = !state.working,
                 modifier = Modifier.weight(1f),
-            ) { Text("Restore from file") }
+            ) { Text("Restore file", maxLines = 1) }
         }
 
         // Readable spreadsheet export (not a backup — opens in Excel/Sheets).

@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -24,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,6 +58,7 @@ fun ReviewScreen(
     val items by viewModel.items.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     var pickFor by remember { mutableStateOf<ReviewRowUi?>(null) }
+    var showConfirmAll by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -63,6 +67,11 @@ fun ReviewScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (items.isNotEmpty()) {
+                        TextButton(onClick = { showConfirmAll = true }) { Text("Add all (${items.size})") }
                     }
                 },
             )
@@ -94,6 +103,7 @@ fun ReviewScreen(
                         row = row,
                         onChangeCategory = { pickFor = row },
                         onConfirm = { viewModel.confirm(row.id) },
+                        onReject = { viewModel.reject(row.id) },
                     )
                 }
             }
@@ -110,14 +120,31 @@ fun ReviewScreen(
             onDismiss = { pickFor = null },
         )
     }
+
+    if (showConfirmAll) {
+        AlertDialog(
+            onDismissRequest = { showConfirmAll = false },
+            title = { Text("Add all ${items.size}?") },
+            text = { Text("Adds every captured transaction with its guessed category. You can edit any of them afterwards in the timeline.") },
+            confirmButton = {
+                TextButton(onClick = { showConfirmAll = false; viewModel.confirmAll() }) { Text("Add all") }
+            },
+            dismissButton = { TextButton(onClick = { showConfirmAll = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
-private fun ReviewCard(row: ReviewRowUi, onChangeCategory: () -> Unit, onConfirm: () -> Unit) {
+private fun ReviewCard(row: ReviewRowUi, onChangeCategory: () -> Unit, onConfirm: () -> Unit, onReject: () -> Unit) {
     val semantic = LocalSemanticColors.current
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("CAPTURED FROM SMS", style = MaterialTheme.typography.labelMedium, color = semantic.review)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("CAPTURED FROM SMS", style = MaterialTheme.typography.labelMedium, color = semantic.review, modifier = Modifier.weight(1f))
+                IconButton(onClick = onReject, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = "Reject", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                }
+            }
             Spacer(Modifier.height(4.dp))
             val color = if (row.kind == TxnKind.INCOME) semantic.income else semantic.expense
             val prefix = when (row.kind) { TxnKind.INCOME -> "+"; TxnKind.EXPENSE -> "-"; TxnKind.TRANSFER -> "" }
