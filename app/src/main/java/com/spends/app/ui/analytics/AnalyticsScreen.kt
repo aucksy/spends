@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +58,7 @@ import com.spends.app.ui.components.parseHexColor
 @Composable
 fun AnalyticsScreen(
     onOpenRecurring: () -> Unit,
+    onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
     viewModel: AnalyticsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -99,7 +101,7 @@ fun AnalyticsScreen(
             Spacer(Modifier.height(4.dp))
             SummaryCard(state)
             Spacer(Modifier.height(14.dp))
-            CategoryDonutCard(state, semantic.dark, semantic.transfer)
+            CategoryDonutCard(state, semantic.dark, semantic.transfer, onOpenCategory)
             Spacer(Modifier.height(14.dp))
             SpendOverTimeCard(state)
             Spacer(Modifier.height(14.dp))
@@ -115,8 +117,8 @@ private fun SummaryCard(state: AnalyticsUiState) {
     val semantic = LocalSemanticColors.current
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SummaryCell(Modifier.weight(1f), "Expense", Icons.Filled.ArrowDownward, semantic.expense, state.expenseMinor, false)
-            SummaryCell(Modifier.weight(1f), "Income", Icons.Filled.ArrowUpward, semantic.income, state.incomeMinor, false)
+            SummaryCell(Modifier.weight(1f), "Expense", Icons.Filled.ArrowUpward, semantic.expense, state.expenseMinor, false)
+            SummaryCell(Modifier.weight(1f), "Income", Icons.Filled.ArrowDownward, semantic.income, state.incomeMinor, false)
             SummaryCell(
                 Modifier.weight(1f),
                 "Net",
@@ -154,7 +156,12 @@ private fun SummaryCell(
 }
 
 @Composable
-private fun CategoryDonutCard(state: AnalyticsUiState, dark: Boolean, transferColor: Color) {
+private fun CategoryDonutCard(
+    state: AnalyticsUiState,
+    dark: Boolean,
+    transferColor: Color,
+    onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+) {
     fun catColor(hex: String) = parseHexColor(if (dark) ColorAssigner.darkVariant(hex) else hex)
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -189,22 +196,39 @@ private fun CategoryDonutCard(state: AnalyticsUiState, dark: Boolean, transferCo
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                state.categories.take(8).forEach { c ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(11.dp),
+                state.categories.take(8).forEachIndexed { index, c ->
+                    if (index > 0) Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onOpenCategory(c.categoryId, c.name, state.windowStartMillis, state.windowEndExclusiveMillis)
+                            },
                     ) {
-                        Box(modifier = Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(catColor(c.colorHex)))
-                        Text(c.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
-                        Text("${c.percent}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            Money.formatRupees(c.amountMinor),
-                            style = Numerals.amountRow,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.widthIn(min = 70.dp),
-                            textAlign = TextAlign.End,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(11.dp),
+                        ) {
+                            Box(modifier = Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(catColor(c.colorHex)))
+                            Text(c.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
+                            Text("${c.percent}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                Money.formatRupees(c.amountMinor),
+                                style = Numerals.amountRow,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.widthIn(min = 70.dp),
+                                textAlign = TextAlign.End,
+                            )
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Open ${c.name} transactions",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -234,7 +258,7 @@ private fun SpendOverTimeCard(state: AnalyticsUiState) {
             WeeklyBars(values = state.weekly, labels = state.weekLabels)
             Spacer(Modifier.height(10.dp))
             Text(
-                "Excludes transfers & investments.",
+                "Excludes transfers.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

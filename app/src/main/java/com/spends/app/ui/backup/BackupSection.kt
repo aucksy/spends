@@ -17,12 +17,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,18 +48,23 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingRestore by remember { mutableStateOf<DriveFile?>(null) }
     var pendingFileRestore by remember { mutableStateOf<Uri?>(null) }
+    var showSetPassword by remember { mutableStateOf(false) }
 
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result -> viewModel.onConsentResult(result.data) }
 
     val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/gzip"),
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { uri -> uri?.let(viewModel::exportToFile) }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> if (uri != null) pendingFileRestore = uri }
+
+    val excelLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ) { uri -> uri?.let(viewModel::exportExcel) }
 
     LaunchedEffect(Unit) {
         viewModel.consentRequests.collect { intentSender ->
@@ -65,6 +73,27 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        // Encryption — backups are unreadable without this password if the file is ever accessed by someone else.
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
+            Icon(Icons.Filled.Lock, contentDescription = null)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Backup encryption", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    if (state.hasBackupPassword) {
+                        "On — backups are encrypted. Needed only when restoring on a new phone."
+                    } else {
+                        "Set a password so a stolen backup file can't be read. Required before backing up."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = { showSetPassword = true }) {
+                Text(if (state.hasBackupPassword) "Change" else "Set password")
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
             Icon(Icons.Filled.CloudUpload, contentDescription = null)
             Spacer(Modifier.width(12.dp))
@@ -116,11 +145,18 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
                 modifier = Modifier.weight(1f),
             ) { Text("Export to file") }
             OutlinedButton(
-                onClick = { importLauncher.launch(arrayOf("application/gzip", "application/octet-stream", "*/*")) },
+                onClick = { importLauncher.launch(arrayOf("application/octet-stream", "application/gzip", "*/*")) },
                 enabled = !state.working,
                 modifier = Modifier.weight(1f),
             ) { Text("Restore from file") }
         }
+
+        // Readable spreadsheet export (not a backup — opens in Excel/Sheets).
+        OutlinedButton(
+            onClick = { excelLauncher.launch(viewModel.excelFileName) },
+            enabled = !state.working,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        ) { Text("Export to Excel (.xlsx)") }
 
         state.message?.let { msg ->
             Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
@@ -175,4 +211,94 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
             dismissButton = { TextButton(onClick = { pendingFileRestore = null }) { Text("Cancel") } },
         )
     }
+
+    if (showSetPassword) {
+        SetBackupPasswordDialog(
+            changing = state.hasBackupPassword,
+            onConfirm = { pw -> viewModel.setBackupPassword(pw); showSetPassword = false },
+            onDismiss = { showSetPassword = false },
+        )
+    }
+
+    if (state.passwordRestore != null) {
+        RestorePasswordDialog(
+            onConfirm = viewModel::restoreWithPassword,
+            onCancel = viewModel::cancelPasswordRestore,
+        )
+    }
+}
+
+@Composable
+private fun SetBackupPasswordDialog(changing: Boolean, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    val tooShort = password.length < 6
+    val mismatch = confirm.isNotEmpty() && password != confirm
+    val valid = !tooShort && password == confirm
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (changing) "Change backup password" else "Set a backup password") },
+        text = {
+            Column {
+                Text(
+                    "You'll only need this when restoring on a new phone. Keep it safe — without it, an encrypted backup can't be recovered.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.padding(vertical = 6.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password (min 6 characters)") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.padding(vertical = 4.dp))
+                OutlinedTextField(
+                    value = confirm,
+                    onValueChange = { confirm = it },
+                    label = { Text("Confirm password") },
+                    singleLine = true,
+                    isError = mismatch,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (mismatch) {
+                    Text("Passwords don't match", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(password) }, enabled = valid) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun RestorePasswordDialog(onConfirm: (String) -> Unit, onCancel: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Enter backup password") },
+        text = {
+            Column {
+                Text(
+                    "This backup was encrypted on another device. Enter the backup password you set to restore it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.padding(vertical = 6.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Backup password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(password) }, enabled = password.isNotEmpty()) { Text("Restore") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
 }

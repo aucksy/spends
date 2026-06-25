@@ -2,7 +2,7 @@
 <resources>
     <!-- Window background for the brief frame before Compose draws (light). -->
     <color name="app_background">#FFF7F8FB</color>
-    <!-- Deep ink splash + adaptive-icon background. -->
+    <!-- Deep ink splash background. -->
     <color name="splash_background">#FF101418</color>
-    <color name="ic_launcher_background">#FF101418</color>
+    <!-- NOTE: ic_launcher_background lives in values/ic_launcher_background.xml (teal #0F766E). -->
 </resources>

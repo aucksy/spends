@@ -19,6 +19,10 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
 
+    <!-- "Prompt me on each SMS" capture mode posts a heads-up Add/Edit/Ignore notification (Android 13+
+         runtime grant). No full-screen intent — Play-compliant. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".core.SpendsApp"
         android:allowBackup="true"
@@ -53,6 +57,11 @@
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver>
+
+        <!-- Add / Ignore actions of the capture-prompt notification (internal only). -->
+        <receiver
+            android:name=".receiver.CaptureActionReceiver"
+            android:exported="false" />
 
         <!--
           Disable WorkManager's default initializer so it uses our Hilt-aware Configuration.Provider

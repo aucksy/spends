@@ -8,29 +8,39 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.ui.analytics.AnalyticsScreen
+import com.spends.app.ui.components.LocalAmountsHidden
+import com.spends.app.ui.quickadd.QuickAddSheet
 import com.spends.app.ui.transactions.TransactionsScreen
+import kotlinx.coroutines.launch
 
 private enum class HomeTab { TRANSACTIONS, ANALYTICS }
 
@@ -43,10 +53,17 @@ fun HomeScreen(
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenRecurring: () -> Unit,
+    onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
 ) {
     val initialTab = if (settings.defaultLanding == DefaultLanding.ANALYTICS) HomeTab.ANALYTICS else HomeTab.TRANSACTIONS
     var tab by rememberSaveable { mutableStateOf(initialTab) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    // Balances are hidden by default (privacy); the eye in the bottom-left reveals them. Saveable so a
+    // reveal survives tab switches/rotation, but a fresh launch starts hidden again.
+    var amountsHidden by rememberSaveable { mutableStateOf(true) }
+    // The + opens the fast half-screen quick-add sheet (calculator keypad). Editing still uses the full screen.
+    var showQuickAdd by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -77,7 +94,7 @@ fun HomeScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = onAddTransaction,
+                onClick = { showQuickAdd = true },
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "Add transaction")
@@ -85,14 +102,38 @@ fun HomeScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
-                HomeTab.TRANSACTIONS -> TransactionsScreen(
-                    snackbarHostState = snackbarHostState,
-                    onEditTransaction = onEditTransaction,
-                )
-                HomeTab.ANALYTICS -> AnalyticsScreen(onOpenRecurring = onOpenRecurring)
+        CompositionLocalProvider(LocalAmountsHidden provides amountsHidden) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                when (tab) {
+                    HomeTab.TRANSACTIONS -> TransactionsScreen(
+                        snackbarHostState = snackbarHostState,
+                        onEditTransaction = onEditTransaction,
+                    )
+                    HomeTab.ANALYTICS -> AnalyticsScreen(
+                        onOpenRecurring = onOpenRecurring,
+                        onOpenCategory = onOpenCategory,
+                    )
+                }
+                // Privacy eye — bottom-left, balancing the + FAB on the right.
+                SmallFloatingActionButton(
+                    onClick = { amountsHidden = !amountsHidden },
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+                ) {
+                    Icon(
+                        if (amountsHidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                        contentDescription = if (amountsHidden) "Show balances" else "Hide balances",
+                    )
+                }
             }
+        }
+
+        if (showQuickAdd) {
+            QuickAddSheet(
+                onDismiss = { showQuickAdd = false },
+                onSaved = { scope.launch { snackbarHostState.showSnackbar("Transaction added") } },
+            )
         }
     }
 }

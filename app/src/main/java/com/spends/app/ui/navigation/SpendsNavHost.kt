@@ -2,6 +2,7 @@ package com.spends.app.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -10,6 +11,7 @@ import androidx.navigation.navArgument
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.addedit.AddEditScreen
 import com.spends.app.ui.categories.CategoriesScreen
+import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
 import com.spends.app.ui.home.HomeScreen
 import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
@@ -19,9 +21,20 @@ import com.spends.app.ui.settings.SettingsScreen
 import com.spends.app.ui.trash.TrashScreen
 
 @Composable
-fun SpendsNavHost(settings: SettingsState) {
+fun SpendsNavHost(
+    settings: SettingsState,
+    pendingEditExpenseId: Long? = null,
+    onPendingEditConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val start = if (settings.onboardingComplete) Routes.HOME else Routes.ONBOARDING
+
+    // A capture-prompt "Edit" tap persisted a transaction and handed us its id — open the editor for it.
+    LaunchedEffect(pendingEditExpenseId) {
+        val id = pendingEditExpenseId ?: return@LaunchedEffect
+        if (settings.onboardingComplete) navController.navigate(Routes.addEdit(id))
+        onPendingEditConsumed()
+    }
 
     NavHost(
         navController = navController,
@@ -50,6 +63,9 @@ fun SpendsNavHost(settings: SettingsState) {
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+                onOpenCategory = { categoryId, name, start, end ->
+                    navController.navigate(Routes.categoryTxns(categoryId, name, start, end))
+                },
             )
         }
 
@@ -63,6 +79,18 @@ fun SpendsNavHost(settings: SettingsState) {
             ),
         ) {
             AddEditScreen(onDone = { navController.popBackStack() })
+        }
+
+        composable(
+            route = Routes.CATEGORY_TXNS_PATTERN,
+            arguments = listOf(
+                navArgument(Routes.ARG_CATEGORY_ID) { type = NavType.LongType },
+                navArgument(Routes.ARG_CATEGORY_NAME) { type = NavType.StringType },
+                navArgument(Routes.ARG_PERIOD_START) { type = NavType.LongType },
+                navArgument(Routes.ARG_PERIOD_END) { type = NavType.LongType },
+            ),
+        ) {
+            CategoryTransactionsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.TRASH) {

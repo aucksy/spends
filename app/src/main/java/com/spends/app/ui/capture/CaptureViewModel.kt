@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.domain.model.SmsCaptureMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -16,6 +17,7 @@ import javax.inject.Inject
 
 data class CaptureUiState(
     val enabled: Boolean = false,
+    val mode: SmsCaptureMode = SmsCaptureMode.AUTO_ADD,
     val working: Boolean = false,
     val message: String? = null,
 )
@@ -28,8 +30,13 @@ class CaptureViewModel @Inject constructor(
 
     private val _local = MutableStateFlow(CaptureUiState())
     val state: StateFlow<CaptureUiState> =
-        combine(_local, settingsRepository.settings) { local, s -> local.copy(enabled = s.smsCaptureEnabled) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CaptureUiState())
+        combine(_local, settingsRepository.settings) { local, s ->
+            local.copy(enabled = s.smsCaptureEnabled, mode = s.smsCaptureMode)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CaptureUiState())
+
+    fun setMode(mode: SmsCaptureMode) {
+        viewModelScope.launch { settingsRepository.setSmsCaptureMode(mode) }
+    }
 
     /** Permission granted → enable capture and backfill the inbox once. */
     fun enableWithGrant() {

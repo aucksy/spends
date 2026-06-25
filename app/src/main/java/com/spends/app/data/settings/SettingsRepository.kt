@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.spends.app.domain.model.DefaultLanding
+import com.spends.app.domain.model.SmsCaptureMode
 import com.spends.app.domain.model.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +28,7 @@ data class SettingsState(
     val trashRetentionDays: Int = 30,
     val autoBackupEnabled: Boolean = false,
     val smsCaptureEnabled: Boolean = false,
+    val smsCaptureMode: SmsCaptureMode = SmsCaptureMode.AUTO_ADD,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -48,6 +50,7 @@ class SettingsRepository @Inject constructor(
             trashRetentionDays = prefs[Keys.TRASH_RETENTION_DAYS] ?: 30,
             autoBackupEnabled = prefs[Keys.AUTO_BACKUP] ?: false,
             smsCaptureEnabled = prefs[Keys.SMS_CAPTURE] ?: false,
+            smsCaptureMode = prefs[Keys.SMS_CAPTURE_MODE]?.toCaptureMode() ?: SmsCaptureMode.AUTO_ADD,
         )
     }
 
@@ -60,6 +63,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setTrashRetentionDays(days: Int) = edit { it[Keys.TRASH_RETENTION_DAYS] = days.coerceIn(1, 365) }
     suspend fun setAutoBackupEnabled(value: Boolean) = edit { it[Keys.AUTO_BACKUP] = value }
     suspend fun setSmsCaptureEnabled(value: Boolean) = edit { it[Keys.SMS_CAPTURE] = value }
+    suspend fun setSmsCaptureMode(mode: SmsCaptureMode) = edit { it[Keys.SMS_CAPTURE_MODE] = mode.name }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -85,6 +89,9 @@ class SettingsRepository @Inject constructor(
     private fun String.toLanding(): DefaultLanding =
         runCatching { DefaultLanding.valueOf(this) }.getOrDefault(DefaultLanding.TRANSACTIONS)
 
+    private fun String.toCaptureMode(): SmsCaptureMode =
+        runCatching { SmsCaptureMode.valueOf(this) }.getOrDefault(SmsCaptureMode.AUTO_ADD)
+
     private object Keys {
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val THEME_MODE = stringPreferencesKey("theme_mode")
@@ -95,5 +102,6 @@ class SettingsRepository @Inject constructor(
         val TRASH_RETENTION_DAYS = intPreferencesKey("trash_retention_days")
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val SMS_CAPTURE = booleanPreferencesKey("sms_capture_enabled")
+        val SMS_CAPTURE_MODE = stringPreferencesKey("sms_capture_mode")
     }
 }

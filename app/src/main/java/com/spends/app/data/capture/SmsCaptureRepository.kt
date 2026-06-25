@@ -41,12 +41,32 @@ class SmsCaptureRepository @Inject constructor(
 
     data class BackfillResult(val created: Int, val scanned: Int, val needsReview: Int)
 
+    /** A read-only summary of a parsed SMS for the capture prompt (REVIEW_PROMPT mode). */
+    data class CapturePreview(val amountMinor: Long, val kind: TxnKind, val title: String)
+
+    /** Result of persisting one capture: the new transaction id + its stored parse confidence. */
+    private data class Persisted(val id: Long, val confidence: Int)
+
     /** Parse + persist one message. Returns true if a transaction was created. */
-    suspend fun capture(sender: String?, body: String?, receivedAt: Long): Boolean = captureMutex.withLock {
+    suspend fun capture(sender: String?, body: String?, receivedAt: Long): Boolean =
+        captureReturningId(sender, body, receivedAt) != null
+
+    /** Parse + persist one message, returning the new transaction id (or null if not a txn / a dup). */
+    suspend fun captureReturningId(sender: String?, body: String?, receivedAt: Long): Long? = captureMutex.withLock {
         val parsed = SmsParser.parse(sender, body, receivedAt)
-        if (parsed.result != SmsParser.Result.TRANSACTION) return@withLock false
+        if (parsed.result != SmsParser.Result.TRANSACTION) return@withLock null
         val seen = expenseDao.allDedupeHashes().toHashSet()
-        persist(parsed, receivedAt, seen) != null
+        persist(parsed, receivedAt, seen)?.id
+    }
+
+    /** Parse only (no DB write) to decide whether/how to prompt the user. Null when it isn't a transaction. */
+    fun preview(sender: String?, body: String?, receivedAt: Long): CapturePreview? {
+        val parsed = SmsParser.parse(sender, body, receivedAt)
+        if (parsed.result != SmsParser.Result.TRANSACTION) return null
+        val amount = parsed.amountMinor ?: return null
+        val kind = parsed.kind ?: return null
+        val title = parsed.merchant ?: parsed.institution ?: "Transaction"
+        return CapturePreview(amount, kind, title)
     }
 
     /** One-time inbox backfill on enable. Bounded to [maxMessages] most-recent SMS. */
@@ -69,10 +89,10 @@ class SmsCaptureRepository @Inject constructor(
                     val date = if (iDate >= 0) c.getLong(iDate) else DateUtils.nowMillis()
                     val parsed = SmsParser.parse(sender, body, date)
                     if (parsed.result != SmsParser.Result.TRANSACTION) continue
-                    val conf = persist(parsed, date, seen)
-                    if (conf != null) {
+                    val res = persist(parsed, date, seen)
+                    if (res != null) {
                         created++
-                        if (conf < REVIEW_THRESHOLD) review++ // mirror the review-queue filter exactly
+                        if (res.confidence < REVIEW_THRESHOLD) review++ // mirror the review-queue filter exactly
                     }
                 }
             }
@@ -80,8 +100,8 @@ class SmsCaptureRepository @Inject constructor(
         }
     }
 
-    /** @return the stored parse confidence if a transaction was created, or null if skipped (dup). */
-    private suspend fun persist(parsed: SmsParser.Parsed, fallbackTime: Long, seen: HashSet<String>): Int? {
+    /** @return the new transaction id + stored confidence if created, or null if skipped (dup). */
+    private suspend fun persist(parsed: SmsParser.Parsed, fallbackTime: Long, seen: HashSet<String>): Persisted? {
         val amount = parsed.amountMinor ?: return null
         val kind = parsed.kind ?: return null
         val occurredAt = parsed.occurredAt ?: fallbackTime
@@ -98,7 +118,7 @@ class SmsCaptureRepository @Inject constructor(
         val instrument = listOfNotNull(parsed.institution, parsed.last4?.let { "••$it" })
             .joinToString(" ").ifBlank { null }
 
-        expenseRepository.create(
+        val id = expenseRepository.create(
             TransactionInput(
                 amountMinor = amount,
                 kind = kind,
@@ -111,7 +131,7 @@ class SmsCaptureRepository @Inject constructor(
                 parseConfidence = confidence,
             ),
         )
-        return confidence
+        return Persisted(id = id, confidence = confidence)
     }
 
     /** @return categoryId + whether we're confident enough to skip review. */

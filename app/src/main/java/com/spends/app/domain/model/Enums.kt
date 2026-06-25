@@ -29,5 +29,12 @@ enum class RecurrenceFreq { DAILY, WEEKLY, MONTHLY, YEARLY }
 /** Which screen the app opens on (PRD §4.19). */
 enum class DefaultLanding { TRANSACTIONS, ANALYTICS }
 
+/**
+ * How a captured bank SMS is handled (PRD §4.1):
+ *  - [AUTO_ADD]      adds the transaction silently; low-confidence ones surface in the review queue.
+ *  - [REVIEW_PROMPT] posts a heads-up notification (Add / Edit / Ignore) so nothing is saved until you act.
+ */
+enum class SmsCaptureMode { AUTO_ADD, REVIEW_PROMPT }
+
 /** Theme preference (PRD §4.15). */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }

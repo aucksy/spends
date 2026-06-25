@@ -11,6 +11,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -29,6 +30,16 @@ import com.spends.app.core.money.Money
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import kotlin.math.abs
+
+/**
+ * App-wide privacy switch for headline balances. When true, every [AutoSizeRupee] (the hero balance,
+ * the Expense/Income/Net tiles, the compact bar, and the donut centre — i.e. all the "top balances")
+ * renders a masked placeholder instead of the figure. Transaction-row amounts are unaffected.
+ */
+val LocalAmountsHidden = compositionLocalOf { false }
+
+/** Placeholder shown in place of a hidden balance. */
+private const val AMOUNT_MASK = "₹ ••••••"
 
 /** Parse a "#RRGGBB" hex into a Compose Color, falling back to neutral stone on bad input. */
 fun parseHexColor(hex: String): Color = try {
@@ -147,11 +158,13 @@ fun AutoSizeRupee(
     withSign: Boolean = false,
     minScale: Float = 0.45f,
 ) {
-    val text = if (withSign) {
-        val sign = if (minor > 0) "+" else if (minor < 0) "-" else ""
-        sign + Money.formatRupees(abs(minor))
-    } else {
-        Money.formatRupees(minor)
+    val text = when {
+        LocalAmountsHidden.current -> AMOUNT_MASK
+        withSign -> {
+            val sign = if (minor > 0) "+" else if (minor < 0) "-" else ""
+            sign + Money.formatRupees(abs(minor))
+        }
+        else -> Money.formatRupees(minor)
     }
     AutoSizeText(text = text, style = style, color = color, modifier = modifier, minScale = minScale)
 }

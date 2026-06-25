@@ -43,6 +43,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -89,11 +90,18 @@ fun TransactionsScreen(
     // trigger back and cause the header to oscillate/pop at the boundary.
     val collapsed by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
 
+    // While searching, suppress BOTH header states so the summary/compact bars never toggle height
+    // mid-scroll — that toggle was fighting the user's scroll and hiding the last result off-screen.
+    val searching = state.search.isNotBlank()
+    // Whenever the (debounced) result set changes, snap back to the top so the freshly filtered list
+    // starts fully visible instead of stranded at a stale scroll offset.
+    LaunchedEffect(state.search) { listState.scrollToItem(0) }
+
     var pendingDelete by remember { mutableStateOf<TransactionRowUi?>(null) }
     var changeCategoryFor by remember { mutableStateOf<TransactionRowUi?>(null) }
 
     Column(modifier = modifier.fillMaxSize()) {
-        AnimatedVisibility(visible = !collapsed) {
+        AnimatedVisibility(visible = !collapsed && !searching) {
             SummaryHeader(
                 state = state,
                 onPrevious = viewModel::stepPrevious,
@@ -101,7 +109,7 @@ fun TransactionsScreen(
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        AnimatedVisibility(visible = collapsed) {
+        AnimatedVisibility(visible = collapsed && !searching) {
             CompactBalanceBar(state)
         }
 
@@ -254,6 +262,9 @@ private fun SwipeableRow(
                 else -> false
             }
         },
+        // Require a deliberate, near-full swipe (70% of the row) before the action triggers. A stray
+        // horizontal nudge while the user is trying to scroll vertically falls short and snaps back.
+        positionalThreshold = { totalDistance -> totalDistance * 0.7f },
     )
     val semantic = LocalSemanticColors.current
     SwipeToDismissBox(

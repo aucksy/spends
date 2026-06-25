@@ -4,8 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
+import com.spends.app.data.capture.CaptureNotifier
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.domain.model.SmsCaptureMode
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -29,6 +31,7 @@ class SmsReceiver : BroadcastReceiver() {
     interface SmsCaptureEntryPoint {
         fun captureRepository(): SmsCaptureRepository
         fun settingsRepository(): SettingsRepository
+        fun captureNotifier(): CaptureNotifier
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -44,12 +47,22 @@ class SmsReceiver : BroadcastReceiver() {
         val entry = EntryPointAccessors.fromApplication(context.applicationContext, SmsCaptureEntryPoint::class.java)
         val capture = entry.captureRepository()
         val settings = entry.settingsRepository()
+        val notifier = entry.captureNotifier()
 
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                if (settings.settings.first().smsCaptureEnabled) {
-                    runCatching { capture.capture(sender, body, receivedAt) }
+                val s = settings.settings.first()
+                if (s.smsCaptureEnabled) {
+                    when (s.smsCaptureMode) {
+                        SmsCaptureMode.AUTO_ADD -> runCatching { capture.capture(sender, body, receivedAt) }
+                        SmsCaptureMode.REVIEW_PROMPT -> {
+                            // Don't save yet — prompt the user with Add / Edit / Ignore.
+                            capture.preview(sender, body, receivedAt)?.let {
+                                notifier.postCapturePrompt(sender, body, receivedAt, it)
+                            }
+                        }
+                    }
                 }
             } finally {
                 pending.finish()

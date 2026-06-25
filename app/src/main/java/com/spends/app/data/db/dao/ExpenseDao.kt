@@ -32,6 +32,20 @@ interface ExpenseDao {
     )
     fun observeActiveSearch(query: String): Flow<List<ExpenseWithAllocations>>
 
+    /**
+     * Active transactions in [start, end) that have at least one allocation to [categoryId], newest
+     * first. Backs the per-category drill-down from Analytics. EXISTS keeps a transaction listed once
+     * even when it splits across categories (no row fan-out from the allocation join).
+     */
+    @Transaction
+    @Query(
+        "SELECT * FROM expenses WHERE deletedAt IS NULL " +
+            "AND occurredAt >= :start AND occurredAt < :end " +
+            "AND EXISTS (SELECT 1 FROM allocations a WHERE a.expenseId = expenses.id AND a.categoryId = :categoryId) " +
+            "ORDER BY occurredAt DESC, id DESC",
+    )
+    fun observeByCategoryBetween(categoryId: Long, start: Long, end: Long): Flow<List<ExpenseWithAllocations>>
+
     @Transaction
     @Query("SELECT * FROM expenses WHERE id = :id")
     suspend fun getByIdWithAllocations(id: Long): ExpenseWithAllocations?
@@ -64,14 +78,18 @@ interface ExpenseDao {
     )
     fun observeKindSums(start: Long, end: Long): Flow<List<KindSum>>
 
-    /** Spend by category, already excluding transfers and excludeFromSpend categories (PRD §4.10). */
+    /**
+     * Spend by category for the donut/legend. Transfers stay out (they're neutral money movement),
+     * but EMIs/loans/investments ARE included now — the user wants every expense category to count as
+     * spending, so the donut total reconciles with the Expense tile.
+     */
     @Query(
         "SELECT c.id AS categoryId, c.name AS name, c.colorHex AS colorHex, c.iconKey AS iconKey, " +
             "SUM(a.amountMinor) AS total " +
             "FROM allocations a " +
             "JOIN expenses e ON e.id = a.expenseId " +
             "JOIN categories c ON c.id = a.categoryId " +
-            "WHERE e.deletedAt IS NULL AND e.kind = 'EXPENSE' AND c.excludeFromSpend = 0 " +
+            "WHERE e.deletedAt IS NULL AND e.kind = 'EXPENSE' " +
             "AND e.occurredAt >= :start AND e.occurredAt < :end " +
             "GROUP BY c.id ORDER BY total DESC",
     )

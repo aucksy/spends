@@ -47,6 +47,14 @@ class ExpenseRepository @Inject constructor(
     fun observeSearch(query: String): Flow<List<ExpenseWithAllocations>> =
         dao.observeActiveSearch(query.trim())
 
+    /** Active transactions allocated to [categoryId] within [startMillis, endExclusiveMillis), newest first. */
+    fun observeByCategoryBetween(
+        categoryId: Long,
+        startMillis: Long,
+        endExclusiveMillis: Long,
+    ): Flow<List<ExpenseWithAllocations>> =
+        dao.observeByCategoryBetween(categoryId, startMillis, endExclusiveMillis)
+
     fun observeTrashed(): Flow<List<ExpenseWithAllocations>> = dao.observeTrashed()
 
     /** Low-confidence SMS captures needing a quick confirm. */

@@ -48,8 +48,8 @@ fun SummaryHeader(
     // Tiles shown in the horizontally-scrollable strip. Expense + Income always; Carry forward and
     // Transfers join only when relevant, so two fill the width and extras scroll into view.
     val tiles = buildList {
-        add(Tile("Expense", state.totals.expense, semantic.expense, Icons.Filled.ArrowDownward, withSign = false))
-        add(Tile("Income", state.totals.income, semantic.income, Icons.Filled.ArrowUpward, withSign = false))
+        add(Tile("Expense", state.totals.expense, semantic.expense, Icons.Filled.ArrowUpward, withSign = false))
+        add(Tile("Income", state.totals.income, semantic.income, Icons.Filled.ArrowDownward, withSign = false))
         if (state.carryForward != null) {
             add(Tile("Carry forward", state.carryForward, semantic.transfer, Icons.AutoMirrored.Filled.ArrowForward, withSign = true))
         }

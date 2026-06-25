@@ -27,6 +27,8 @@ class BackupWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         if (!settingsRepository.settings.first().autoBackupEnabled) return Result.success()
+        // Backups are encrypted; without a recovery password set there's nothing to do (no retry storm).
+        if (!backupRepository.isBackupProtected()) return Result.success()
         return try {
             when (val auth = driveAuthManager.authorize()) {
                 is DriveAuthManager.AuthResult.Authorized -> {

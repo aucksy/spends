@@ -41,6 +41,7 @@ data class RecurringFreqSummary(
 
 /** One category wedge of the donut + legend. */
 data class CategorySlice(
+    val categoryId: Long,
     val name: String,
     val colorHex: String,
     val iconKey: String,
@@ -63,6 +64,10 @@ data class AnalyticsUiState(
     val weekly: List<Float> = emptyList(),
     val weekLabels: List<String> = emptyList(),
     val recurring: List<RecurringFreqSummary> = emptyList(),
+    // The selected period's epoch-millis bounds (same conversion the repository uses), so tapping a
+    // category can list that category's transactions over the exact same window.
+    val windowStartMillis: Long = 0,
+    val windowEndExclusiveMillis: Long = 0,
 ) {
     val netMinor: Long get() = incomeMinor - expenseMinor
     val isEmpty: Boolean get() = !loading && expenseMinor == 0L && incomeMinor == 0L
@@ -134,6 +139,7 @@ class AnalyticsViewModel @Inject constructor(
         val spendTotal = categorisedSpend.coerceAtLeast(1) // divide-by-zero guard for percentages only
         val slices = catSpend.map {
             CategorySlice(
+                categoryId = it.categoryId,
                 name = it.name,
                 colorHex = it.colorHex,
                 iconKey = it.iconKey,
@@ -142,14 +148,14 @@ class AnalyticsViewModel @Inject constructor(
             )
         }
 
-        // Weekly spend buckets (expenses only, excluding non-consumption — same set as the donut).
+        // Weekly spend buckets (all expenses — same set as the donut, which now includes EMIs/investments).
         val days = (window.endExclusive.toEpochDay() - window.start.toEpochDay()).toInt().coerceAtLeast(1)
         val weeks = ceil(days / 7.0).toInt().coerceIn(1, 6)
         val weekly = DoubleArray(weeks)
         items.filter { it.expense.kind == TxnKind.EXPENSE }.forEach { e ->
             val dayIndex = (DateUtils.toLocalDate(e.expense.occurredAt).toEpochDay() - window.start.toEpochDay()).toInt()
             val w = (dayIndex / 7).coerceIn(0, weeks - 1)
-            e.allocations.filter { !it.category.excludeFromSpend }.forEach { weekly[w] += it.allocation.amountMinor.toDouble() }
+            e.allocations.forEach { weekly[w] += it.allocation.amountMinor.toDouble() }
         }
 
         return AnalyticsUiState(
@@ -165,6 +171,8 @@ class AnalyticsViewModel @Inject constructor(
             weekly = weekly.map { it.toFloat() },
             weekLabels = (1..weeks).map { "W$it" },
             recurring = summariseRecurring(rules),
+            windowStartMillis = window.startMillis(),
+            windowEndExclusiveMillis = window.endExclusiveMillis(),
         )
     }
 

@@ -13,7 +13,10 @@ object BackupCodec {
     // Pre-restore safety copies use a prefix that is NOT a prefix of FILE_NAME_PREFIX, so they are
     // excluded from the restore picker and from the rolling 60-keep prune of real backups.
     const val SAFETY_NAME_PREFIX = "spends-presafety-"
+    // Legacy plaintext backups carried this extension; we can still decode them on restore.
     const val FILE_EXTENSION = ".json.gz"
+    // New backups are encrypted (opaque container, see BackupCrypto) — a distinct extension signals that.
+    const val ENCRYPTED_EXTENSION = ".spsenc"
 
     private val json = Json {
         ignoreUnknownKeys = true // tolerate fields added by newer app versions

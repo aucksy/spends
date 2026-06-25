@@ -2,12 +2,14 @@ package com.spends.app.ui.capture
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.spends.app.domain.model.SmsCaptureMode
+import com.spends.app.ui.components.PillSegmentedControl
 
 @Composable
 fun CaptureSection(viewModel: CaptureViewModel = hiltViewModel()) {
@@ -38,6 +42,19 @@ fun CaptureSection(viewModel: CaptureViewModel = hiltViewModel()) {
     ) { result ->
         val granted = result[Manifest.permission.READ_SMS] == true && result[Manifest.permission.RECEIVE_SMS] == true
         if (granted) viewModel.enableWithGrant() else viewModel.permissionDenied()
+    }
+
+    // For "Ask me each time": on Android 13+ the capture prompt is a notification, which needs POST_NOTIFICATIONS.
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* mode is already set; if denied, the prompt simply won't show */ }
+
+    fun selectMode(mode: SmsCaptureMode) {
+        viewModel.setMode(mode)
+        if (mode == SmsCaptureMode.REVIEW_PROMPT && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            if (!granted) notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     fun hasSmsPermission(): Boolean =
@@ -76,6 +93,34 @@ fun CaptureSection(viewModel: CaptureViewModel = hiltViewModel()) {
                 )
             }
         }
+
+        // When on, choose how a captured SMS is handled.
+        if (state.enabled) {
+            Text(
+                "When a bank SMS arrives",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+            PillSegmentedControl(
+                options = listOf("Add automatically", "Ask me each time"),
+                selectedIndex = if (state.mode == SmsCaptureMode.REVIEW_PROMPT) 1 else 0,
+                onSelect = { selectMode(if (it == 1) SmsCaptureMode.REVIEW_PROMPT else SmsCaptureMode.AUTO_ADD) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (state.mode == SmsCaptureMode.REVIEW_PROMPT) {
+                    "You'll get a notification with Add / Edit / Ignore — nothing is saved until you choose."
+                } else {
+                    "Transactions are added automatically; unsure ones wait in Settings → Review captured."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         state.message?.let { msg ->
             Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 4.dp))
         }

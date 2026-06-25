@@ -122,7 +122,10 @@ class RecurringRepository @Inject constructor(
                     var last = rule.lastRunAt
                     var guard = 0
                     while (!date.isAfter(today) && guard < maxCatchUpPerRule) {
-                        val occurredAt = DateUtils.epochMillisFor(date, 12, 0)
+                        // Stamp at start-of-day so an auto-added recurring item sits at the BASE of its
+                        // day — any transaction you enter manually during the day (real wall-clock time)
+                        // sorts above it, instead of a fixed noon stamp pinning it over newer entries.
+                        val occurredAt = DateUtils.startOfDayMillis(date)
                         val hash = DedupeKey.forRecurring(rule.id, occurredAt, rule.amountMinor, rule.kind)
                         if (seen.add(hash)) {
                             expenseRepository.create(

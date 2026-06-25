@@ -1,16 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Spends adaptive-icon FOREGROUND.
-  Three ledger rows stacked vertically (portrait), centred inside the 66dp safe
-  circle of the 108dp grid. Each row = a dot (left) + a rounded amount line +
-  a Plex-Mono style rupee glyph (right).
-    Row 1 = expense   #FFFFFF   line width 100%
-    Row 2 = income    #A7E0D8   line width  52%
-    Row 3 = transfer  #7FBFB7   line width  70%
-  Amount lines are white @ ~42% alpha. Flat / monoline — no gradients or shadows.
-  Rupee glyph = Material Symbols "currency_rupee" path (Apache 2.0), 24x24 source.
-  All art verified to lie within radius 33 of (54,54) (max radial 29) so OEM
-  circular masks never clip it.
+  Spends adaptive-icon MONOCHROME layer (Android 13 themed icons).
+  Single-colour (black) silhouette of the same three-row ledger mark; the system
+  re-tints it. Geometry identical to ic_launcher_foreground. Solid black, transparent bg.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -18,36 +10,29 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ============================ ROW 1 (expense, cy=38) ============================ -->
-    <!-- dot d=8 @ (37, 38) -->
+    <!-- ============================ ROW 1 (cy=38) ============================ -->
     <path
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="#FF000000"
         android:pathData="M37,34 a4,4 0 1,0 0.001,0 z" />
-    <!-- amount line 100%: pill x 43 -> 61.5, h4.5, fully rounded -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:fillAlpha="0.42"
+        android:fillColor="#FF000000"
         android:pathData="M45.25,35.75 h14 a2.25,2.25 0 0,1 0,4.5 h-14 a2.25,2.25 0 0,1 0,-4.5 z" />
-    <!-- rupee glyph, cap ~13, right-aligned -->
     <group
         android:scaleX="0.92"
         android:scaleY="0.92"
         android:translateX="54.44"
         android:translateY="26.96">
         <path
-            android:fillColor="#FFFFFFFF"
+            android:fillColor="#FF000000"
             android:pathData="M13.66,7C13.1,5.82 11.9,5 10.5,5H6v2h4.5c0.65,0 1.23,0.42 1.44,1H6v2h5.94c-0.21,0.58 -0.79,1 -1.44,1H6v2.41L11.59,19h2.83l-5,-5h0.58c1.4,0 2.6,-0.82 3.16,-2H18v-2h-2.06c-0.05,-0.34 -0.14,-0.68 -0.27,-1H18V7h-4.34z" />
     </group>
 
-    <!-- ============================ ROW 2 (income, cy=54) ============================ -->
-    <!-- dot d=8 @ (37, 54) -->
+    <!-- ============================ ROW 2 (cy=54) ============================ -->
     <path
-        android:fillColor="#FFA7E0D8"
+        android:fillColor="#FF000000"
         android:pathData="M37,50 a4,4 0 1,0 0.001,0 z" />
-    <!-- amount line 52%: pill x 43 -> 52.62, h4.5, fully rounded -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:fillAlpha="0.42"
+        android:fillColor="#FF000000"
         android:pathData="M45.25,51.75 h5.12 a2.25,2.25 0 0,1 0,4.5 h-5.12 a2.25,2.25 0 0,1 0,-4.5 z" />
     <group
         android:scaleX="0.92"
@@ -55,19 +40,16 @@
         android:translateX="54.44"
         android:translateY="42.96">
         <path
-            android:fillColor="#FFA7E0D8"
+            android:fillColor="#FF000000"
             android:pathData="M13.66,7C13.1,5.82 11.9,5 10.5,5H6v2h4.5c0.65,0 1.23,0.42 1.44,1H6v2h5.94c-0.21,0.58 -0.79,1 -1.44,1H6v2.41L11.59,19h2.83l-5,-5h0.58c1.4,0 2.6,-0.82 3.16,-2H18v-2h-2.06c-0.05,-0.34 -0.14,-0.68 -0.27,-1H18V7h-4.34z" />
     </group>
 
-    <!-- =========================== ROW 3 (transfer, cy=70) =========================== -->
-    <!-- dot d=8 @ (37, 70) -->
+    <!-- ============================ ROW 3 (cy=70) ============================ -->
     <path
-        android:fillColor="#FF7FBFB7"
+        android:fillColor="#FF000000"
         android:pathData="M37,66 a4,4 0 1,0 0.001,0 z" />
-    <!-- amount line 70%: pill x 43 -> 55.95, h4.5, fully rounded -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:fillAlpha="0.42"
+        android:fillColor="#FF000000"
         android:pathData="M45.25,67.75 h8.45 a2.25,2.25 0 0,1 0,4.5 h-8.45 a2.25,2.25 0 0,1 0,-4.5 z" />
     <group
         android:scaleX="0.92"
@@ -75,7 +57,7 @@
         android:translateX="54.44"
         android:translateY="58.96">
         <path
-            android:fillColor="#FF7FBFB7"
+            android:fillColor="#FF000000"
             android:pathData="M13.66,7C13.1,5.82 11.9,5 10.5,5H6v2h4.5c0.65,0 1.23,0.42 1.44,1H6v2h5.94c-0.21,0.58 -0.79,1 -1.44,1H6v2.41L11.59,19h2.83l-5,-5h0.58c1.4,0 2.6,-0.82 3.16,-2H18v-2h-2.06c-0.05,-0.34 -0.14,-0.68 -0.27,-1H18V7h-4.34z" />
     </group>
 

@@ -23,11 +23,13 @@ import com.spends.app.domain.model.ThemeMode
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -36,6 +38,12 @@ import javax.inject.Singleton
 
 private val Context.backupMetaStore: DataStore<Preferences> by preferencesDataStore(name = "backup_meta")
 private val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
+
+/** Raised when a backup can't be made yet because no recovery password has been set (encryption gate). */
+class BackupNotProtectedException : Exception("Set a backup password first so your backups are encrypted.")
+
+/** Raised when restoring a backup whose key isn't on this device (e.g. a new phone) — prompt for the password. */
+class BackupNeedsPasswordException : Exception("Enter your backup password to restore this backup.")
 
 /**
  * Builds/restores the full-state snapshot (PRD §4.12) and orchestrates it against the user's Drive
@@ -47,6 +55,7 @@ class BackupRepository @Inject constructor(
     private val db: SpendsDatabase,
     private val settingsRepository: SettingsRepository,
     private val driveClient: DriveClient,
+    private val secureKeyStore: SecureKeyStore,
     @ApplicationContext private val context: Context,
 ) {
     private val categoryDao = db.categoryDao()
@@ -89,25 +98,68 @@ class BackupRepository @Inject constructor(
         settingsRepository.restore(snapshot.data.settings.toState())
     }
 
+    // ---- Encryption policy ----
+
+    /** True when this device can make/read encrypted backups without a password (DEK armed). */
+    fun isBackupProtected(): Boolean = secureKeyStore.isReady()
+
+    /** True once a recovery password has been set. */
+    fun hasBackupPassword(): Boolean = secureKeyStore.hasPassword()
+
+    /** Set/replace the recovery password (PBKDF2 runs off the main thread). Keeps the same device DEK. */
+    suspend fun setBackupPassword(password: CharArray) = withContext(Dispatchers.Default) {
+        secureKeyStore.setPassword(password)
+    }
+
+    /** Encrypt a snapshot for storage. Requires a recovery password so any device can recover the file. */
+    private fun protectedBytes(snapshot: Snapshot): ByteArray {
+        val bundle = secureKeyStore.wrapBundle() ?: throw BackupNotProtectedException()
+        return BackupCrypto.seal(BackupCodec.encode(snapshot), secureKeyStore.dek(), bundle)
+    }
+
+    /** Decode a backup, transparently decrypting new (encrypted) files and still accepting legacy plaintext. */
+    private fun decodeAny(bytes: ByteArray): Snapshot {
+        if (!BackupCrypto.isEncrypted(bytes)) return BackupCodec.decode(bytes) // legacy plaintext gzip
+        if (!secureKeyStore.isReady()) throw BackupNeedsPasswordException()
+        val plain = try {
+            BackupCrypto.openWithDek(bytes, secureKeyStore.dek())
+        } catch (e: Exception) {
+            // Encrypted with another device's DEK (e.g. a backup from a different phone) — need the password.
+            throw BackupNeedsPasswordException()
+        }
+        return BackupCodec.decode(plain)
+    }
+
+    /** Decode an encrypted backup with the recovery password, re-arming this device for zero-hassle after. */
+    private fun decodeWithPassword(bytes: ByteArray, password: CharArray): Snapshot {
+        val recovered = BackupCrypto.openWithPassword(bytes, password) // throws WrongBackupPasswordException
+        secureKeyStore.importRecovered(recovered.dek, recovered.bundle)
+        return BackupCodec.decode(recovered.plaintext)
+    }
+
     // ---- Local file backup (no network) ----
 
-    /** Gzip-JSON bytes of the current full snapshot — for writing to a user-picked local file. */
-    suspend fun buildBackupBytes(): ByteArray = BackupCodec.encode(buildSnapshot())
+    /** Encrypted bytes of the current full snapshot — for writing to a user-picked local file. */
+    suspend fun buildBackupBytes(): ByteArray = protectedBytes(buildSnapshot())
 
     /** Decode + apply a backup read from a local file (replaces all current data). */
-    suspend fun restoreFromBytes(bytes: ByteArray) = applySnapshot(BackupCodec.decode(bytes))
+    suspend fun restoreFromBytes(bytes: ByteArray) = applySnapshot(decodeAny(bytes))
+
+    /** Decode + apply a local-file backup using the recovery password (new-device path). */
+    suspend fun restoreFromBytesWithPassword(bytes: ByteArray, password: CharArray) =
+        applySnapshot(decodeWithPassword(bytes, password))
 
     // ---- Drive operations (token supplied by the caller) ----
 
-    /** Upload a fresh snapshot to the "Spends Backup" folder, validate, prune to 60. Returns its time. */
+    /** Upload a fresh (encrypted) snapshot to the "Spends Backup" folder, validate, prune to 60. */
     suspend fun backupNow(token: String): Long = driveMutex.withLock {
         val folderId = driveClient.ensureBackupFolder(token)
         val snapshot = buildSnapshot()
-        val bytes = BackupCodec.encode(snapshot)
-        val name = BackupCodec.FILE_NAME_PREFIX + stamp(snapshot.createdAt) + BackupCodec.FILE_EXTENSION
+        val bytes = protectedBytes(snapshot)
+        val name = BackupCodec.FILE_NAME_PREFIX + stamp(snapshot.createdAt) + BackupCodec.ENCRYPTED_EXTENSION
         val fileId = driveClient.create(token, name, bytes, folderId)
         // Validate: re-download + decode (cheap guard against truncation).
-        BackupCodec.decode(driveClient.download(token, fileId))
+        decodeAny(driveClient.download(token, fileId))
         runCatching { prune(token, folderId) }
         setLastBackupAt(snapshot.createdAt)
         snapshot.createdAt
@@ -120,14 +172,26 @@ class BackupRepository @Inject constructor(
 
     /** Download + decode a chosen backup, take a pre-restore safety copy, then apply it. */
     suspend fun restoreFrom(token: String, fileId: String) = driveMutex.withLock {
-        val snapshot = BackupCodec.decode(driveClient.download(token, fileId))
+        val snapshot = decodeAny(driveClient.download(token, fileId))
+        backupSafetyCopy(token)
+        applySnapshot(snapshot)
+    }
+
+    /** New-device Drive restore: decrypt with the recovery password, safety-copy, then apply. */
+    suspend fun restoreFromWithPassword(token: String, fileId: String, password: CharArray) = driveMutex.withLock {
+        val snapshot = decodeWithPassword(driveClient.download(token, fileId), password)
+        backupSafetyCopy(token) // armed now — the password just imported the DEK
+        applySnapshot(snapshot)
+    }
+
+    /** Best-effort pre-restore safety copy (skipped silently if not protected yet, e.g. a fresh device). */
+    private suspend fun backupSafetyCopy(token: String) {
         runCatching {
             val folderId = driveClient.ensureBackupFolder(token)
             val safety = buildSnapshot()
-            val safetyName = BackupCodec.SAFETY_NAME_PREFIX + stamp(safety.createdAt) + BackupCodec.FILE_EXTENSION
-            driveClient.create(token, safetyName, BackupCodec.encode(safety), folderId)
+            val safetyName = BackupCodec.SAFETY_NAME_PREFIX + stamp(safety.createdAt) + BackupCodec.ENCRYPTED_EXTENSION
+            driveClient.create(token, safetyName, protectedBytes(safety), folderId)
         }
-        applySnapshot(snapshot)
     }
 
     private suspend fun prune(token: String, folderId: String, keep: Int = 60) {
