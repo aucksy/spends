@@ -1,5 +1,8 @@
 package com.spends.app.ui.quickadd
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,8 +45,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -71,6 +75,7 @@ fun QuickAddSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val saving by viewModel.saving.collectAsStateWithLifecycle()
 
@@ -81,6 +86,10 @@ fun QuickAddSheet(
     var occurredAt by rememberSaveable { mutableStateOf(viewModel.nowMillis()) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+    // #6: the "pick a category" warning + a gentle shake only fire when the user actually tries to save
+    // without one — never reactively while typing the amount (which used to shove the keypad).
+    var categoryError by remember { mutableStateOf(false) }
+    val categoryShake = remember { Animatable(0f) }
 
     val usageFilter = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
@@ -88,7 +97,9 @@ fun QuickAddSheet(
 
     val result = CalculatorEngine.evaluate(expr)
     val amountMinor = CalculatorEngine.toPositiveMinor(result)
-    val canSave = amountMinor != null && selectedCategoryId != null && !saving
+    // Save is tappable as soon as a valid amount exists; a missing category is handled on tap (shake +
+    // warning) rather than by disabling the button, so the user gets feedback instead of a dead button.
+    val amountReady = amountMinor != null && !saving
 
     fun dismiss() {
         // Animate the sheet away, then fire onDismiss once (guarded so an interrupted hide doesn't).
@@ -106,12 +117,18 @@ fun QuickAddSheet(
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = kind == TxnKind.EXPENSE,
-                    onClick = { kind = TxnKind.EXPENSE; selectedCategoryId = null },
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        kind = TxnKind.EXPENSE; selectedCategoryId = null; categoryError = false
+                    },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                 ) { Text("Expense") }
                 SegmentedButton(
                     selected = kind == TxnKind.INCOME,
-                    onClick = { kind = TxnKind.INCOME; selectedCategoryId = null },
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        kind = TxnKind.INCOME; selectedCategoryId = null; categoryError = false
+                    },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                 ) { Text("Income") }
             }
@@ -121,7 +138,7 @@ fun QuickAddSheet(
             Spacer(Modifier.height(12.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.weight(1f)) {
+                Box(Modifier.weight(1f).offset(x = categoryShake.value.dp)) {
                     CategoryPickerField(
                         selected = selectedCategory,
                         placeholder = "Category",
@@ -133,6 +150,14 @@ fun QuickAddSheet(
                     Spacer(Modifier.width(6.dp))
                     Text(DateUtils.formatDay(occurredAt))
                 }
+            }
+            if (categoryError) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Pick a category to save",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             Spacer(Modifier.height(10.dp))
@@ -146,30 +171,32 @@ fun QuickAddSheet(
 
             Spacer(Modifier.height(12.dp))
             CalculatorKeypad(
-                onKey = { key -> expr = CalculatorEngine.append(expr, key) },
-                canSave = canSave,
+                onKey = { key ->
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    expr = CalculatorEngine.append(expr, key)
+                },
+                canSave = amountReady,
                 saving = saving,
                 onSave = {
                     val a = amountMinor
                     val c = selectedCategoryId
-                    if (a != null && c != null) {
-                        viewModel.save(a, kind, c, note, occurredAt) {
-                            onSaved()
-                            dismiss()
+                    when {
+                        a != null && c != null -> {
+                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                            viewModel.save(a, kind, c, note, occurredAt) {
+                                onSaved()
+                                dismiss()
+                            }
+                        }
+                        a != null -> {
+                            // Valid amount but no category: warn + shake the field instead of saving.
+                            categoryError = true
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            scope.launch { shakeField(categoryShake) }
                         }
                     }
                 },
             )
-            if (amountMinor != null && selectedCategoryId == null) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Pick a category to save",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                )
-            }
         }
     }
 
@@ -191,10 +218,21 @@ fun QuickAddSheet(
         CategoryPickerSheet(
             categories = visibleCategories,
             selectedId = selectedCategoryId,
-            onSelect = { id -> selectedCategoryId = id; showCategoryPicker = false },
+            onSelect = { id ->
+                selectedCategoryId = id
+                categoryError = false // clears the warning the moment a category is chosen
+                showCategoryPicker = false
+            },
             onDismiss = { showCategoryPicker = false },
         )
     }
+}
+
+/** A short left-right wobble used to draw attention to the category field on a failed save (#6). */
+private suspend fun shakeField(anim: Animatable<Float, *>) {
+    val steps = listOf(-10f, 10f, -8f, 8f, -5f, 5f, -2f, 0f)
+    anim.snapTo(0f)
+    for (target in steps) anim.animateTo(target, animationSpec = tween(durationMillis = 38))
 }
 
 @Composable

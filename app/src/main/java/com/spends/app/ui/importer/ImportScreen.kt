@@ -91,8 +91,8 @@ private fun IdleContent(onPick: () -> Unit) {
         Text("Import your history", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Pick a Monito Excel export (.xls) or any .csv. Every category is kept exactly as-is, and " +
-                "duplicates are skipped if you import again. Nothing leaves your phone.",
+            "Pick an Excel file (.xlsx or .xls) — including one Spends exported — or any .csv. New rows are " +
+                "added to what you already have and duplicates are skipped. Nothing leaves your phone.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

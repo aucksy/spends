@@ -99,6 +99,7 @@ fun SummaryHeader(
                     style = Numerals.balanceHero,
                     color = heroOn,
                     withSign = true,
+                    scrollable = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 )
             }

@@ -10,6 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.addedit.AddEditScreen
+import com.spends.app.ui.backup.OnboardingRestoreScreen
 import com.spends.app.ui.capture.CaptureSettingsScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
@@ -26,6 +27,8 @@ fun SpendsNavHost(
     settings: SettingsState,
     pendingEditExpenseId: Long? = null,
     onPendingEditConsumed: () -> Unit = {},
+    pendingQuickAdd: Boolean = false,
+    onQuickAddConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val start = if (settings.onboardingComplete) Routes.HOME else Routes.ONBOARDING
@@ -46,9 +49,24 @@ fun SpendsNavHost(
         popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End) },
     ) {
         composable(Routes.ONBOARDING) {
+            // A widget quick-add only makes sense once set up; if we're still onboarding, drop any
+            // pending signal so it can't pop the sheet open later when Home first appears.
+            LaunchedEffect(Unit) { if (pendingQuickAdd) onQuickAddConsumed() }
             OnboardingScreen(
                 onImport = { navController.navigate(Routes.importRoute(fromOnboarding = true)) },
+                onRestore = { navController.navigate(Routes.RESTORE) },
                 onFinished = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                },
+            )
+        }
+
+        composable(Routes.RESTORE) {
+            OnboardingRestoreScreen(
+                onBack = { navController.popBackStack() },
+                onRestored = {
                     navController.navigate(Routes.HOME) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
@@ -67,6 +85,8 @@ fun SpendsNavHost(
                 onOpenCategory = { categoryId, name, start, end ->
                     navController.navigate(Routes.categoryTxns(categoryId, name, start, end))
                 },
+                openQuickAddSignal = pendingQuickAdd,
+                onQuickAddConsumed = onQuickAddConsumed,
             )
         }
 

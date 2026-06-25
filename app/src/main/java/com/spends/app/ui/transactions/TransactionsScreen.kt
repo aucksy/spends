@@ -1,6 +1,5 @@
 package com.spends.app.ui.transactions
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,12 +31,11 @@ import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
@@ -49,7 +47,6 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,7 +70,6 @@ import com.spends.app.core.theme.Numerals
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
-import com.spends.app.ui.components.AutoSizeRupee
 import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryPickerSheet
 import com.spends.app.ui.components.PeriodSelectorBar
@@ -95,13 +91,11 @@ fun TransactionsScreen(
     var searchText by rememberSaveable { mutableStateOf("") }
 
     val listState = rememberLazyListState()
-    // Collapse once the first list item has scrolled off the top. Keyed on firstVisibleItemIndex
-    // (not canScrollBackward) so that removing the header — which grows the viewport — can't flip the
-    // trigger back and cause the header to oscillate/pop at the boundary.
-    val collapsed by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
 
-    // While searching, suppress BOTH header states so the summary/compact bars never toggle height
-    // mid-scroll — that toggle was fighting the user's scroll and hiding the last result off-screen.
+    // The summary header lives INSIDE the LazyColumn (as item 0) so it scrolls away naturally. The old
+    // approach toggled a header/compact-bar with AnimatedVisibility above the list, which changed the
+    // viewport height mid-scroll and shoved a row back down on every drag (the #15 glitch). It's only
+    // hidden while searching so results start at the very top.
     val searching = state.search.isNotBlank()
     // Whenever the (debounced) result set changes, snap back to the top so the freshly filtered list
     // starts fully visible instead of stranded at a stale scroll offset.
@@ -134,13 +128,6 @@ fun TransactionsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
         }
-        AnimatedVisibility(visible = !collapsed && !searching) {
-            SummaryHeader(state = state, modifier = Modifier.padding(top = 2.dp))
-        }
-        AnimatedVisibility(visible = collapsed && !searching) {
-            CompactBalanceBar(state)
-        }
-
         TextField(
             value = searchText,
             onValueChange = { searchText = it; viewModel.setSearch(it) },
@@ -165,6 +152,11 @@ fun TransactionsScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 96.dp),
             ) {
+                if (!searching) {
+                    item(key = "summary") {
+                        SummaryHeader(state = state, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
                 state.groups.forEach { group ->
                     item(key = "header-${group.date}") {
                         DayHeader(group)
@@ -196,7 +188,11 @@ fun TransactionsScreen(
                     pendingDelete = null
                     viewModel.moveToTrash(row.id)
                     scope.launch {
-                        val result = snackbarHostState.showSnackbar(message = "Moved to Trash", actionLabel = "Undo")
+                        val result = snackbarHostState.showSnackbar(
+                            message = "Moved to Trash",
+                            actionLabel = "Undo",
+                            duration = SnackbarDuration.Short,
+                        )
                         if (result == SnackbarResult.ActionPerformed) viewModel.restore(row.id)
                     }
                 }) { Text("Delete") }
@@ -230,7 +226,11 @@ fun TransactionsScreen(
                     selectedIds = emptySet()
                     viewModel.bulkMoveToTrash(ids)
                     scope.launch {
-                        val result = snackbarHostState.showSnackbar(message = "Moved ${ids.size} to Trash", actionLabel = "Undo")
+                        val result = snackbarHostState.showSnackbar(
+                            message = "Moved ${ids.size} to Trash",
+                            actionLabel = "Undo",
+                            duration = SnackbarDuration.Short,
+                        )
                         if (result == SnackbarResult.ActionPerformed) viewModel.bulkRestore(ids)
                     }
                 }) { Text("Delete") }
@@ -278,39 +278,6 @@ private fun SelectionBar(count: Int, onClear: () -> Unit, onChangeCategory: () -
         }
         IconButton(onClick = onDelete) {
             Icon(Icons.Filled.Delete, contentDescription = "Delete selected", tint = MaterialTheme.colorScheme.onPrimaryContainer)
-        }
-    }
-}
-
-@Composable
-private fun CompactBalanceBar(state: TransactionsUiState) {
-    val semantic = LocalSemanticColors.current
-    val balance = if (state.carryForward != null) (state.balanceWithCarry ?: 0) else state.totals.balance
-    val negative = balance < 0
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (negative) semantic.negativeContainer else MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "BALANCE",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            AutoSizeRupee(
-                minor = balance,
-                style = Numerals.amountLg,
-                color = if (negative) semantic.negative else MaterialTheme.colorScheme.onSurface,
-                withSign = true,
-                modifier = Modifier.weight(1f).padding(start = 16.dp),
-            )
         }
     }
 }
@@ -451,8 +418,8 @@ private fun TransactionRow(row: TransactionRowUi, selected: Boolean, onClick: ()
             val subtitle = buildString {
                 append(row.primary?.name ?: "Uncategorized")
                 if (row.isSplit) append(" +${row.categories.size - 1}")
-                append(" · ")
-                append(row.timeLabel)
+                // Time is omitted for rows with a synthetic timestamp (e.g. recurring).
+                row.timeLabel?.let { append(" · "); append(it) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 sourceIcon(row.source)?.let { glyph ->

@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,8 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Lock
@@ -24,7 +21,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,7 +39,10 @@ import com.spends.app.core.time.DateUtils
 import com.spends.app.data.backup.DriveFile
 
 @Composable
-fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
+fun BackupSection(
+    onImportSpreadsheet: () -> Unit = {},
+    viewModel: BackupViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingRestore by remember { mutableStateOf<DriveFile?>(null) }
     var pendingFileRestore by remember { mutableStateOf<Uri?>(null) }
@@ -158,31 +156,34 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         ) { Text("Export to Excel (.xlsx)") }
 
+        // Import a spreadsheet back in — the same .xlsx Spends exports, or any .xls/.csv. Adds new rows
+        // and skips duplicates (merge), unlike a full backup restore which replaces everything (#7).
+        OutlinedButton(
+            onClick = onImportSpreadsheet,
+            enabled = !state.working,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        ) { Text("Import from Excel/CSV") }
+
         state.message?.let { msg ->
             Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
         }
     }
 
-    // Drive restore picker
+    // Drive restore picker — tapping a tile dismisses this list and opens the confirm dialog, so the
+    // picker never pops straight back open (#12).
     val backups = state.backups
     if (backups != null) {
         AlertDialog(
             onDismissRequest = viewModel::dismissRestore,
             title = { Text("Restore from Drive") },
             text = {
-                if (backups.isEmpty()) {
-                    Text("No backups found in Drive yet.")
-                } else {
-                    LazyColumn {
-                        items(backups, key = { it.id }) { file ->
-                            Column(
-                                modifier = Modifier.fillMaxWidth().clickable { pendingRestore = file }.padding(vertical = 10.dp),
-                            ) {
-                                Text(file.modifiedTime?.take(16)?.replace("T", "  ") ?: file.name, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
+                DriveBackupList(
+                    backups = backups,
+                    onPick = { file ->
+                        pendingRestore = file
+                        viewModel.dismissRestore()
+                    },
+                )
             },
             confirmButton = { TextButton(onClick = viewModel::dismissRestore) { Text("Close") } },
         )
@@ -246,23 +247,17 @@ private fun SetBackupPasswordDialog(changing: Boolean, onConfirm: (String) -> Un
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.padding(vertical = 6.dp))
-                OutlinedTextField(
+                PasswordField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password (min 6 characters)") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
+                    label = "Password (min 6 characters)",
                 )
                 Spacer(Modifier.padding(vertical = 4.dp))
-                OutlinedTextField(
+                PasswordField(
                     value = confirm,
                     onValueChange = { confirm = it },
-                    label = { Text("Confirm password") },
-                    singleLine = true,
+                    label = "Confirm password",
                     isError = mismatch,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 if (mismatch) {
                     Text("Passwords don't match", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -288,13 +283,10 @@ private fun RestorePasswordDialog(onConfirm: (String) -> Unit, onCancel: () -> U
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.padding(vertical = 6.dp))
-                OutlinedTextField(
+                PasswordField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Backup password") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
+                    label = "Backup password",
                 )
             }
         },

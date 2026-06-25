@@ -16,6 +16,7 @@ object Routes {
     const val RECURRING = "recurring"
     const val REVIEW = "review"
     const val CAPTURE = "capture"
+    const val RESTORE = "restore"
 
     const val IMPORT = "import"
     const val ARG_FROM_ONBOARDING = "fromOnboarding"

@@ -44,6 +44,7 @@ data class BackupUiState(
     val hasBackupPassword: Boolean = false,
     val backups: List<DriveFile>? = null, // non-null => show the restore picker
     val passwordRestore: PendingPasswordRestore? = null, // non-null => prompt for the recovery password
+    val restoreComplete: Boolean = false, // one-shot: a restore just succeeded (onboarding uses it to go Home)
 )
 
 @HiltViewModel
@@ -160,11 +161,14 @@ class BackupViewModel @Inject constructor(
     fun restore(fileId: String) = withToken { token ->
         try {
             backupRepository.restoreFrom(token, fileId)
-            _state.update { it.copy(working = false, backups = null, message = "Restored from Drive") }
+            _state.update { it.copy(working = false, backups = null, message = "Restored from Drive", restoreComplete = true) }
         } catch (e: BackupNeedsPasswordException) {
             _state.update { it.copy(working = false, backups = null, passwordRestore = PendingPasswordRestore.Drive(fileId)) }
         }
     }
+
+    /** Consume the one-shot restore-complete flag (after the UI has reacted, e.g. navigated Home). */
+    fun consumeRestoreComplete() = _state.update { it.copy(restoreComplete = false) }
 
     /** Complete a restore that needed the recovery password (new-device path). */
     fun restoreWithPassword(password: String) {
@@ -172,7 +176,7 @@ class BackupViewModel @Inject constructor(
             is PendingPasswordRestore.Drive -> withToken { token ->
                 try {
                     backupRepository.restoreFromWithPassword(token, pending.fileId, password.toCharArray())
-                    _state.update { it.copy(working = false, passwordRestore = null, message = "Restored from Drive") }
+                    _state.update { it.copy(working = false, passwordRestore = null, message = "Restored from Drive", restoreComplete = true) }
                 } catch (e: WrongBackupPasswordException) {
                     _state.update { it.copy(working = false, message = e.message) }
                 }
@@ -181,7 +185,7 @@ class BackupViewModel @Inject constructor(
                 _state.update { it.copy(working = true, message = null) }
                 try {
                     backupRepository.restoreFromBytesWithPassword(readBytes(pending.uri), password.toCharArray())
-                    _state.update { it.copy(working = false, passwordRestore = null, message = "Restored from file") }
+                    _state.update { it.copy(working = false, passwordRestore = null, message = "Restored from file", restoreComplete = true) }
                 } catch (e: WrongBackupPasswordException) {
                     _state.update { it.copy(working = false, message = e.message) }
                 } catch (e: Exception) {

@@ -54,6 +54,8 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+    openQuickAddSignal: Boolean = false,
+    onQuickAddConsumed: () -> Unit = {},
 ) {
     val initialTab = if (settings.defaultLanding == DefaultLanding.ANALYTICS) HomeTab.ANALYTICS else HomeTab.TRANSACTIONS
     var tab by rememberSaveable { mutableStateOf(initialTab) }
@@ -64,6 +66,14 @@ fun HomeScreen(
     var amountsHidden by rememberSaveable { mutableStateOf(true) }
     // The + opens the fast half-screen quick-add sheet (calculator keypad). Editing still uses the full screen.
     var showQuickAdd by remember { mutableStateOf(false) }
+
+    // The home-screen widget (#14) launches the app with this signal — open the quick-add sheet, once.
+    androidx.compose.runtime.LaunchedEffect(openQuickAddSignal) {
+        if (openQuickAddSignal) {
+            showQuickAdd = true
+            onQuickAddConsumed()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -114,11 +124,12 @@ fun HomeScreen(
                         onOpenCategory = onOpenCategory,
                     )
                 }
-                // Privacy eye — bottom-left, balancing the + FAB on the right.
+                // Privacy eye — bottom-left, balancing the + FAB on the right. Same tint as the + FAB
+                // (primaryContainer) so the two read as a matched pair (#1).
                 SmallFloatingActionButton(
                     onClick = { amountsHidden = !amountsHidden },
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
                 ) {
                     Icon(

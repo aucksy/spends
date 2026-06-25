@@ -27,7 +27,7 @@ class ImportRepository @Inject constructor(
     /** Read + parse a picked file into a previewable [ParsedImport] (no DB writes yet). */
     suspend fun parse(openStream: () -> InputStream, fileName: String): ParsedImport {
         val reader = SpreadsheetReaders.forFileName(fileName)
-            ?: throw ImportException("Unsupported file type. Use a Monito .xls export or a .csv (.xlsx support is coming).")
+            ?: throw ImportException("Unsupported file type. Use an Excel file (.xlsx or .xls) or a .csv.")
         val sheets = openStream().use { reader.read(it) }
         if (sheets.isEmpty()) throw ImportException("That file has no readable sheets.")
         return if (MonitoAdapter.looksLikeMonito(sheets)) {

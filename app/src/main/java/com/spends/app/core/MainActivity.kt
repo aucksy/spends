@@ -26,10 +26,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         splash.setKeepOnScreenCondition { viewModel.uiState.value.loading }
         handleCaptureEditIntent(intent)
+        // Only honor a widget quick-add on a genuinely fresh launch. On a config-change/process-death
+        // recreate, savedInstanceState != null and Android re-delivers the original launch intent (extra
+        // still set), which would otherwise re-pop the sheet. A real new tap arrives via onNewIntent.
+        if (savedInstanceState == null) handleQuickAddIntent(intent)
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val pendingEdit by viewModel.pendingEditId.collectAsStateWithLifecycle()
+            val pendingQuickAdd by viewModel.pendingQuickAdd.collectAsStateWithLifecycle()
             SpendsTheme(
                 themeMode = state.settings.themeMode,
                 dynamicColor = state.settings.dynamicColor,
@@ -39,6 +44,8 @@ class MainActivity : ComponentActivity() {
                         settings = state.settings,
                         pendingEditExpenseId = pendingEdit,
                         onPendingEditConsumed = viewModel::consumePendingEdit,
+                        pendingQuickAdd = pendingQuickAdd,
+                        onQuickAddConsumed = viewModel::consumeQuickAdd,
                     )
                 }
             }
@@ -49,6 +56,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleCaptureEditIntent(intent)
+        handleQuickAddIntent(intent)
+    }
+
+    /** Home-screen widget tap (#14): open the quick-add sheet once we're at Home. */
+    private fun handleQuickAddIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_QUICK_ADD, false) != true) return
+        viewModel.requestQuickAdd()
+        intent.removeExtra(EXTRA_OPEN_QUICK_ADD) // consume so a recreate doesn't re-fire
     }
 
     /** "Edit" action of a capture-prompt notification: dismiss it, persist the SMS, open its editor. */
@@ -66,5 +81,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_CAPTURE_EDIT = "capture_edit"
+        const val EXTRA_OPEN_QUICK_ADD = "open_quick_add"
     }
 }

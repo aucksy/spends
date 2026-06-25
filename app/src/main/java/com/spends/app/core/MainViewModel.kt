@@ -57,6 +57,14 @@ class MainViewModel @Inject constructor(
         _pendingEditId.value = null
     }
 
+    // Set when the home-screen widget is tapped (#14) — the nav host opens the quick-add sheet.
+    private val _pendingQuickAdd = MutableStateFlow(false)
+    val pendingQuickAdd: StateFlow<Boolean> = _pendingQuickAdd
+
+    fun requestQuickAdd() { _pendingQuickAdd.value = true }
+
+    fun consumeQuickAdd() { _pendingQuickAdd.value = false }
+
     init {
         // Best-effort, idempotent launch chores. The daily WorkManager job is the backstop for both
         // when the app isn't opened for a while.

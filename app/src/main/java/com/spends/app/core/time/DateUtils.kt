@@ -58,5 +58,14 @@ object DateUtils {
     fun formatDay(date: LocalDate): String = dayFormatter.format(date)
     fun formatDayHeader(date: LocalDate): String = dayMonthFormatter.format(date)
     fun formatTime(epochMillis: Long): String = timeFormatter.format(toZdt(epochMillis))
+    fun formatDayTime(epochMillis: Long): String = "${formatDay(epochMillis)}, ${formatTime(epochMillis)}"
     fun formatMonth(yearMonth: YearMonth): String = monthFormatter.format(yearMonth.atDay(1))
+
+    /**
+     * Render an RFC-3339 timestamp (e.g. Google Drive's `modifiedTime`, "2026-06-25T03:34:56Z") as a
+     * friendly IST date + 12-hour time. Falls back to the raw string if it can't be parsed, so the
+     * restore picker never shows a blank row (#11/#12).
+     */
+    fun formatIsoInstant(iso: String): String =
+        runCatching { formatDayTime(Instant.parse(iso).toEpochMilli()) }.getOrDefault(iso)
 }

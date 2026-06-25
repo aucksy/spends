@@ -196,7 +196,7 @@ fun SettingsScreen(
             SectionHeader("Data")
             ClickableRow(
                 title = "Import data",
-                value = "Monito Excel (.xls) or CSV",
+                value = "Excel (.xlsx/.xls) or CSV — adds & merges",
                 onClick = onOpenImport,
                 leading = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
             )
@@ -209,7 +209,7 @@ fun SettingsScreen(
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Backup")
-            BackupSection()
+            BackupSection(onImportSpreadsheet = onOpenImport)
 
             Spacer(Modifier.height(24.dp))
             Text(

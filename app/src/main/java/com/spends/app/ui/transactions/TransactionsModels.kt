@@ -30,7 +30,9 @@ data class TransactionRowUi(
     val kind: TxnKind,
     val title: String,
     val note: String?,
-    val timeLabel: String,
+    // Null when the time is synthetic (e.g. an auto-generated recurring item is stamped at start-of-day,
+    // so showing "12:00 AM" would be misleading). The row then shows just the category + source.
+    val timeLabel: String?,
     val source: TxnSource,
     val categories: List<CategoryChipUi>,
 ) {

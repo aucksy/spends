@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodSelection
+import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.period.ResolvedPeriod
 import com.spends.app.core.period.SmartCycleDetector
@@ -34,6 +35,7 @@ import javax.inject.Inject
 class TransactionsViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val settingsRepository: SettingsRepository,
+    private val periodSelectionStore: PeriodSelectionStore,
     categoryRepository: CategoryRepository,
 ) : ViewModel() {
 
@@ -41,7 +43,8 @@ class TransactionsViewModel @Inject constructor(
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val selection = MutableStateFlow(PeriodSelection())
+    // Cycle/range is shared with Analytics (#8) so changing it on one screen syncs the other.
+    private val selection = periodSelectionStore.selection
     val periodSelection: StateFlow<PeriodSelection> = selection
 
     private val searchQuery = MutableStateFlow("")
@@ -87,7 +90,7 @@ class TransactionsViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionsUiState())
 
-    fun applySelection(sel: PeriodSelection) = selection.update { sel }
+    fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
 
     fun setSearch(value: String) = searchQuery.update { value }
 
@@ -141,8 +144,15 @@ class TransactionsViewModel @Inject constructor(
             .groupBy { DateUtils.toLocalDate(it.expense.occurredAt) }
             .toSortedMap(compareByDescending { it })
             .map { (date, dayItems) ->
+                // Within a day, order by ENTRY order (createdAt, then id) newest-first — "as and when
+                // added" (#5). This is independent of occurredAt's time-of-day, so an auto-generated
+                // recurring item (stamped at start-of-day) no longer pins itself above transactions you
+                // add manually later in the day.
                 val rows = dayItems
-                    .sortedByDescending { it.expense.occurredAt }
+                    .sortedWith(
+                        compareByDescending<ExpenseWithAllocations> { it.expense.createdAt }
+                            .thenByDescending { it.expense.id },
+                    )
                     .map { it.toRowUi() }
                 DayGroupUi(
                     date = date,
@@ -202,7 +212,8 @@ class TransactionsViewModel @Inject constructor(
             kind = expense.kind,
             title = title,
             note = expense.note,
-            timeLabel = DateUtils.formatTime(expense.occurredAt),
+            // Recurring items carry a synthetic start-of-day time — suppress it (would read "12:00 AM").
+            timeLabel = if (expense.source == TxnSource.RECURRING) null else DateUtils.formatTime(expense.occurredAt),
             source = expense.source,
             categories = chips,
         )

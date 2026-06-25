@@ -8,10 +8,11 @@ interface SpreadsheetReader {
 }
 
 object SpreadsheetReaders {
-    /** Picks a reader by file name. Returns null for unsupported types (e.g. .xlsx — see notes). */
+    /** Picks a reader by file name. Returns null for unsupported types. */
     fun forFileName(name: String): SpreadsheetReader? {
         val lower = name.lowercase()
         return when {
+            lower.endsWith(".xlsx") -> XlsxReader
             lower.endsWith(".xls") -> XlsReader
             lower.endsWith(".csv") || lower.endsWith(".tsv") || lower.endsWith(".txt") -> CsvReader
             else -> null

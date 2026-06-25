@@ -6,9 +6,9 @@ import com.spends.app.domain.model.CategoryUsage
 
 /**
  * Prebuilt categories (PRD §4.4). Icons come from [IconAssigner], colors from [ColorAssigner]
- * (assigned in order so they stay distinct across the whole set). Investments and Loan/EMI default
- * to excludeFromSpend. Income gets its own short, relevant set so the income picker isn't cluttered
- * with spend categories.
+ * (assigned in order so they stay distinct across the whole set). Everything counts as spend now —
+ * Investments and Loan/EMI included (BAU) — so no seed defaults to excludeFromSpend. Income gets its
+ * own short, relevant set so the income picker isn't cluttered with spend categories.
  */
 object CategorySeed {
 
@@ -29,8 +29,10 @@ object CategorySeed {
         Seed("Subscriptions"),
         Seed("Personal Care"),
         Seed("Education"),
-        Seed("Investments", excludeFromSpend = true),
-        Seed("Loan/EMI", excludeFromSpend = true),
+        // Investments & Loan/EMI are treated as normal spending (BAU): the user wants to see how much
+        // they invest / repay and what's left after, so these count in spend charts like any other.
+        Seed("Investments"),
+        Seed("Loan/EMI"),
         Seed("Gifts"),
         Seed("Transport"),
         Seed("Other"),

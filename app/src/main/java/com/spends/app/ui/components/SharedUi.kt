@@ -3,9 +3,11 @@ package com.spends.app.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -148,7 +150,12 @@ fun AutoSizeText(
     }
 }
 
-/** Auto-sizing rupee amount (no count animation — sizing wins over the roll for headline figures). */
+/**
+ * Auto-sizing rupee amount (no count animation — sizing wins over the roll for headline figures).
+ * When [scrollable] is true the figure is shown at full size inside a horizontal scroll instead of
+ * shrinking, so a very large balance (e.g. ₹12,34,567.89) is never clipped — the user can pan to read
+ * the paise (#13). Used for the headline balance where decimals matter.
+ */
 @Composable
 fun AutoSizeRupee(
     minor: Long,
@@ -157,6 +164,7 @@ fun AutoSizeRupee(
     modifier: Modifier = Modifier,
     withSign: Boolean = false,
     minScale: Float = 0.45f,
+    scrollable: Boolean = false,
 ) {
     val text = when {
         LocalAmountsHidden.current -> AMOUNT_MASK
@@ -166,5 +174,16 @@ fun AutoSizeRupee(
         }
         else -> Money.formatRupees(minor)
     }
-    AutoSizeText(text = text, style = style, color = color, modifier = modifier, minScale = minScale)
+    if (scrollable) {
+        Text(
+            text = text,
+            style = style,
+            color = color,
+            maxLines = 1,
+            softWrap = false,
+            modifier = modifier.horizontalScroll(rememberScrollState()),
+        )
+    } else {
+        AutoSizeText(text = text, style = style, color = color, modifier = modifier, minScale = minScale)
+    }
 }

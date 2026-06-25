@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodSelection
+import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.period.ResolvedPeriod
 import com.spends.app.core.period.SmartCycleDetector
@@ -19,13 +20,11 @@ import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.TxnKind
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.math.ceil
@@ -73,9 +72,11 @@ class AnalyticsViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val recurringRepository: RecurringRepository,
     private val settingsRepository: SettingsRepository,
+    private val periodSelectionStore: PeriodSelectionStore,
 ) : ViewModel() {
 
-    private val selection = MutableStateFlow(PeriodSelection(type = PeriodType.SALARY_CYCLE, range = PeriodRange.CURRENT))
+    // Shared with the Transactions screen (#8) so the cycle/range stays in sync across both.
+    private val selection = periodSelectionStore.selection
     val periodSelection: StateFlow<PeriodSelection> = selection
 
     private val resolvedFlow: StateFlow<ResolvedPeriod> =
@@ -110,7 +111,7 @@ class AnalyticsViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
 
-    fun applySelection(sel: PeriodSelection) = selection.update { sel }
+    fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
 
     private fun currentCycle(): ResolvedPeriod = PeriodResolver.resolve(
         type = PeriodType.SALARY_CYCLE,

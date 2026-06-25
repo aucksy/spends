@@ -58,12 +58,14 @@ import com.spends.app.ui.components.NumberWheelPicker
 @Composable
 fun OnboardingScreen(
     onImport: () -> Unit,
+    onRestore: () -> Unit,
     onFinished: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     // Saveable so a side-trip (e.g. into Import) returns to the same step instead of step 0.
     var step by rememberSaveable { mutableIntStateOf(0) }
-    // Data-setup choice: 0 = start fresh, 1 = import from Excel (Int so it survives config changes).
+    // Data-setup choice: 0 = start fresh, 1 = import from Excel, 2 = restore from Drive (Int so it
+    // survives config changes).
     var dataChoice by rememberSaveable { mutableIntStateOf(0) }
     val lastStep = 3
     val salaryDay by viewModel.salaryDay.collectAsStateWithLifecycle()
@@ -103,8 +105,9 @@ fun OnboardingScreen(
                     shape = RoundedCornerShape(999.dp),
                     onClick = {
                         when {
-                            // Data-setup step (2): "Import from Excel" routes into the import flow.
+                            // Data-setup step (2): route to import or Drive restore per the choice.
                             step == 2 && dataChoice == 1 -> onImport()
+                            step == 2 && dataChoice == 2 -> onRestore()
                             step < lastStep -> {
                                 if (step == 1) viewModel.persistSalaryDay() // leaving the salary step
                                 step++
@@ -229,19 +232,19 @@ private fun DataSetupStep(selectedIndex: Int, onSelect: (Int) -> Unit) {
             badgeBg = MaterialTheme.colorScheme.surfaceVariant,
             badgeTint = androidx.compose.ui.graphics.Color(0xFF3F6212), // design olive accent
             title = "Import from Excel",
-            subtitle = "Bring your Monito (.xls) or any CSV history — every category preserved.",
+            subtitle = "Bring your Excel (.xlsx/.xls) or CSV history — every category preserved.",
             onClick = { onSelect(1) },
         )
         Spacer(Modifier.height(12.dp))
         SetupOptionCard(
-            selected = false,
-            enabled = false,
+            selected = selectedIndex == 2,
+            enabled = true,
             icon = Icons.Filled.CloudDownload,
             badgeBg = MaterialTheme.colorScheme.surfaceVariant,
-            badgeTint = MaterialTheme.colorScheme.outline,
+            badgeTint = MaterialTheme.colorScheme.primary,
             title = "Restore from Drive",
-            subtitle = "Available from Settings → Backup once you're set up.",
-            onClick = {},
+            subtitle = "Bring back a Google Drive backup — transactions, categories and settings.",
+            onClick = { onSelect(2) },
         )
     }
 }

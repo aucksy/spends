@@ -24,7 +24,7 @@ import com.spends.app.data.seed.CategorySeed
         RecurringRuleEntity::class,
         PendingCaptureEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -147,6 +147,17 @@ abstract class SpendsDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_pending_captures_dedupeHash` " +
                         "ON `pending_captures` (`dedupeHash`)",
+                )
+            }
+        }
+
+        /** v5 -> v6: Investments & Loan/EMI become normal spend categories (BAU) — clear their
+         *  excludeFromSpend flag on existing installs so they count in spend charts and lose the
+         *  "Excluded from spend charts" label. No schema change (UPDATE only). */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "UPDATE categories SET excludeFromSpend = 0 WHERE name IN ('Investments', 'Loan/EMI')",
                 )
             }
         }
