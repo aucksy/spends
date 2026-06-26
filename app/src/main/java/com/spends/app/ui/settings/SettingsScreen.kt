@@ -3,6 +3,7 @@ package com.spends.app.ui.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
@@ -23,7 +25,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -90,6 +92,8 @@ fun SettingsScreen(
                 },
             )
         },
+        // Paper background so the white section cards read as distinct surfaces (like the Digest app) (#1).
+        containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(
             modifier = Modifier
@@ -98,131 +102,133 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            SectionHeader("Appearance")
-            Text("Theme", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                ThemeMode.entries.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        selected = state.themeMode == mode,
-                        onClick = { viewModel.setTheme(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
-                    ) { Text(mode.label()) }
+            SettingsSection("Appearance") {
+                Text("Theme", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ThemeMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(
+                            selected = state.themeMode == mode,
+                            onClick = { viewModel.setTheme(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
+                        ) { Text(mode.label()) }
+                    }
+                }
+                // Auto = dark inside a daily window the user sets (default 8 PM–6 AM).
+                if (state.themeMode == ThemeMode.AUTO) {
+                    ClickableRow(
+                        title = "Dark from",
+                        value = formatMinuteOfDay(state.autoDarkStartMinute),
+                        onClick = { showDarkStartPicker = true },
+                    )
+                    ClickableRow(
+                        title = "Dark until",
+                        value = formatMinuteOfDay(state.autoDarkEndMinute),
+                        onClick = { showDarkEndPicker = true },
+                    )
+                    Text(
+                        "Dark mode turns on between these times each day.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
                 }
             }
-            // Auto = dark inside a daily window the user sets (default 8 PM–6 AM).
-            if (state.themeMode == ThemeMode.AUTO) {
+
+            SettingsSection("Spending cycle") {
                 ClickableRow(
-                    title = "Dark from",
-                    value = formatMinuteOfDay(state.autoDarkStartMinute),
-                    onClick = { showDarkStartPicker = true },
-                )
-                ClickableRow(
-                    title = "Dark until",
-                    value = formatMinuteOfDay(state.autoDarkEndMinute),
-                    onClick = { showDarkEndPicker = true },
-                )
-                Text(
-                    "Dark mode turns on between these times each day.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    title = "Salary day",
+                    value = ordinal(state.salaryCycleStartDay),
+                    onClick = { showSalaryDialog = true },
                 )
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Spending cycle")
-            ClickableRow(
-                title = "Salary day",
-                value = ordinal(state.salaryCycleStartDay),
-                onClick = { showSalaryDialog = true },
-            )
-
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Display")
-            Text("Open on", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                DefaultLanding.entries.forEachIndexed { index, landing ->
-                    SegmentedButton(
-                        selected = state.defaultLanding == landing,
-                        onClick = { viewModel.setDefaultLanding(landing) },
-                        shape = SegmentedButtonDefaults.itemShape(index, DefaultLanding.entries.size),
-                    ) { Text(landing.label()) }
+            SettingsSection("Display") {
+                Text("Open on", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    DefaultLanding.entries.forEachIndexed { index, landing ->
+                        SegmentedButton(
+                            selected = state.defaultLanding == landing,
+                            onClick = { viewModel.setDefaultLanding(landing) },
+                            shape = SegmentedButtonDefaults.itemShape(index, DefaultLanding.entries.size),
+                        ) { Text(landing.label()) }
+                    }
+                }
+                SwitchRow(
+                    title = "Carry forward",
+                    subtitle = "Roll each period's leftover into the next.",
+                    checked = state.carryForwardEnabled,
+                    onChange = viewModel::setCarryForward,
+                )
+                if (state.carryForwardEnabled) {
+                    ClickableRow(
+                        title = "Carry forward from",
+                        value = if (state.carryForwardAnchorEpochDay > 0) {
+                            DateUtils.formatDay(DateUtils.startOfDayMillis(LocalDate.ofEpochDay(state.carryForwardAnchorEpochDay)))
+                        } else {
+                            "Pick a date"
+                        },
+                        onClick = { showAnchorPicker = true },
+                    )
+                    ClickableRow(
+                        title = "Opening balance",
+                        value = Money.formatRupees(state.carryForwardOpeningMinor),
+                        onClick = { showOpeningDialog = true },
+                    )
+                    Text(
+                        "Your balance was the opening amount on this date; only transactions on/after it count, so " +
+                            "incomplete older months can't drag the balance negative.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
                 }
             }
-            SwitchRow(
-                title = "Carry forward",
-                subtitle = "Roll each period's leftover into the next.",
-                checked = state.carryForwardEnabled,
-                onChange = viewModel::setCarryForward,
-            )
-            if (state.carryForwardEnabled) {
+
+            SettingsSection("Categories") {
                 ClickableRow(
-                    title = "Carry forward from",
-                    value = if (state.carryForwardAnchorEpochDay > 0) {
-                        DateUtils.formatDay(DateUtils.startOfDayMillis(LocalDate.ofEpochDay(state.carryForwardAnchorEpochDay)))
-                    } else {
-                        "Pick a date"
-                    },
-                    onClick = { showAnchorPicker = true },
-                )
-                ClickableRow(
-                    title = "Opening balance",
-                    value = Money.formatRupees(state.carryForwardOpeningMinor),
-                    onClick = { showOpeningDialog = true },
-                )
-                Text(
-                    "Your balance was the opening amount on this date; only transactions on/after it count, so " +
-                        "incomplete older months can't drag the balance negative.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp),
+                    title = "Manage categories",
+                    value = "Add, rename, archive or delete",
+                    onClick = onOpenCategories,
+                    leading = { Icon(Icons.Filled.Category, contentDescription = null) },
                 )
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Categories")
-            ClickableRow(
-                title = "Manage categories",
-                value = "Add, rename, archive or delete",
-                onClick = onOpenCategories,
-                leading = { Icon(Icons.Filled.Category, contentDescription = null) },
-            )
+            SettingsSection("Capture") {
+                ClickableRow(
+                    title = "Capture from SMS",
+                    value = "Review & add bank transactions from your texts",
+                    onClick = onOpenCapture,
+                    leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
+                )
+            }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Capture")
-            ClickableRow(
-                title = "Capture from SMS",
-                value = "Review & add bank transactions from your texts",
-                onClick = onOpenCapture,
-                leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
-            )
+            SettingsSection("Automation") {
+                ClickableRow(
+                    title = "Recurring transactions",
+                    value = "Rent, salary, EMIs & subscriptions on a schedule",
+                    onClick = onOpenRecurring,
+                    leading = { Icon(Icons.Filled.Autorenew, contentDescription = null) },
+                )
+            }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Automation")
-            ClickableRow(
-                title = "Recurring transactions",
-                value = "Rent, salary, EMIs & subscriptions on a schedule",
-                onClick = onOpenRecurring,
-                leading = { Icon(Icons.Filled.Autorenew, contentDescription = null) },
-            )
+            SettingsSection("Spreadsheet (Excel / CSV)") {
+                SpreadsheetSection(onImport = onOpenImport)
+            }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Spreadsheet (Excel / CSV)")
-            SpreadsheetSection(onImport = onOpenImport)
+            SettingsSection("Backup") {
+                BackupSection()
+            }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Backup")
-            BackupSection()
+            SettingsSection("Data") {
+                ClickableRow(
+                    title = "Trash",
+                    value = "Auto-purge after ${state.trashRetentionDays} days",
+                    onClick = onOpenTrash,
+                    leading = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                )
+            }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Data")
-            ClickableRow(
-                title = "Trash",
-                value = "Auto-purge after ${state.trashRetentionDays} days",
-                onClick = onOpenTrash,
-                leading = { Icon(Icons.Filled.Delete, contentDescription = null) },
-            )
-
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
             Text(
                 "Notification capture and app lock arrive in upcoming updates.",
                 style = MaterialTheme.typography.bodySmall,
@@ -346,6 +352,22 @@ private fun SectionHeader(text: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(vertical = 6.dp),
     )
+}
+
+/** A titled settings group: the coloured label sits above a rounded surface card holding its rows (#1). */
+@Composable
+private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Spacer(Modifier.height(16.dp))
+    SectionHeader(title)
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), content = content)
+    }
 }
 
 @Composable

@@ -20,6 +20,7 @@ import javax.inject.Inject
 data class CaptureUiState(
     val enabled: Boolean = false,
     val pendingCount: Int = 0,
+    val capturedCount: Int = 0, // SMS-captured transactions already on the timeline (#7)
     val hideCaptured: Boolean = false,
     val working: Boolean = false,
     val message: String? = null,
@@ -33,8 +34,18 @@ class CaptureViewModel @Inject constructor(
 
     private val _local = MutableStateFlow(CaptureUiState())
     val state: StateFlow<CaptureUiState> =
-        combine(_local, settingsRepository.settings, captureRepository.observePendingCount()) { local, s, pending ->
-            local.copy(enabled = s.smsCaptureEnabled, hideCaptured = s.hideCapturedInLists, pendingCount = pending)
+        combine(
+            _local,
+            settingsRepository.settings,
+            captureRepository.observePendingCount(),
+            captureRepository.observeCapturedCount(),
+        ) { local, s, pending, captured ->
+            local.copy(
+                enabled = s.smsCaptureEnabled,
+                hideCaptured = s.hideCapturedInLists,
+                pendingCount = pending,
+                capturedCount = captured,
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CaptureUiState())
 
     /** Permission granted → turn capture on. Does NOT scan history (review-only: that's an explicit action). */

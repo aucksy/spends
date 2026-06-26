@@ -99,7 +99,8 @@ fun SummaryHeader(
                     style = Numerals.balanceHero,
                     color = heroOn,
                     withSign = true,
-                    scrollable = true,
+                    // Shrink the figure to fit the tile width instead of letting it overflow / scroll (#4).
+                    minScale = 0.35f,
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 )
             }

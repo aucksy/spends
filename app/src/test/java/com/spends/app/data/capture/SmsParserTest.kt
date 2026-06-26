@@ -1,9 +1,11 @@
 package com.spends.app.data.capture
 
 import com.google.common.truth.Truth.assertThat
+import com.spends.app.core.time.DateUtils
 import com.spends.app.data.capture.SmsParser.Result
 import com.spends.app.domain.model.TxnKind
 import org.junit.Test
+import java.time.LocalDate
 
 /**
  * Golden fixtures from PRD parser-fixtures-and-allowlist.md (§D) — all masked. Every `txn` must
@@ -274,5 +276,64 @@ class SmsParserTest {
     @Test fun indus_split_outstanding_easy_emis_ignored() {
         val r = p("VM-INDUSB", "Split INR 5,59,393.44 Credit Card outstanding into Easy EMIs at: https://bank.example/y - IndusInd Bank")
         assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    // ---- #5: a GENUINE point-of-sale purchase that carries a promotional EMI-conversion FOOTER must STILL
+    // be captured. These are the real spends the round-5 EMI filter started silently dropping. ----
+    @Test fun sbi_card_spend_with_convert_emi_footer_txn() {
+        val r = p("VM-SBICRD", "Rs.3168.00 spent on your SBI Credit Card ending 1234 at RAZ*Amul on 26/06/26. Convert to EMI: SMS EMI to 567676 or visit sbicard.com. Avl Lmt Rs.45,000.00")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(316800)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(r.last4).isEqualTo("1234")
+    }
+
+    @Test fun sbi_card_spend_with_easy_emi_footer_txn() {
+        val r = p("VM-SBICRD", "Rs.588.53 spent on your SBI Credit Card ending 1234 at RAZ*Furlenco on 25/06/26. Split into easy EMIs at sbicard.com/emi. Not you? Report now.")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(58853)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+    }
+
+    // The SBI/HDFC footer literally reads "Convert INTO EMI(s)" (not just "to EMI") — a genuine purchase
+    // must survive it (isPromo must not short-circuit, and the EMI detector must be fresh-spend-guarded).
+    @Test fun sbi_card_spend_with_convert_into_emi_footer_txn() {
+        val r = p("VM-SBICRD", "Rs.3168.00 spent on your SBI Credit Card ending 1234 at RAZ*Amul on 26/06/26. Convert into EMI: SMS EMI to 567676.")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(316800)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+    }
+
+    @Test fun hdfc_card_spend_with_convert_into_emis_footer_txn() {
+        val r = p("AD-HDFCBK", "Rs.25000.00 spent on HDFC Bank Card 1234 at CROMA on 21-06-26. Convert into EMIs now, call 18002586161.")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(2500000)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+    }
+
+    // ICICI introduces the merchant with "on <MERCHANT>" (not "at"); a genuine spend with an "EMI option
+    // available" footer must still be captured.
+    @Test fun icici_on_merchant_spend_with_emi_option_footer_txn() {
+        val r = p("VK-ICICIT", "INR 30000.00 spent using ICICI Bank Card XX1234 on 21-Jun-26 on AMAZON. EMI option available on this transaction. Avl Limit: INR 60000.00.")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(3000000)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+    }
+
+    // ---- #6: bank SMS carry only a date (no clock time); the transaction must take the SMS's actual
+    // arrival time, not a hardcoded noon, so a day's spends keep their real order. ----
+    @Test fun occurred_at_uses_sms_arrival_time_not_noon() {
+        val received = DateUtils.epochMillisFor(LocalDate.of(2026, 6, 26), 9, 41)
+        val r = SmsParser.parse("VM-SBICRD", "Rs.640.00 spent on your SBI Credit Card ending 1234 at SHOP on 26/06/26.", received)
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.occurredAt).isEqualTo(received)
+    }
+
+    @Test fun occurred_at_earlier_body_date_carries_sms_time() {
+        // Delivered a day late: body says the 24th but the SMS arrived on the 26th at 9:41 — keep the 24th,
+        // at the SMS's time-of-day (never noon).
+        val received = DateUtils.epochMillisFor(LocalDate.of(2026, 6, 26), 9, 41)
+        val r = SmsParser.parse("VM-SBICRD", "Rs.640.00 spent on your SBI Credit Card ending 1234 at SHOP on 24/06/26.", received)
+        assertThat(r.occurredAt).isEqualTo(DateUtils.epochMillisFor(LocalDate.of(2026, 6, 24), 9, 41))
     }
 }

@@ -17,6 +17,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -73,6 +76,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -176,8 +180,16 @@ fun OnboardingScreen(
     BackHandler(enabled = step > 0) { step -= 1 }
 
     // Explicit theme background so the onboarding always sits on the light paper (it doesn't use a
-    // Scaffold, so without this it would show the window background — dark on a dark device) (#1).
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp)) {
+    // Scaffold, so without this it would show the window background — dark on a dark device). The screen
+    // is edge-to-edge, so inset for the status/nav bars — otherwise the logo + headers slide under the
+    // status bar on every step (#2.1/#2.2).
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .systemBarsPadding()
+            .padding(24.dp),
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top header (steps 1..4): back arrow + the design's 3 dots on the left, a "Skip" link on the
             // right (no Skip on the final Setup step). The extra Battery step shares the first dot with SMS.
@@ -259,6 +271,7 @@ private fun slideOutFade() = androidx.compose.animation.fadeOut() +
 
 // ---- Steps ----
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WelcomeStep() {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -267,10 +280,12 @@ private fun WelcomeStep() {
             Spacer(Modifier.width(10.dp))
             Text("Spends", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
         }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(30.dp))
         Text(
             "Every card and account, in one calm view.",
             style = MaterialTheme.typography.headlineMedium,
+            fontSize = 29.sp, // design h1 (headlineMedium is only 24sp)
+            lineHeight = 34.sp,
             fontWeight = FontWeight.ExtraBold,
         )
         Spacer(Modifier.height(10.dp))
@@ -281,12 +296,14 @@ private fun WelcomeStep() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(22.dp))
-        // Aspirational preview card (decorative — multi-card / My Cycle land in a later phase).
+        // Aspirational preview card (decorative — multi-card / My Cycle land in a later phase). Full-width
+        // to match the design (it previously wrapped its content and looked short) (#2.1).
         Card(
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Text(
                     "BALANCE · MY CYCLE",
                     style = MaterialTheme.typography.labelMedium,
@@ -294,14 +311,20 @@ private fun WelcomeStep() {
                 )
                 Text("₹1,24,500", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary)
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     PreviewStat("Expense", "₹83,200")
                     PreviewStat("Income", "₹2,07,700")
                 }
             }
         }
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Flow-wrap so the three chips keep their natural size and wrap (design uses flex-wrap); a plain
+        // Row squeezed them and made "+11 more" mismatch HDFC/ICICI (#2.1).
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             AccountChip(Color(0xFF60286E), "HDFC ·4821")
             AccountChip(Color(0xFF004C8F), "ICICI ·9032")
             AccountChip(MaterialTheme.colorScheme.primary, "+11 more")
@@ -334,7 +357,14 @@ private fun AccountChip(dotColor: Color, label: String) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(dotColor))
-        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
@@ -351,8 +381,7 @@ private fun SmsPermissionStep(
         Text("Capture spends from SMS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(10.dp))
         Text(
-            "The moment a bank SMS arrives, Spends spots the transaction on your phone and notifies you to " +
-                "add it in one tap — that's why it asks for SMS and notification access. Nothing leaves your phone.",
+            "Spends reads bank SMS entirely on your phone — no logins, no uploads. Choose what it does:",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -363,7 +392,7 @@ private fun SmsPermissionStep(
             badgeBg = MaterialTheme.colorScheme.primaryContainer,
             badgeTint = MaterialTheme.colorScheme.primary, // design glyph is primary teal #0F766E on #CFEEE9
             title = "Auto-capture new SMS",
-            subtitle = "When a bank SMS arrives, get a notification to add the spend in one tap. Never added silently.",
+            subtitle = "When a bank SMS arrives, get a notification to add the spend in one tap.",
             checked = autoCapture,
             onCheckedChange = onToggleAuto,
         )
@@ -374,7 +403,7 @@ private fun SmsPermissionStep(
             badgeBg = MaterialTheme.colorScheme.surfaceVariant,
             badgeTint = Color(0xFF3F6212),
             title = "Scan past SMS",
-            subtitle = "One-time read of older bank texts into a review queue to fill in spends you've already made.",
+            subtitle = "One-time read of older bank texts to fill in spends you've already made.",
             checked = scanPast,
             onCheckedChange = onToggleScan,
         )
@@ -436,8 +465,8 @@ private fun BatteryStep() {
         Text("Keep capture running", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(10.dp))
         Text(
-            "Some phones aggressively stop background apps, which can make Spends miss bank SMS. Allowing it " +
-                "to ignore battery optimization keeps capture reliable. You can change this anytime in system settings.",
+            "Some phones stop background apps and make Spends miss bank SMS. Letting it ignore battery " +
+                "optimisation keeps capture reliable — change it anytime in Settings.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -666,11 +695,14 @@ private fun BarsMark(size: androidx.compose.ui.unit.Dp) {
         modifier = Modifier.size(size).clip(RoundedCornerShape(size * 0.32f)).background(MaterialTheme.colorScheme.primary),
         contentAlignment = Alignment.Center,
     ) {
+        // Design mark: a white lead bar with two light-teal (#A7E0D8) descending bars (not translucent
+        // white, which read as a washed-out grey) (#2.1).
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(size * 0.08f)) {
-            val onP = MaterialTheme.colorScheme.onPrimary
-            Box(Modifier.width(size * 0.12f).height(size * 0.45f).clip(RoundedCornerShape(1.dp)).background(onP))
-            Box(Modifier.width(size * 0.12f).height(size * 0.32f).clip(RoundedCornerShape(1.dp)).background(onP.copy(alpha = 0.6f)))
-            Box(Modifier.width(size * 0.12f).height(size * 0.19f).clip(RoundedCornerShape(1.dp)).background(onP.copy(alpha = 0.6f)))
+            val lead = MaterialTheme.colorScheme.onPrimary
+            val trail = Color(0xFFA7E0D8)
+            Box(Modifier.width(size * 0.12f).height(size * 0.45f).clip(RoundedCornerShape(1.dp)).background(lead))
+            Box(Modifier.width(size * 0.12f).height(size * 0.32f).clip(RoundedCornerShape(1.dp)).background(trail))
+            Box(Modifier.width(size * 0.12f).height(size * 0.19f).clip(RoundedCornerShape(1.dp)).background(trail))
         }
     }
 }

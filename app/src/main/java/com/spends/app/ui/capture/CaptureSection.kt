@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -146,8 +148,18 @@ fun CaptureSection(
                 Switch(checked = state.hideCaptured, onCheckedChange = viewModel::setHideCaptured)
             }
 
-            TextButton(onClick = { showDelete = true }, enabled = !state.working) {
-                Text("Delete scanned SMS data…", color = MaterialTheme.colorScheme.error)
+            // A proper (outlined) button, greyed only when there's genuinely nothing to delete — neither a
+            // review-queue item NOR an already-added scanned transaction (#7). Gating on the queue alone
+            // would hide the "delete added" path once the queue drains.
+            OutlinedButton(
+                onClick = { showDelete = true },
+                enabled = !state.working && (state.pendingCount > 0 || state.capturedCount > 0),
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Delete scanned SMS data")
             }
         }
 
@@ -200,10 +212,16 @@ fun CaptureSection(
                         } else {
                             "Nothing waiting to review"
                         },
+                        enabled = state.pendingCount > 0,
                     ) { showDelete = false; viewModel.clearReviewQueue() }
                     DeleteOption(
                         title = "Clear queue + delete added",
-                        subtitle = "Also deletes transactions already added to the timeline from past-SMS scans",
+                        subtitle = if (state.capturedCount > 0) {
+                            "Also deletes ${state.capturedCount} scan-added transaction${if (state.capturedCount == 1) "" else "s"} from the timeline"
+                        } else {
+                            "Also deletes transactions already added to the timeline from past-SMS scans"
+                        },
+                        enabled = state.pendingCount > 0 || state.capturedCount > 0,
                     ) { showDelete = false; viewModel.clearQueueAndDeleteAdded() }
                 }
             },
@@ -214,16 +232,17 @@ fun CaptureSection(
 }
 
 @Composable
-private fun DeleteOption(title: String, subtitle: String, onClick: () -> Unit) {
+private fun DeleteOption(title: String, subtitle: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val titleColor = if (enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = titleColor)
     }
 }
 

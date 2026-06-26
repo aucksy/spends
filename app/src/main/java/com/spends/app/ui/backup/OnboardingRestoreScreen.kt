@@ -167,7 +167,10 @@ fun OnboardingRestoreScreen(
         )
     }
 
-    if (state.passwordRestore != null) {
+    // Hide the password prompt the instant the restore starts so the "Restoring…" overlay is visible (#3);
+    // a wrong password ends the work (working=false) with the prompt still pending, so it reappears with
+    // the error shown inside it.
+    if (state.passwordRestore != null && !state.working) {
         var password by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = viewModel::cancelPasswordRestore,

@@ -148,6 +148,11 @@ interface ExpenseDao {
     @Query("SELECT COUNT(*) FROM expenses WHERE source = 'SMS'")
     suspend fun countCaptured(): Int
 
+    /** Live (non-trashed) SMS-captured transactions — drives whether the "delete scanned data" control is
+     *  reachable even after the review queue has drained (#7). */
+    @Query("SELECT COUNT(*) FROM expenses WHERE deletedAt IS NULL AND source = 'SMS'")
+    fun observeCapturedCount(): Flow<Int>
+
     @Query("DELETE FROM allocations WHERE expenseId IN (SELECT id FROM expenses WHERE source = 'SMS')")
     suspend fun deleteCapturedAllocations()
 

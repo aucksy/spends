@@ -216,10 +216,14 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
         )
     }
 
-    if (state.passwordRestore != null) {
+    // Hide while the restore runs so the Drive-row spinner is visible; a wrong password leaves it pending,
+    // so it reappears showing the error (#3).
+    if (state.passwordRestore != null && !state.working) {
         RestorePasswordDialog(
             onConfirm = viewModel::restoreWithPassword,
             onCancel = viewModel::cancelPasswordRestore,
+            errorMessage = state.message,
+            onClearError = viewModel::clearMessage,
         )
     }
 
@@ -312,7 +316,12 @@ private fun SetBackupPasswordDialog(changing: Boolean, onConfirm: (String) -> Un
 }
 
 @Composable
-private fun RestorePasswordDialog(onConfirm: (String) -> Unit, onCancel: () -> Unit) {
+private fun RestorePasswordDialog(
+    onConfirm: (String) -> Unit,
+    onCancel: () -> Unit,
+    errorMessage: String? = null,
+    onClearError: () -> Unit = {},
+) {
     var password by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onCancel,
@@ -327,9 +336,15 @@ private fun RestorePasswordDialog(onConfirm: (String) -> Unit, onCancel: () -> U
                 Spacer(Modifier.padding(vertical = 6.dp))
                 PasswordField(
                     value = password,
-                    onValueChange = { password = it },
+                    onValueChange = { password = it; if (errorMessage != null) onClearError() },
                     label = "Backup password",
+                    isError = errorMessage != null,
                 )
+                // Surface a wrong-password error inside the dialog (the section message is occluded by it).
+                errorMessage?.let { msg ->
+                    Spacer(Modifier.padding(vertical = 4.dp))
+                    Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
         },
         confirmButton = { TextButton(onClick = { onConfirm(password) }, enabled = password.isNotEmpty()) { Text("Restore") } },

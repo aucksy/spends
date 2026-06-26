@@ -137,6 +137,9 @@ class SmsCaptureRepository @Inject constructor(
     fun observePending(): Flow<List<PendingCaptureEntity>> = pendingDao.observeAll()
     fun observePendingCount(): Flow<Int> = pendingDao.observeCount()
 
+    /** #7: live count of SMS-captured ledger transactions (independent of the review queue). */
+    fun observeCapturedCount(): Flow<Int> = expenseDao.observeCapturedCount()
+
     /**
      * Scan the SMS inbox for [startMillis, endExclusiveMillis) and queue every parseable transaction
      * for review. Skips anything already in the ledger or queue (dedupe hash) AND anything that would

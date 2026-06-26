@@ -205,7 +205,12 @@ class BackupViewModel @Inject constructor(
                     backupRepository.restoreFromWithPassword(token, pending.fileId, password.toCharArray())
                     _state.update { it.copy(working = false, passwordRestore = null, message = "Restored from Drive", restoreComplete = true) }
                 } catch (e: WrongBackupPasswordException) {
+                    // Keep the prompt open (passwordRestore stays) so the user can retry; it shows e.message.
                     _state.update { it.copy(working = false, message = e.message) }
+                } catch (e: Exception) {
+                    // A non-password failure (network / corrupt backup) AFTER the password was accepted —
+                    // dismiss the prompt and surface it plainly, not as if the password were wrong.
+                    _state.update { it.copy(working = false, passwordRestore = null, message = friendly(e)) }
                 }
             }
             is PendingPasswordRestore.Local -> viewModelScope.launch {
@@ -216,7 +221,7 @@ class BackupViewModel @Inject constructor(
                 } catch (e: WrongBackupPasswordException) {
                     _state.update { it.copy(working = false, message = e.message) }
                 } catch (e: Exception) {
-                    _state.update { it.copy(working = false, message = friendly(e)) }
+                    _state.update { it.copy(working = false, passwordRestore = null, message = friendly(e)) }
                 }
             }
             null -> Unit

@@ -102,7 +102,7 @@ fun ReviewScreen(
                     value = query,
                     onValueChange = viewModel::setQuery,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Search amount, merchant, bank, text…") },
+                    placeholder = { Text("Search") },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
