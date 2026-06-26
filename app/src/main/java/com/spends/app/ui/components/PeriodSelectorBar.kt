@@ -18,8 +18,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,7 +28,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +43,18 @@ import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.time.DateUtils
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.window.Dialog
+import java.time.LocalDate
+import java.time.Month
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 /**
  * The period selector row: a full-width pill that names the selected cycle in words (e.g. "Current
@@ -165,6 +176,10 @@ private fun PeriodSelectorSheet(
 
     if (showCustom) {
         CustomRangeDialog(
+            // Pre-fill the currently-applied custom range so the user can tweak it (the stored end is
+            // exclusive — convert it back to the inclusive UI day).
+            initialStart = current.customStartMillis?.let { DateUtils.toLocalDate(it) },
+            initialEnd = current.customEndExclusiveMillis?.let { DateUtils.toLocalDate(it).minusDays(1) },
             onDismiss = { showCustom = false },
             onPick = { start, endExclusive ->
                 showCustom = false
@@ -192,28 +207,157 @@ private fun RangeRow(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Custom date-range picker (#12): pick a Start and End date, each by tapping a Month dropdown, a Year
+ * dropdown and a day in the grid — clearer than a scrolling range calendar and exactly matching the
+ * "tap month/year individually for both" ask. [onPick] gets the start-of-day millis and the exclusive
+ * end (end day + 1).
+ */
 @Composable
-private fun CustomRangeDialog(onDismiss: () -> Unit, onPick: (Long, Long) -> Unit) {
-    val state = rememberDateRangePickerState()
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            val startUtc = state.selectedStartDateMillis
-            val endUtc = state.selectedEndDateMillis
-            TextButton(
-                enabled = startUtc != null && endUtc != null,
-                onClick = {
-                    if (startUtc != null && endUtc != null) {
-                        val startDay = DateUtils.toLocalDate(DateUtils.fromPickerUtcMillis(startUtc))
-                        val endDay = DateUtils.toLocalDate(DateUtils.fromPickerUtcMillis(endUtc))
-                        onPick(DateUtils.startOfDayMillis(startDay), DateUtils.startOfDayMillis(endDay.plusDays(1)))
+private fun CustomRangeDialog(
+    initialStart: LocalDate? = null,
+    initialEnd: LocalDate? = null,
+    onDismiss: () -> Unit,
+    onPick: (Long, Long) -> Unit,
+) {
+    val today = remember { DateUtils.toLocalDate(DateUtils.nowMillis()) }
+    var editingStart by remember { mutableStateOf(initialStart == null) }
+    var start by remember { mutableStateOf(initialStart) }
+    var end by remember { mutableStateOf(initialEnd) }
+
+    fun setActive(d: LocalDate) { if (editingStart) start = d else end = d }
+    val active = if (editingStart) start else end
+    val shown = active ?: today
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp) {
+            Column(modifier = Modifier.fillMaxWidth().padding(20.dp).verticalScroll(rememberScrollState())) {
+                Text("Custom range", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    RangeEndChip("Start", start, editingStart, Modifier.weight(1f)) { editingStart = true }
+                    RangeEndChip("End", end, !editingStart, Modifier.weight(1f)) { editingStart = false }
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    MonthDropdown(shown.month, Modifier.weight(1f)) { m ->
+                        val len = YearMonth.of(shown.year, m).lengthOfMonth()
+                        setActive(LocalDate.of(shown.year, m, shown.dayOfMonth.coerceAtMost(len)))
                     }
-                },
-            ) { Text("Apply") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+                    YearDropdown(shown.year, today.year, Modifier.weight(1f)) { y ->
+                        val len = YearMonth.of(y, shown.month).lengthOfMonth()
+                        setActive(LocalDate.of(y, shown.monthValue, shown.dayOfMonth.coerceAtMost(len)))
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                MiniDayGrid(YearMonth.of(shown.year, shown.month), active?.dayOfMonth) { day ->
+                    setActive(LocalDate.of(shown.year, shown.monthValue, day))
+                }
+                if (start != null && end != null && start!!.isAfter(end!!)) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Start must be on or before end.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(Modifier.width(8.dp))
+                    val valid = start != null && end != null && !start!!.isAfter(end!!)
+                    TextButton(
+                        enabled = valid,
+                        onClick = { onPick(DateUtils.startOfDayMillis(start!!), DateUtils.startOfDayMillis(end!!.plusDays(1))) },
+                    ) { Text("Apply") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RangeEndChip(label: String, date: LocalDate?, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val fmt = remember { DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH) }
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        DateRangePicker(state = state, modifier = Modifier.height(480.dp))
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                date?.let { fmt.format(it) } ?: "Pick a date",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthDropdown(month: Month, modifier: Modifier, onSelect: (Month) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        DropdownAnchor(month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)) { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Month.entries.forEach { m ->
+                DropdownMenuItem(text = { Text(m.getDisplayName(TextStyle.FULL, Locale.ENGLISH)) }, onClick = { onSelect(m); open = false })
+            }
+        }
+    }
+}
+
+@Composable
+private fun YearDropdown(year: Int, currentYear: Int, modifier: Modifier, onSelect: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val years = (currentYear downTo currentYear - 12).toList()
+    Box(modifier) {
+        DropdownAnchor(year.toString()) { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            years.forEach { y -> DropdownMenuItem(text = { Text(y.toString()) }, onClick = { onSelect(y); open = false }) }
+        }
+    }
+}
+
+@Composable
+private fun DropdownAnchor(text: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1)
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun MiniDayGrid(yearMonth: YearMonth, selectedDay: Int?, onSelect: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        (1..yearMonth.lengthOfMonth()).chunked(7).forEach { week ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                week.forEach { d ->
+                    val sel = d == selectedDay
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { onSelect(d) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "$d",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
     }
 }

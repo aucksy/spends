@@ -10,7 +10,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BatteryChargingFull
@@ -96,12 +99,17 @@ fun OnboardingScreen(
     val salaryDay by viewModel.salaryDay.collectAsStateWithLifecycle()
     val lastStep = 4
 
-    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    fun requestNotifIfNeeded() {
+    // The notification permission is requested right after SMS (still on THIS screen), and we only
+    // advance to the next step once the user has answered it — so the prompt never appears over the
+    // Battery screen the way it used to (#4).
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { step = 2 }
+    fun requestNotifThenAdvance() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            step = 2
         }
     }
 
@@ -109,9 +117,10 @@ fun OnboardingScreen(
         val granted = result[Manifest.permission.READ_SMS] == true && result[Manifest.permission.RECEIVE_SMS] == true
         if (granted) {
             viewModel.enableCaptureAndScan(scanPast)
-            requestNotifIfNeeded()
+            requestNotifThenAdvance()
+        } else {
+            step = 2 // continue regardless — capture just won't run if denied
         }
-        step = 2 // continue regardless — capture just won't run if denied
     }
     fun hasSmsPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
@@ -120,7 +129,7 @@ fun OnboardingScreen(
     fun enableCaptureAndAdvance() {
         if (autoCapture || scanPast) {
             if (hasSmsPermission()) {
-                viewModel.enableCaptureAndScan(scanPast); requestNotifIfNeeded(); step = 2
+                viewModel.enableCaptureAndScan(scanPast); requestNotifThenAdvance()
             } else {
                 smsLauncher.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
             }
@@ -163,11 +172,15 @@ fun OnboardingScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    // System back steps backward (and exits from Welcome) — pairs with the header back arrow (#3).
+    BackHandler(enabled = step > 0) { step -= 1 }
+
+    // Explicit theme background so the onboarding always sits on the light paper (it doesn't use a
+    // Scaffold, so without this it would show the window background — dark on a dark device) (#1).
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top header (steps 1..4): the design's 3 dots + a "Skip" link (no Skip on the final Setup
-            // step). The extra Battery step shares the first dot with SMS so the indicator still reads as 3.
-            // No bottom "Back" button — the design has none.
+            // Top header (steps 1..4): back arrow + the design's 3 dots on the left, a "Skip" link on the
+            // right (no Skip on the final Setup step). The extra Battery step shares the first dot with SMS.
             if (step in 1..lastStep) {
                 val dotIndex = when (step) { 1, 2 -> 0; 3 -> 1; else -> 2 }
                 Row(
@@ -175,7 +188,16 @@ fun OnboardingScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    StepDots(count = 3, current = dotIndex)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp).clickable { step -= 1 },
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        StepDots(count = 3, current = dotIndex)
+                    }
                     if (step != lastStep) {
                         Text(
                             "Skip",
@@ -305,7 +327,8 @@ private fun AccountChip(dotColor: Color, label: String) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(999.dp))
             .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -328,7 +351,8 @@ private fun SmsPermissionStep(
         Text("Capture spends from SMS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(10.dp))
         Text(
-            "Spends reads bank SMS entirely on your phone — no logins, no uploads. Choose what it does:",
+            "The moment a bank SMS arrives, Spends spots the transaction on your phone and notifies you to " +
+                "add it in one tap — that's why it asks for SMS and notification access. Nothing leaves your phone.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -382,7 +406,7 @@ private fun ToggleCard(
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
             1.5.dp,
-            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+            if (selected) MaterialTheme.colorScheme.primary else Color(0xFFE3DED2),
         ),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -485,11 +509,10 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // Warm inset surface + warmer dashed border to match the design pill (theme-aware so it
-                // still reads correctly in dark mode), per the #5 fidelity pass.
+                // Exact design pill: warm #F7F5EF fill + #D9D4C8 dashed border (onboarding is pinned light).
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .dashedBorder(MaterialTheme.colorScheme.outline, 10.dp)
+                .background(Color(0xFFF7F5EF))
+                .dashedBorder(Color(0xFFD9D4C8), 10.dp)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -522,7 +545,8 @@ private fun DayGrid(selected: Int, onSelect: (Int) -> Unit) {
                             .weight(1f)
                             .height(44.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                            .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
+                            .then(if (isSel) Modifier else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)))
                             .clickable { onSelect(day) },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -600,7 +624,7 @@ private fun SetupOptionCard(
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
             1.5.dp,
-            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+            if (selected) MaterialTheme.colorScheme.primary else Color(0xFFE3DED2),
         ),
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

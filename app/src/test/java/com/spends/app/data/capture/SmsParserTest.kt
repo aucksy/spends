@@ -264,4 +264,15 @@ class SmsParserTest {
         assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
         assertThat(r.categoryHint).isEqualTo("Investments")
     }
+
+    /** IndusInd EMI-conversion OFFER: carries the spend verb but is NOT a fresh debit — must IGNORE (#10). */
+    @Test fun indus_split_spend_into_emis_ignored() {
+        val r = p("VM-INDUSB", "Split your INR 49,993.00 spend at <MERCHANT> into EMIs. Convert now: https://bank.example/x - IndusInd Bank")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    @Test fun indus_split_outstanding_easy_emis_ignored() {
+        val r = p("VM-INDUSB", "Split INR 5,59,393.44 Credit Card outstanding into Easy EMIs at: https://bank.example/y - IndusInd Bank")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
 }

@@ -1,12 +1,17 @@
 package com.spends.app.ui.transactions
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +42,7 @@ import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,13 +51,10 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -67,7 +70,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +90,7 @@ import com.spends.app.domain.model.TxnSource
 import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryPickerSheet
 import com.spends.app.ui.components.PeriodSelectorBar
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @Composable
@@ -193,7 +199,9 @@ fun TransactionsScreen(
         }
 
         when {
-            state.loading -> Unit
+            // A themed spinner (not a blank frame) while the first data loads — e.g. right after a
+            // restore lands on Home, so it doesn't flash empty then pop in (#5).
+            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.isEmpty -> EmptyTimeline(searching = state.search.isNotBlank())
             else -> LazyColumn(
                 state = listState,
@@ -384,49 +392,62 @@ private fun SwipeableRow(
         return
     }
     val view = LocalView.current
-    val dismissState = rememberSwipeToDismissBoxState(
-        // Both directions only *request* an action and snap back (return false) — the actual delete
-        // is gated behind a confirmation dialog, and right-swipe opens the category picker. A firm
-        // haptic fires once when either swipe commits past the threshold (#17).
-        confirmValueChange = { value ->
-            when (value) {
-                SwipeToDismissBoxValue.EndToStart -> {
-                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestDelete(); false
-                }
-                SwipeToDismissBoxValue.StartToEnd -> {
-                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestChangeCategory(); false
-                }
-                else -> false
-            }
-        },
-        // Require an almost-full, deliberate swipe (92% of the row) before delete/recategorize triggers.
-        // The user kept hitting accidental deletes while scrolling, so the bar is set very high (#6).
-        positionalThreshold = { totalDistance -> totalDistance * 0.92f },
-    )
     val semantic = LocalSemanticColors.current
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            when (dismissState.dismissDirection) {
-                SwipeToDismissBoxValue.EndToStart -> SwipeBg(
+    val density = LocalDensity.current
+    val maxPx = with(density) { 120.dp.toPx() }
+    val triggerPx = with(density) { 96.dp.toPx() }
+    // Live offset is a plain float mutated synchronously during the drag; ONLY the snap-back animates,
+    // so a single owner ever touches the Animatable — no cross-scope race / stuck partially-swiped row.
+    var offsetX by remember { mutableStateOf(0f) }
+    val anim = remember { Animatable(0f) }
+    // Recomposes only when the swipe crosses 0 (not every drag frame).
+    val direction by remember { derivedStateOf { offsetX.compareTo(0f) } }
+
+    Box {
+        Box(Modifier.matchParentSize()) {
+            when {
+                direction < 0 -> SwipeBg(
                     color = semantic.expense.copy(alpha = 0.18f),
                     icon = Icons.Filled.Delete,
                     tint = semantic.expense,
                     alignEnd = true,
                     label = "Delete",
                 )
-                SwipeToDismissBoxValue.StartToEnd -> SwipeBg(
+                direction > 0 -> SwipeBg(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
                     icon = Icons.Filled.SwapHoriz,
                     tint = MaterialTheme.colorScheme.primary,
                     alignEnd = false,
                     label = "Category",
                 )
-                else -> Box(Modifier.fillMaxSize())
             }
-        },
-    ) {
-        TransactionRow(row = row, selected = false, onClick = onClick, onLongClick = onLongClick)
+        }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                // Modifier.draggable(Horizontal) AXIS-LOCKS: a vertical scroll is consumed by the
+                // LazyColumn and never engages the swipe, so accidental swipes while scrolling stop (#14).
+                // Each direction only REQUESTS an action on release past a deliberate distance (delete is
+                // still behind a confirm dialog), then the row snaps back — never an auto-dismiss.
+                .draggable(
+                    orientation = Orientation.Horizontal,
+                    state = rememberDraggableState { delta -> offsetX = (offsetX + delta).coerceIn(-maxPx, maxPx) },
+                    onDragStopped = {
+                        when {
+                            offsetX <= -triggerPx -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestDelete()
+                            }
+                            offsetX >= triggerPx -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestChangeCategory()
+                            }
+                        }
+                        anim.snapTo(offsetX)
+                        anim.animateTo(0f) { offsetX = value }
+                    },
+                ),
+        ) {
+            TransactionRow(row = row, selected = false, onClick = onClick, onLongClick = onLongClick)
+        }
     }
 }
 

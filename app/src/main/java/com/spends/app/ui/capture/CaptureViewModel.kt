@@ -87,12 +87,22 @@ class CaptureViewModel @Inject constructor(
         }
     }
 
-    /** #5: permanently delete every SMS-captured transaction. */
-    fun deleteAllCaptured() {
+    /** #7: clear the to-review SCAN QUEUE (pending_captures) — leaves anything already added. */
+    fun clearReviewQueue() {
         viewModelScope.launch {
             _local.update { it.copy(working = true, message = null) }
+            runCatching { captureRepository.clearPending() }
+            _local.update { it.copy(working = false, message = "Review queue cleared") }
+        }
+    }
+
+    /** #7: clear the queue AND delete the past-SMS-scanned transactions already added to the timeline. */
+    fun clearQueueAndDeleteAdded() {
+        viewModelScope.launch {
+            _local.update { it.copy(working = true, message = null) }
+            runCatching { captureRepository.clearPending() }
             val n = runCatching { captureRepository.deleteAllCaptured() }.getOrNull() ?: 0
-            _local.update { it.copy(working = false, message = "Deleted $n captured transactions") }
+            _local.update { it.copy(working = false, message = "Cleared queue · deleted $n added transactions") }
         }
     }
 

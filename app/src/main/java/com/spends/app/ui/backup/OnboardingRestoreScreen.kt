@@ -52,6 +52,8 @@ fun OnboardingRestoreScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingRestore by remember { mutableStateOf<DriveFile?>(null) }
+    // Once a restore is actually running, show a full-screen "Restoring…" state (#5).
+    var restoreInitiated by remember { mutableStateOf(false) }
 
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
@@ -88,33 +90,49 @@ fun OnboardingRestoreScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(
-                Icons.Filled.CloudDownload,
-                contentDescription = null,
-                modifier = Modifier.size(56.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(16.dp))
-            Text("Restore from Google Drive", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Sign in with the same Google account you backed up with, then pick a backup. Your " +
-                    "transactions, categories and settings will be restored to this phone.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(24.dp))
-            if (state.working) {
+            if (restoreInitiated && state.working) {
+                // The restore is actively running — a clear themed state so it doesn't look frozen (#5).
                 CircularProgressIndicator()
+                Spacer(Modifier.height(20.dp))
+                Text("Restoring your data…", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Bringing back your transactions, categories and settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
             } else {
-                Button(onClick = viewModel::openRestore, modifier = Modifier.height(52.dp)) {
-                    Text("Choose a Drive backup")
-                }
-            }
-            state.message?.let { msg ->
+                Icon(
+                    Icons.Filled.CloudDownload,
+                    contentDescription = null,
+                    modifier = Modifier.size(56.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
                 Spacer(Modifier.height(16.dp))
-                Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
+                Text("Restore from Google Drive", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Sign in with the same Google account you backed up with, then pick a backup. Your " +
+                        "transactions, categories and settings will be restored to this phone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(24.dp))
+                if (state.working) {
+                    CircularProgressIndicator()
+                } else {
+                    // Reset the flag before (re)listing so the "Restoring…" overlay can't misfire during a
+                    // mere backup-list fetch after a failed/cancelled first attempt.
+                    Button(onClick = { restoreInitiated = false; viewModel.openRestore() }, modifier = Modifier.height(52.dp)) {
+                        Text("Choose a Drive backup")
+                    }
+                }
+                state.message?.let { msg ->
+                    Spacer(Modifier.height(16.dp))
+                    Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
+                }
             }
         }
     }
@@ -143,7 +161,7 @@ fun OnboardingRestoreScreen(
             title = { Text("Restore this backup?") },
             text = { Text("This loads the backup's transactions, categories and settings onto this phone.") },
             confirmButton = {
-                TextButton(onClick = { viewModel.restore(file.id); pendingRestore = null }) { Text("Restore") }
+                TextButton(onClick = { viewModel.restore(file.id); restoreInitiated = true; pendingRestore = null }) { Text("Restore") }
             },
             dismissButton = { TextButton(onClick = { pendingRestore = null }) { Text("Cancel") } },
         )
@@ -162,11 +180,22 @@ fun OnboardingRestoreScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
-                    PasswordField(value = password, onValueChange = { password = it }, label = "Backup password")
+                    PasswordField(
+                        value = password,
+                        onValueChange = { password = it; if (state.message != null) viewModel.clearMessage() },
+                        label = "Backup password",
+                        isError = state.message != null,
+                    )
+                    // Surface a wrong-password error INSIDE the dialog (the bottom-of-screen message is
+                    // occluded by this popup).
+                    state.message?.let { msg ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.restoreWithPassword(password) }, enabled = password.isNotEmpty()) { Text("Restore") }
+                TextButton(onClick = { restoreInitiated = true; viewModel.restoreWithPassword(password) }, enabled = password.isNotEmpty()) { Text("Restore") }
             },
             dismissButton = { TextButton(onClick = viewModel::cancelPasswordRestore) { Text("Cancel") } },
         )

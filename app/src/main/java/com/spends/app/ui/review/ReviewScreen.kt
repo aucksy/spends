@@ -31,7 +31,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -54,10 +53,8 @@ import com.spends.app.core.money.Money
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.core.time.DateUtils
-import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CategoryAvatar
-import com.spends.app.ui.components.CategoryPickerSheet
 import com.spends.app.ui.components.SpendsCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,11 +65,10 @@ fun ReviewScreen(
     viewModel: ReviewViewModel = hiltViewModel(),
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
-    val categories by viewModel.categories.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
-    var pickFor by remember { mutableStateOf<ReviewRowUi?>(null) }
     var smsFor by remember { mutableStateOf<ReviewRowUi?>(null) }
+    var rejectFor by remember { mutableStateOf<ReviewRowUi?>(null) }
     var showConfirmAll by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -133,10 +129,9 @@ fun ReviewScreen(
                         items(items, key = { it.id }) { row ->
                             ReviewCard(
                                 row = row,
-                                onChangeCategory = { pickFor = row },
                                 onEdit = { onEditPending(row.id) },
                                 onViewSms = { smsFor = row },
-                                onReject = { viewModel.reject(row.id) },
+                                onReject = { rejectFor = row },
                             )
                         }
                     }
@@ -145,19 +140,22 @@ fun ReviewScreen(
         }
     }
 
-    pickFor?.let { row ->
-        val usage = if (row.kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
-        val visible = categories.filter { it.usage == usage || it.usage == CategoryUsage.BOTH }
-        CategoryPickerSheet(
-            categories = visible,
-            selectedId = row.categoryId,
-            // Just re-tag the queued row — does NOT add it to the ledger (#9).
-            onSelect = { id -> viewModel.changeCategory(row.id, id); pickFor = null },
-            onDismiss = { pickFor = null },
+    smsFor?.let { row -> SmsDetailSheet(row = row, onDismiss = { smsFor = null }) }
+
+    // Confirm before the X discards a scanned SMS from the review queue (#9).
+    rejectFor?.let { row ->
+        AlertDialog(
+            onDismissRequest = { rejectFor = null },
+            title = { Text("Remove this from review?") },
+            text = { Text("It won't be added — this just discards the captured SMS from the review queue.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.reject(row.id); rejectFor = null }) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { rejectFor = null }) { Text("Cancel") } },
         )
     }
-
-    smsFor?.let { row -> SmsDetailSheet(row = row, onDismiss = { smsFor = null }) }
 
     if (showConfirmAll) {
         AlertDialog(
@@ -193,7 +191,6 @@ private fun EmptyState(modifier: Modifier, icon: @Composable () -> Unit, title: 
 @Composable
 private fun ReviewCard(
     row: ReviewRowUi,
-    onChangeCategory: () -> Unit,
     onEdit: () -> Unit,
     onViewSms: () -> Unit,
     onReject: () -> Unit,
@@ -235,15 +232,10 @@ private fun ReviewCard(
                 Text(row.categoryName ?: "Uncategorized", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
-            // Equal-height buttons (48dp) + single line so "Change category" can't wrap taller than the
-            // primary action (#9). "Review and Add" opens the editor; it does NOT add on its own.
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onChangeCategory, modifier = Modifier.weight(1f).height(48.dp)) {
-                    Text("Change category", maxLines = 1)
-                }
-                Button(onClick = onEdit, modifier = Modifier.weight(1f).height(48.dp)) {
-                    Text("Review and Add", maxLines = 1)
-                }
+            // Single primary action (#6) — the category is changed inside the editor it opens, so there's
+            // no separate "Change category" button. It opens the editor; it does NOT add on its own.
+            Button(onClick = onEdit, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                Text("Review and Add")
             }
         }
     }

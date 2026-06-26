@@ -12,6 +12,7 @@ import com.spends.app.core.MainActivity
 import com.spends.app.core.money.Money
 import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
+import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.repo.ExpenseRepository
@@ -86,11 +87,13 @@ class SummaryWidget : AppWidgetProvider() {
                 val income = sums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0L
                 val expense = sums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
                 val balance = income - expense
+                // Cycle NAME + dates (#11), e.g. "Current Salary Cycle · 1 Aug – 31 Aug".
+                val cycleName = PeriodSelection(PeriodType.SALARY_CYCLE, PeriodRange.CURRENT).describe()
                 val store = ep.widgetMaskStore()
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        buildViews(context, id, resolved.label, income, expense, balance, store.isMasked(id)),
+                        buildViews(context, id, cycleName, resolved.label, income, expense, balance, store.isMasked(id)),
                     )
                 }
             } catch (e: Exception) {
@@ -104,6 +107,7 @@ class SummaryWidget : AppWidgetProvider() {
     private fun buildViews(
         context: Context,
         id: Int,
+        cycleName: String,
         cycleLabel: String,
         income: Long,
         expense: Long,
@@ -112,7 +116,7 @@ class SummaryWidget : AppWidgetProvider() {
     ): RemoteViews {
         fun money(v: Long) = if (masked) MASK else Money.formatRupees(v, alwaysTwoDecimals = false)
         return RemoteViews(context.packageName, R.layout.widget_summary).apply {
-            setTextViewText(R.id.widget_summary_cycle, "BALANCE · $cycleLabel")
+            setTextViewText(R.id.widget_summary_cycle, "$cycleName · $cycleLabel")
             setTextViewText(R.id.widget_summary_balance, money(balance))
             setTextViewText(R.id.widget_summary_expense, money(expense))
             setTextViewText(R.id.widget_summary_income, money(income))

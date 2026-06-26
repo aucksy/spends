@@ -15,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.theme.SpendsTheme
+import com.spends.app.domain.model.ThemeMode
 import com.spends.app.receiver.CaptureActionReceiver
 import com.spends.app.ui.navigation.SpendsNavHost
 import com.spends.app.ui.onboarding.SplashScreenContent
@@ -43,9 +44,13 @@ class MainActivity : ComponentActivity() {
             val pendingQuickAdd by viewModel.pendingQuickAdd.collectAsStateWithLifecycle()
             // Quiet brand splash on every cold start (#10), then hand off to the app.
             var showSplash by rememberSaveable { mutableStateOf(true) }
-            LaunchedEffect(Unit) { delay(1200); showSplash = false }
+            LaunchedEffect(Unit) { delay(840); showSplash = false }
+            // Onboarding is designed light-only — pin it to LIGHT regardless of the system/AUTO-dark
+            // setting so it matches the design; the app respects the user's theme once onboarding is done.
+            // (A dedicated dark onboarding variant is a separate later task.)
+            val themeMode = if (state.settings.onboardingComplete) state.settings.themeMode else ThemeMode.LIGHT
             SpendsTheme(
-                themeMode = state.settings.themeMode,
+                themeMode = themeMode,
                 autoDarkStartMinute = state.settings.autoDarkStartMinute,
                 autoDarkEndMinute = state.settings.autoDarkEndMinute,
             ) {

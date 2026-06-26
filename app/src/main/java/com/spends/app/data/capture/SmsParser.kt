@@ -155,9 +155,11 @@ object SmsParser {
         // (with the broad convert tokens) silently drop a genuine premium/installment debit. "emis?" keeps
         // the plural "EMIs" so real conversion notices ("converted into 6 EMIs") still reject.
         if (!emiWordRegex.containsMatchIn(low)) return false
+        // "split"/"easy emi" catch IndusInd's "Split INR X … into Easy EMIs" offers (they carry a spend
+        // verb but aren't a fresh debit). Genuine installment debits never say split / convert / easy emi.
         return low.containsAny(
-            "convert", "conversion", "into emi", "to emis", "avail emi", "emi option",
-            "no cost emi", "no-cost emi", "emi offer", "emi facility", "emi plan",
+            "convert", "conversion", "split", "into emi", "to emis", "easy emi", "avail emi",
+            "emi option", "no cost emi", "no-cost emi", "emi offer", "emi facility", "emi plan",
         )
     }
 

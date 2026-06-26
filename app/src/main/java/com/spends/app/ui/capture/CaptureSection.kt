@@ -147,7 +147,7 @@ fun CaptureSection(
             }
 
             TextButton(onClick = { showDelete = true }, enabled = !state.working) {
-                Text("Delete bulk-scanned SMS transactions", color = MaterialTheme.colorScheme.error)
+                Text("Delete scanned SMS data…", color = MaterialTheme.colorScheme.error)
             }
         }
 
@@ -183,15 +183,47 @@ fun CaptureSection(
     if (showDelete) {
         AlertDialog(
             onDismissRequest = { showDelete = false },
-            title = { Text("Delete bulk-scanned SMS?") },
-            text = { Text("Removes only transactions added by scanning past SMS. Live notification adds and your manual entries are kept. This can't be undone.") },
-            confirmButton = {
-                TextButton(onClick = { showDelete = false; viewModel.deleteAllCaptured() }) {
-                    Text("Delete all", color = MaterialTheme.colorScheme.error)
+            title = { Text("Delete scanned SMS data") },
+            text = {
+                Column {
+                    Text(
+                        "Choose what to clear. Live notification adds and your manual entries are always kept. " +
+                            "This can't be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    DeleteOption(
+                        title = "Clear review queue only",
+                        subtitle = if (state.pendingCount > 0) {
+                            "${state.pendingCount} waiting — removes them from review without adding"
+                        } else {
+                            "Nothing waiting to review"
+                        },
+                    ) { showDelete = false; viewModel.clearReviewQueue() }
+                    DeleteOption(
+                        title = "Clear queue + delete added",
+                        subtitle = "Also deletes transactions already added to the timeline from past-SMS scans",
+                    ) { showDelete = false; viewModel.clearQueueAndDeleteAdded() }
                 }
             },
+            confirmButton = {},
             dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun DeleteOption(title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.error)
     }
 }
 

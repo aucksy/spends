@@ -1,5 +1,6 @@
 package com.spends.app.core.theme
 
+import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -7,12 +8,15 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import com.spends.app.domain.model.ThemeMode
 import kotlinx.coroutines.delay
 import java.time.LocalTime
@@ -111,6 +115,20 @@ fun SpendsTheme(
         ThemeMode.AUTO -> autoDark
     }
     val colorScheme = if (dark) DarkColors else LightColors
+
+    // Drive the status/navigation-bar ICON colours off the EFFECTIVE theme (so the forced-light
+    // onboarding gets dark, visible icons on a system-dark device — not white-on-white). enableEdgeToEdge
+    // only set them once off the system uiMode, which is wrong here.
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+    }
 
     CompositionLocalProvider(LocalSemanticColors provides if (dark) DarkSemantic else LightSemantic) {
         MaterialTheme(
