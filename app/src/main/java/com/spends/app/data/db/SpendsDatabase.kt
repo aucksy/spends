@@ -27,7 +27,7 @@ import com.spends.app.data.seed.CategorySeed
         PendingCaptureEntity::class,
         MerchantCategoryEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -177,6 +177,16 @@ abstract class SpendsDatabase : RoomDatabase() {
                         "`updatedAt` INTEGER NOT NULL, " +
                         "PRIMARY KEY(`merchantKey`))",
                 )
+            }
+        }
+
+        /** v7 -> v8: store the original SMS body + sender on pending_captures so the review card can
+         *  show the source text (#10) and search can match any value (#12). Both are nullable
+         *  String? -> `TEXT` (no NOT NULL, no default), matching Room's generated DDL exactly. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pending_captures ADD COLUMN rawBody TEXT")
+                db.execSQL("ALTER TABLE pending_captures ADD COLUMN sender TEXT")
             }
         }
     }

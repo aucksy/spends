@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Summary widget (#2): ~4x2 resizable. Shows Balance/Expense/Income for the current cycle. A daily
+     update keeps it fresh and rolls the cycle over; the app also refreshes it on resume. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="86400000"
+    android:description="@string/widget_summary_description"
+    android:previewImage="@drawable/widget_summary_bg"
+    android:previewLayout="@layout/widget_summary"
+    android:initialLayout="@layout/widget_summary" />

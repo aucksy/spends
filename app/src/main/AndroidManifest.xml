@@ -72,13 +72,28 @@
              our own activity and shows no data. -->
         <receiver
             android:name=".widget.QuickAddWidget"
-            android:exported="true">
+            android:exported="true"
+            android:label="@string/widget_quick_add_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_quick_add_info" />
+        </receiver>
+
+        <!-- Home-screen summary widget (#2): shows Income/Expense/Balance for the current cycle with a
+             per-widget eye to hide/show. Exported for APPWIDGET_UPDATE delivery; reads data locally. -->
+        <receiver
+            android:name=".widget.SummaryWidget"
+            android:exported="true"
+            android:label="@string/widget_summary_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_summary_info" />
         </receiver>
 
         <!--

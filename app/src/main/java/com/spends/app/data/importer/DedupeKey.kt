@@ -11,16 +11,30 @@ import java.security.MessageDigest
 object DedupeKey {
     private const val DAY_MS = 86_400_000L
 
-    fun forImport(occurredAt: Long, amountMinor: Long, categoryName: String, note: String?, kind: TxnKind): String {
+    /**
+     * Composite key for an imported row: day + amount + category + note/merchant + kind — never amount
+     * alone (#14). [occurrence] disambiguates a GENUINE same-day repeat of an otherwise-identical row
+     * (so two ₹500 coffees bought the same day are BOTH kept, not merged); the 0th occurrence keeps the
+     * legacy hash so re-importing data imported by an earlier build still dedupes instead of doubling.
+     */
+    fun forImport(
+        occurredAt: Long,
+        amountMinor: Long,
+        categoryName: String,
+        note: String?,
+        kind: TxnKind,
+        occurrence: Int = 0,
+    ): String {
         val day = occurredAt / DAY_MS
-        val raw = listOf(
+        val parts = mutableListOf(
             day.toString(),
             amountMinor.toString(),
             categoryName.trim().lowercase(),
             (note ?: "").trim().lowercase(),
             kind.name,
-        ).joinToString("|")
-        return sha256Hex(raw)
+        )
+        if (occurrence > 0) parts.add("#$occurrence")
+        return sha256Hex(parts.joinToString("|"))
     }
 
     /**

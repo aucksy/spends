@@ -192,6 +192,8 @@ class SmsCaptureRepository @Inject constructor(
                                 dedupeHash = hash,
                                 receivedAt = date,
                                 createdAt = DateUtils.nowMillis(),
+                                rawBody = body, // #10/#12: keep the source SMS for View-SMS + search
+                                sender = sender,
                             ),
                         )
                         if (rowId != -1L) {

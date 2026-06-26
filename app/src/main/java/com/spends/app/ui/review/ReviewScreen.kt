@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,21 +15,29 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.money.Money
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
+import com.spends.app.core.time.DateUtils
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CategoryAvatar
@@ -59,7 +69,10 @@ fun ReviewScreen(
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val query by viewModel.query.collectAsStateWithLifecycle()
+    val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
     var pickFor by remember { mutableStateOf<ReviewRowUi?>(null) }
+    var smsFor by remember { mutableStateOf<ReviewRowUi?>(null) }
     var showConfirmAll by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -72,41 +85,61 @@ fun ReviewScreen(
                     }
                 },
                 actions = {
-                    if (items.isNotEmpty()) {
-                        TextButton(onClick = { showConfirmAll = true }) { Text("Add all (${items.size})") }
+                    // "Add all" adds the whole queue, so hide it while searching (a filtered subset).
+                    if (pendingCount > 0 && query.isBlank()) {
+                        TextButton(onClick = { showConfirmAll = true }) { Text("Add all ($pendingCount)") }
                     }
                 },
             )
         },
     ) { padding ->
-        if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = LocalSemanticColors.current.income)
-                    Spacer(Modifier.height(12.dp))
-                    Text("All caught up", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Captured transactions that need a category or a second look appear here.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
+        if (pendingCount == 0) {
+            EmptyState(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(items, key = { it.id }) { row ->
-                    ReviewCard(
-                        row = row,
-                        onChangeCategory = { pickFor = row },
-                        onEdit = { onEditPending(row.id) },
-                        onReject = { viewModel.reject(row.id) },
+                icon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = LocalSemanticColors.current.income) },
+                title = "All caught up",
+                body = "Captured transactions that need a category or a second look appear here.",
+            )
+        } else {
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = viewModel::setQuery,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Search amount, merchant, bank, text…") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setQuery("") }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                )
+                if (items.isEmpty() && query.isNotBlank()) {
+                    EmptyState(
+                        modifier = Modifier.fillMaxSize(),
+                        icon = { Icon(Icons.Filled.SearchOff, contentDescription = null, modifier = Modifier.size(44.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        title = "No matches",
+                        body = "Nothing in the review queue matches “${query.trim()}”.",
                     )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(items, key = { it.id }) { row ->
+                            ReviewCard(
+                                row = row,
+                                onChangeCategory = { pickFor = row },
+                                onEdit = { onEditPending(row.id) },
+                                onViewSms = { smsFor = row },
+                                onReject = { viewModel.reject(row.id) },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -124,10 +157,12 @@ fun ReviewScreen(
         )
     }
 
+    smsFor?.let { row -> SmsDetailSheet(row = row, onDismiss = { smsFor = null }) }
+
     if (showConfirmAll) {
         AlertDialog(
             onDismissRequest = { showConfirmAll = false },
-            title = { Text("Add all ${items.size}?") },
+            title = { Text("Add all $pendingCount?") },
             text = { Text("Adds every captured transaction with its guessed category. You can edit any of them afterwards in the timeline.") },
             confirmButton = {
                 TextButton(onClick = { showConfirmAll = false; viewModel.confirmAll() }) { Text("Add all") }
@@ -138,13 +173,49 @@ fun ReviewScreen(
 }
 
 @Composable
-private fun ReviewCard(row: ReviewRowUi, onChangeCategory: () -> Unit, onEdit: () -> Unit, onReject: () -> Unit) {
+private fun EmptyState(modifier: Modifier, icon: @Composable () -> Unit, title: String, body: String) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+            icon()
+            Spacer(Modifier.height(12.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReviewCard(
+    row: ReviewRowUi,
+    onChangeCategory: () -> Unit,
+    onEdit: () -> Unit,
+    onViewSms: () -> Unit,
+    onReject: () -> Unit,
+) {
     val semantic = LocalSemanticColors.current
     // Tapping the card opens the full editor prefilled — same as "Review and Add" (#9).
     SpendsCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("CAPTURED FROM SMS", style = MaterialTheme.typography.labelMedium, color = semantic.review, modifier = Modifier.weight(1f))
+                // #10: only when we actually kept the source text (rows scanned before DB v8 have none).
+                if (!row.rawBody.isNullOrBlank()) {
+                    Text(
+                        "View SMS",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable(onClick = onViewSms)
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                    )
+                }
                 IconButton(onClick = onReject, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Reject", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
@@ -172,6 +243,39 @@ private fun ReviewCard(row: ReviewRowUi, onChangeCategory: () -> Unit, onEdit: (
                 }
                 Button(onClick = onEdit, modifier = Modifier.weight(1f).height(48.dp)) {
                     Text("Review and Add", maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+/** #10: shows the original captured SMS (sender + time + body) in a theme-matching bottom sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SmsDetailSheet(row: ReviewRowUi, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
+        ) {
+            Text("Original SMS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            val subtitle = listOfNotNull(
+                row.sender?.takeIf { it.isNotBlank() },
+                "${DateUtils.formatDay(row.receivedAt)} · ${DateUtils.formatTime(row.receivedAt)}",
+            ).joinToString(" · ")
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = LocalSemanticColors.current.review)
+            Spacer(Modifier.height(14.dp))
+            SpendsCard(modifier = Modifier.fillMaxWidth()) {
+                SelectionContainer {
+                    Text(
+                        row.rawBody ?: "The original text isn't available for this one.",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
             }
         }

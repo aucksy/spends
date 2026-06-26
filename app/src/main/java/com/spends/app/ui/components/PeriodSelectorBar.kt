@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
@@ -55,6 +57,8 @@ fun PeriodSelectorBar(
     onSelect: (PeriodSelection) -> Unit,
     modifier: Modifier = Modifier,
     onOpenSettings: (() -> Unit)? = null,
+    onToggleSearch: (() -> Unit)? = null,
+    searchActive: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -89,8 +93,17 @@ fun PeriodSelectorBar(
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = "Change period", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        // Search lives here beside Settings (#16) so the timeline no longer needs a permanent search bar.
+        if (onToggleSearch != null) {
+            IconButton(onClick = onToggleSearch) {
+                Icon(
+                    if (searchActive) Icons.Filled.Close else Icons.Filled.Search,
+                    contentDescription = if (searchActive) "Close search" else "Search transactions",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         if (onOpenSettings != null) {
-            Spacer(Modifier.width(4.dp))
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

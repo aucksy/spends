@@ -8,8 +8,9 @@ import com.spends.app.domain.model.TxnKind
 /**
  * A bank-SMS transaction parsed from a **historical inbox scan**, held for the user to review before
  * it ever enters the ledger (PRD §4.1, review-only capture). Nothing here affects balance/analytics
- * until the user confirms it (→ a real [ExpenseEntity]) or rejects it (→ deleted). Raw SMS text is
- * intentionally NOT stored — only the parsed fields needed to create the transaction.
+ * until the user confirms it (→ a real [ExpenseEntity]) or rejects it (→ deleted). The original SMS
+ * [rawBody]/[sender] are stored (local-only, never networked) so the review card can show "View SMS"
+ * (#10) and search can match any value (#12); rows scanned before DB v8 have null.
  *
  * `dedupeHash` is uniquely indexed so a re-scan can't queue the same payment twice.
  */
@@ -30,4 +31,6 @@ data class PendingCaptureEntity(
     val dedupeHash: String,
     val receivedAt: Long,
     val createdAt: Long,
+    val rawBody: String? = null,
+    val sender: String? = null,
 )

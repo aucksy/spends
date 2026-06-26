@@ -2,4 +2,7 @@
 <resources>
     <string name="app_name">Spends</string>
     <string name="widget_add_description">Add a transaction</string>
+    <string name="widget_quick_add_label">Quick Add Transaction</string>
+    <string name="widget_summary_label">Spends Summary</string>
+    <string name="widget_summary_description">Income, expense and balance for your current cycle.</string>
 </resources>

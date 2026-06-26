@@ -9,6 +9,6 @@
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="0"
     android:description="@string/widget_add_description"
-    android:previewImage="@mipmap/ic_launcher"
+    android:previewImage="@drawable/widget_quick_add_preview"
     android:previewLayout="@layout/widget_quick_add"
     android:initialLayout="@layout/widget_quick_add" />

@@ -1,5 +1,10 @@
 package com.spends.app.ui.transactions
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +30,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sms
@@ -38,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -47,6 +54,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +64,8 @@ import androidx.compose.runtime.setValue
 import android.view.HapticFeedbackConstants
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
@@ -93,6 +103,8 @@ fun TransactionsScreen(
     // Search text is owned locally (synchronous snapshot state) so the cursor never jumps; the
     // ViewModel is fed for filtering only.
     var searchText by rememberSaveable { mutableStateOf("") }
+    // Search is revealed on demand via the period-bar icon (#16) instead of a permanent bar.
+    var searchVisible by rememberSaveable { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
 
@@ -113,9 +125,11 @@ fun TransactionsScreen(
     val selectionMode = selectedIds.isNotEmpty()
     var showBulkDelete by remember { mutableStateOf(false) }
     var showBulkCategory by remember { mutableStateOf(false) }
-    // #13: haptic feedback on every multi-select toggle.
+    // Haptic on EVERY multi-select toggle (select AND deselect). KEYBOARD_TAP (the keypad's tick) is
+    // reliably felt across devices, unlike CONTEXT_CLICK which is often suppressed — so it no longer
+    // feels like only the first selection buzzes (#17).
     fun toggle(id: Long) {
-        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
     }
     fun startSelection(id: Long) {
@@ -123,7 +137,10 @@ fun TransactionsScreen(
         selectedIds = setOf(id)
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    val showScrollTop by remember { derivedStateOf { listState.firstVisibleItemIndex > 25 } }
+
+    Box(modifier = modifier.fillMaxSize()) {
+      Column(modifier = Modifier.fillMaxSize()) {
         if (selectionMode) {
             SelectionBar(
                 count = selectedIds.size,
@@ -133,30 +150,47 @@ fun TransactionsScreen(
             )
         } else {
             // Period selector — always visible so the cycle/range can be changed any time. Hosts the
-            // Settings gear now that the title bar is gone (#7).
+            // Settings gear AND the search toggle now that the title/search bars are gone (#7/#16). Inset
+            // 16.dp so its edges sit flush with the stat tiles + hero below it (#16).
             PeriodSelectorBar(
                 selection = selection,
                 label = state.periodLabel,
                 onSelect = viewModel::applySelection,
                 onOpenSettings = onOpenSettings,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                onToggleSearch = {
+                    searchVisible = !searchVisible
+                    if (!searchVisible) { searchText = ""; viewModel.setSearch("") }
+                },
+                searchActive = searchVisible,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
         }
-        TextField(
-            value = searchText,
-            onValueChange = { searchText = it; viewModel.setSearch(it) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            placeholder = { Text("Search transactions") },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            colors = TextFieldDefaults.colors(
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-            ),
-        )
+        // Search field appears only when toggled on (#16), and autofocuses so the keyboard is ready.
+        if (searchVisible && !selectionMode) {
+            val focusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                // The field is rememberSaveable but the VM's query isn't — re-apply a restored search so
+                // the list matches what the box shows after process death, then focus.
+                if (searchText.isNotEmpty()) viewModel.setSearch(searchText)
+                runCatching { focusRequester.requestFocus() }
+            }
+            TextField(
+                value = searchText,
+                onValueChange = { searchText = it; viewModel.setSearch(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .focusRequester(focusRequester),
+                placeholder = { Text("Search transactions") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+            )
+        }
 
         when {
             state.loading -> Unit
@@ -189,6 +223,19 @@ fun TransactionsScreen(
                 }
             }
         }
+      }
+
+      // Scroll-to-top — shows after ~25 rows; floats just above the + add FAB, hidden in selection mode (#15).
+      AnimatedVisibility(
+          visible = showScrollTop && !selectionMode,
+          enter = fadeIn() + scaleIn(),
+          exit = fadeOut() + scaleOut(),
+          modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 88.dp),
+      ) {
+          SmallFloatingActionButton(onClick = { scope.launch { listState.animateScrollToItem(0) } }) {
+              Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Scroll to top")
+          }
+      }
     }
 
     // Delete confirmation (swipe is easy to trigger, so always confirm).
@@ -336,13 +383,19 @@ private fun SwipeableRow(
         TransactionRow(row = row, selected = selected, onClick = onClick, onLongClick = onLongClick)
         return
     }
+    val view = LocalView.current
     val dismissState = rememberSwipeToDismissBoxState(
         // Both directions only *request* an action and snap back (return false) — the actual delete
-        // is gated behind a confirmation dialog, and right-swipe opens the category picker.
+        // is gated behind a confirmation dialog, and right-swipe opens the category picker. A firm
+        // haptic fires once when either swipe commits past the threshold (#17).
         confirmValueChange = { value ->
             when (value) {
-                SwipeToDismissBoxValue.EndToStart -> { onRequestDelete(); false }
-                SwipeToDismissBoxValue.StartToEnd -> { onRequestChangeCategory(); false }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestDelete(); false
+                }
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestChangeCategory(); false
+                }
                 else -> false
             }
         },

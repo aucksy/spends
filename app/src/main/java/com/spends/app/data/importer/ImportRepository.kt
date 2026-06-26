@@ -71,8 +71,11 @@ class ImportRepository @Inject constructor(
             created++
         }
 
-        // 2) Transactions — dedupe against existing + within the batch.
+        // 2) Transactions — dedupe against existing + within the batch on the COMPOSITE key. A genuine
+        //    same-day repeat of an identical row is kept by giving the 2nd+ occurrence an ordinal, while
+        //    the 1st keeps the legacy hash so re-importing earlier-imported data still dedupes (#14).
         val seen = expenseDao.allDedupeHashes().toHashSet()
+        val occurrence = HashMap<String, Int>()
         var imported = 0
         var duplicates = 0
         var processed = 0
@@ -82,7 +85,11 @@ class ImportRepository @Inject constructor(
             db.withTransaction {
                 for (txn in chunk) {
                     processed++
-                    val hash = DedupeKey.forImport(txn.occurredAt, txn.amountMinor, txn.categoryName, txn.note, txn.kind)
+                    val base = DedupeKey.forImport(txn.occurredAt, txn.amountMinor, txn.categoryName, txn.note, txn.kind)
+                    val n = occurrence.getOrDefault(base, 0)
+                    occurrence[base] = n + 1
+                    val hash = if (n == 0) base
+                        else DedupeKey.forImport(txn.occurredAt, txn.amountMinor, txn.categoryName, txn.note, txn.kind, n)
                     if (!seen.add(hash)) {
                         duplicates++
                         continue

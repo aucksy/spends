@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Picker preview for the quick-add widget (#13): the teal tile + the white + glyph, NOT the app icon.
+     API 31+ launchers render the real previewLayout; this is the pre-31 fallback. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="60dp"
+        android:height="60dp"
+        android:drawable="@drawable/widget_background"
+        android:gravity="center" />
+    <item
+        android:width="30dp"
+        android:height="30dp"
+        android:drawable="@drawable/ic_widget_add"
+        android:gravity="center" />
+</layer-list>

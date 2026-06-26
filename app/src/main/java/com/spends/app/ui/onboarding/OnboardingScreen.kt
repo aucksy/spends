@@ -34,7 +34,11 @@ import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Sms
@@ -57,7 +61,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.spends.app.core.theme.LocalSemanticColors
 
 /**
  * Onboarding (#10), per the "Spends Onboarding Flow" design: Welcome → SMS permission → Battery →
@@ -156,6 +165,32 @@ fun OnboardingScreen(
 
     Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Top header (steps 1..4): the design's 3 dots + a "Skip" link (no Skip on the final Setup
+            // step). The extra Battery step shares the first dot with SMS so the indicator still reads as 3.
+            // No bottom "Back" button — the design has none.
+            if (step in 1..lastStep) {
+                val dotIndex = when (step) { 1, 2 -> 0; 3 -> 1; else -> 2 }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    StepDots(count = 3, current = dotIndex)
+                    if (step != lastStep) {
+                        Text(
+                            "Skip",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            // Skipping the Salary step must still persist the picked day (mirrors "Confirm
+                            // salary day") — otherwise an importer silently loses it back to the default.
+                            modifier = Modifier.clickable { if (step == 3) viewModel.persistSalaryDay(); step += 1 },
+                        )
+                    } else {
+                        Spacer(Modifier.size(1.dp)) // keep the dots left-aligned via SpaceBetween
+                    }
+                }
+            }
             AnimatedContent(
                 targetState = step,
                 transitionSpec = { slideInFade() togetherWith slideOutFade() },
@@ -176,11 +211,6 @@ fun OnboardingScreen(
                 }
             }
 
-            if (step in 1..lastStep) {
-                StepDots(count = lastStep, current = step - 1)
-                Spacer(Modifier.height(14.dp))
-            }
-
             Button(
                 onClick = primaryAction,
                 shape = RoundedCornerShape(999.dp),
@@ -194,9 +224,6 @@ fun OnboardingScreen(
             }
             secondaryLabel?.let { label ->
                 TextButton(onClick = secondaryAction, modifier = Modifier.fillMaxWidth()) { Text(label) }
-            }
-            if (step in 1..lastStep) {
-                TextButton(onClick = { step-- }, modifier = Modifier.fillMaxWidth()) { Text("Back") }
             }
         }
     }
@@ -259,7 +286,7 @@ private fun WelcomeStep() {
         }
         Spacer(Modifier.height(20.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+            Icon(Icons.Filled.Lock, contentDescription = null, tint = LocalSemanticColors.current.income, modifier = Modifier.size(15.dp))
             Text("Your data never leaves your phone", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -308,6 +335,9 @@ private fun SmsPermissionStep(
         Spacer(Modifier.height(18.dp))
         ToggleCard(
             selected = autoCapture,
+            icon = Icons.Filled.NotificationsActive,
+            badgeBg = MaterialTheme.colorScheme.primaryContainer,
+            badgeTint = MaterialTheme.colorScheme.primary, // design glyph is primary teal #0F766E on #CFEEE9
             title = "Auto-capture new SMS",
             subtitle = "When a bank SMS arrives, get a notification to add the spend in one tap. Never added silently.",
             checked = autoCapture,
@@ -316,6 +346,9 @@ private fun SmsPermissionStep(
         Spacer(Modifier.height(12.dp))
         ToggleCard(
             selected = scanPast,
+            icon = Icons.Filled.History,
+            badgeBg = MaterialTheme.colorScheme.surfaceVariant,
+            badgeTint = Color(0xFF3F6212),
             title = "Scan past SMS",
             subtitle = "One-time read of older bank texts into a review queue to fill in spends you've already made.",
             checked = scanPast,
@@ -336,6 +369,9 @@ private fun SmsPermissionStep(
 @Composable
 private fun ToggleCard(
     selected: Boolean,
+    icon: ImageVector,
+    badgeBg: Color,
+    badgeTint: Color,
     title: String,
     subtitle: String,
     checked: Boolean,
@@ -350,7 +386,14 @@ private fun ToggleCard(
         ),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(modifier = Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Top-aligned (design align-items:flex-start): the badge + switch sit beside the title's first
+        // line, not centred against a 2–3 line subtitle.
+        Row(modifier = Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
+            Box(
+                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(badgeBg),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, contentDescription = null, tint = badgeTint, modifier = Modifier.size(22.dp)) }
+            Spacer(Modifier.width(13.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -407,24 +450,62 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                "${ordinal(salaryDay)} of every month",
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onPrimary,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        "SALARY DAY",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+                    )
+                    Text(
+                        "${ordinal(salaryDay)} of every month",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+                Icon(
+                    Icons.Filled.Payments,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                    modifier = Modifier.size(26.dp),
+                )
+            }
         }
         Spacer(Modifier.height(14.dp))
         Text("PICK A DAY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         DayGrid(selected = salaryDay, onSelect = onSelect)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Days near month-end auto-adjust for February and 30-day months.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Spacer(Modifier.height(14.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                // Warm inset surface + warmer dashed border to match the design pill (theme-aware so it
+                // still reads correctly in dark mode), per the #5 fidelity pass.
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .dashedBorder(MaterialTheme.colorScheme.outline, 10.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Icon(
+                Icons.Filled.Info,
+                contentDescription = null,
+                tint = LocalSemanticColors.current.review,
+                modifier = Modifier.size(17.dp),
+            )
+            Text(
+                "Last few days of the month auto-adjust for Feb & 30-day months.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -477,7 +558,7 @@ private fun SetupStep(selectedIndex: Int, onSelect: (Int) -> Unit) {
             badgeTint = MaterialTheme.colorScheme.onPrimaryContainer,
             badgeBg = MaterialTheme.colorScheme.primaryContainer,
             title = "Start fresh",
-            subtitle = "Add transactions as they happen. Recommended.",
+            subtitle = "Auto-capture begins now. Recommended.",
             onClick = { onSelect(0) },
         )
         Spacer(Modifier.height(12.dp))
@@ -487,7 +568,7 @@ private fun SetupStep(selectedIndex: Int, onSelect: (Int) -> Unit) {
             badgeTint = Color(0xFF3F6212),
             badgeBg = MaterialTheme.colorScheme.surfaceVariant,
             title = "Import from Excel",
-            subtitle = "Bring your existing spreadsheet history (.xlsx/.xls or CSV).",
+            subtitle = "Bring your existing spreadsheet history.",
             onClick = { onSelect(1) },
         )
         Spacer(Modifier.height(12.dp))
@@ -572,19 +653,27 @@ private fun BarsMark(size: androidx.compose.ui.unit.Dp) {
 
 @Composable
 private fun StepDots(count: Int, current: Int) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         repeat(count) { index ->
             val active = index == current
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 4.dp)
-                    .height(8.dp)
-                    .width(if (active) 20.dp else 8.dp)
+                    .height(7.dp)
+                    .width(if (active) 20.dp else 7.dp)
                     .clip(CircleShape)
                     .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
             )
         }
     }
+}
+
+/** A 1dp dashed rounded border (design's amber info pill), drawn behind the content. */
+private fun Modifier.dashedBorder(color: Color, radius: androidx.compose.ui.unit.Dp): Modifier = drawBehind {
+    drawRoundRect(
+        color = color,
+        style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 6f))),
+        cornerRadius = CornerRadius(radius.toPx()),
+    )
 }
 
 private fun ordinal(day: Int): String {

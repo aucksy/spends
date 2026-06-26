@@ -78,6 +78,13 @@ interface ExpenseDao {
     )
     fun observeKindSums(start: Long, end: Long): Flow<List<KindSum>>
 
+    /** One-shot kind sums for [start, end) — for the home-screen summary widget (RemoteViews, no Flow). */
+    @Query(
+        "SELECT kind AS kind, SUM(amountMinor) AS total FROM expenses " +
+            "WHERE deletedAt IS NULL AND occurredAt >= :start AND occurredAt < :end GROUP BY kind",
+    )
+    suspend fun kindSumsOnce(start: Long, end: Long): List<KindSum>
+
     /**
      * Spend by category for the donut/legend. Transfers stay out (they're neutral money movement),
      * but EMIs/loans/investments ARE included now — the user wants every expense category to count as

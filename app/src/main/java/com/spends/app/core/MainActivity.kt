@@ -70,6 +70,12 @@ class MainActivity : ComponentActivity() {
         handleQuickAddIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Keep the home-screen summary widget (#2) in step with the latest data while the app is used.
+        com.spends.app.widget.SummaryWidget.refresh(this)
+    }
+
     /** Home-screen widget tap (#14): open the quick-add sheet once we're at Home. */
     private fun handleQuickAddIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_OPEN_QUICK_ADD, false) != true) return

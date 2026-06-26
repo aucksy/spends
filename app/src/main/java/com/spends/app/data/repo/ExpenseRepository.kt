@@ -51,6 +51,10 @@ class ExpenseRepository @Inject constructor(
     fun observeKindSums(startMillis: Long, endExclusiveMillis: Long): Flow<List<KindSum>> =
         dao.observeKindSums(startMillis, endExclusiveMillis)
 
+    /** One-shot kind sums (income/expense/transfer) for the home-screen summary widget (#2). */
+    suspend fun kindSumsOnce(startMillis: Long, endExclusiveMillis: Long): List<KindSum> =
+        dao.kindSumsOnce(startMillis, endExclusiveMillis)
+
     fun observeCategorySpend(startMillis: Long, endExclusiveMillis: Long): Flow<List<CategorySpend>> =
         dao.observeCategorySpend(startMillis, endExclusiveMillis)
 
