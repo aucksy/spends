@@ -43,10 +43,9 @@ class ReviewViewModel @Inject constructor(
             pending.map { it.toRow(byId) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun confirm(id: Long) = viewModelScope.launch { captureRepository.confirmPending(id) }
-
-    fun changeCategoryAndConfirm(id: Long, categoryId: Long) =
-        viewModelScope.launch { captureRepository.confirmPending(id, categoryId) }
+    /** Re-categorise a queued capture in place — review-only, NEVER adds it to the ledger (#9). */
+    fun changeCategory(id: Long, categoryId: Long) =
+        viewModelScope.launch { captureRepository.setPendingCategory(id, categoryId) }
 
     fun reject(id: Long) = viewModelScope.launch { captureRepository.rejectPending(id) }
 

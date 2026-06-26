@@ -1,5 +1,6 @@
 package com.spends.app.ui.review
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +54,7 @@ import com.spends.app.ui.components.SpendsCard
 @Composable
 fun ReviewScreen(
     onBack: () -> Unit,
+    onEditPending: (Long) -> Unit,
     viewModel: ReviewViewModel = hiltViewModel(),
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
@@ -102,7 +104,7 @@ fun ReviewScreen(
                     ReviewCard(
                         row = row,
                         onChangeCategory = { pickFor = row },
-                        onConfirm = { viewModel.confirm(row.id) },
+                        onEdit = { onEditPending(row.id) },
                         onReject = { viewModel.reject(row.id) },
                     )
                 }
@@ -116,7 +118,8 @@ fun ReviewScreen(
         CategoryPickerSheet(
             categories = visible,
             selectedId = row.categoryId,
-            onSelect = { id -> viewModel.changeCategoryAndConfirm(row.id, id); pickFor = null },
+            // Just re-tag the queued row — does NOT add it to the ledger (#9).
+            onSelect = { id -> viewModel.changeCategory(row.id, id); pickFor = null },
             onDismiss = { pickFor = null },
         )
     }
@@ -135,9 +138,10 @@ fun ReviewScreen(
 }
 
 @Composable
-private fun ReviewCard(row: ReviewRowUi, onChangeCategory: () -> Unit, onConfirm: () -> Unit, onReject: () -> Unit) {
+private fun ReviewCard(row: ReviewRowUi, onChangeCategory: () -> Unit, onEdit: () -> Unit, onReject: () -> Unit) {
     val semantic = LocalSemanticColors.current
-    SpendsCard(modifier = Modifier.fillMaxWidth()) {
+    // Tapping the card opens the full editor prefilled — same as "Review and Add" (#9).
+    SpendsCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("CAPTURED FROM SMS", style = MaterialTheme.typography.labelMedium, color = semantic.review, modifier = Modifier.weight(1f))
@@ -158,12 +162,17 @@ private fun ReviewCard(row: ReviewRowUi, onChangeCategory: () -> Unit, onConfirm
                 CategoryAvatar(row.iconKey ?: "tag", row.colorHex ?: "#78716C", size = 32.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(row.categoryName ?: "Uncategorized", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Text("Change", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp))
             }
             Spacer(Modifier.height(12.dp))
+            // Equal-height buttons (48dp) + single line so "Change category" can't wrap taller than the
+            // primary action (#9). "Review and Add" opens the editor; it does NOT add on its own.
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onChangeCategory, modifier = Modifier.weight(1f)) { Text("Change category") }
-                Button(onClick = onConfirm, modifier = Modifier.weight(1f)) { Text("Looks right") }
+                OutlinedButton(onClick = onChangeCategory, modifier = Modifier.weight(1f).height(48.dp)) {
+                    Text("Change category", maxLines = 1)
+                }
+                Button(onClick = onEdit, modifier = Modifier.weight(1f).height(48.dp)) {
+                    Text("Review and Add", maxLines = 1)
+                }
             }
         }
     }

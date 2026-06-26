@@ -31,11 +31,32 @@ object Routes {
     const val ARG_EXPENSE_ID = "expenseId"
     const val NO_EXPENSE_ID = -1L
 
-    /** Route to the add/edit sheet; null id = add a new transaction. */
-    fun addEdit(expenseId: Long? = null): String =
-        "$ADD_EDIT?$ARG_EXPENSE_ID=${expenseId ?: NO_EXPENSE_ID}"
+    // A queued SMS capture being reviewed in the full editor (#9): seeds the form, writes only on Save.
+    const val ARG_PENDING_ID = "pendingId"
+    const val NO_PENDING_ID = -1L
 
-    const val ADD_EDIT_PATTERN = "$ADD_EDIT?$ARG_EXPENSE_ID={$ARG_EXPENSE_ID}"
+    // An unsaved live-capture draft (notification "Edit", #4): the editor reads it from CaptureDraftStore.
+    const val ARG_FROM_DRAFT = "fromDraft"
+
+    /**
+     * Route to the add/edit screen.
+     *  - null id + null pendingId = add a new transaction.
+     *  - [expenseId] set = edit an existing transaction.
+     *  - [pendingId] set = review a queued SMS capture (prefilled; persists only on Save).
+     */
+    fun addEdit(expenseId: Long? = null, pendingId: Long? = null): String =
+        "$ADD_EDIT?$ARG_EXPENSE_ID=${expenseId ?: NO_EXPENSE_ID}" +
+            "&$ARG_PENDING_ID=${pendingId ?: NO_PENDING_ID}&$ARG_FROM_DRAFT=false"
+
+    /** Open the editor on a queued SMS capture (#9). */
+    fun addEditPending(pendingId: Long): String = addEdit(pendingId = pendingId)
+
+    /** Open the editor on the unsaved live-capture draft held in CaptureDraftStore (#4). */
+    fun addEditDraft(): String =
+        "$ADD_EDIT?$ARG_EXPENSE_ID=$NO_EXPENSE_ID&$ARG_PENDING_ID=$NO_PENDING_ID&$ARG_FROM_DRAFT=true"
+
+    const val ADD_EDIT_PATTERN =
+        "$ADD_EDIT?$ARG_EXPENSE_ID={$ARG_EXPENSE_ID}&$ARG_PENDING_ID={$ARG_PENDING_ID}&$ARG_FROM_DRAFT={$ARG_FROM_DRAFT}"
 
     // ---- Per-category transactions drill-down (from Analytics) ----
     const val CATEGORY_TXNS = "category_txns"

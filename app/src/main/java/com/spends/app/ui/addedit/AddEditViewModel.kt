@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.core.money.Money
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.capture.CaptureDraft
+import com.spends.app.data.capture.CaptureDraftStore
+import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.repo.AllocationInput
 import com.spends.app.data.repo.CategoryRepository
@@ -36,10 +39,36 @@ class AddEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val expenseRepository: ExpenseRepository,
     private val categoryRepository: CategoryRepository,
+    private val captureRepository: SmsCaptureRepository,
+    captureDraftStore: CaptureDraftStore,
 ) : ViewModel() {
 
     private val expenseId: Long = savedStateHandle[Routes.ARG_EXPENSE_ID] ?: Routes.NO_EXPENSE_ID
     val isEdit: Boolean = expenseId != Routes.NO_EXPENSE_ID
+
+    // Reviewing a queued SMS capture in the full editor (#9): seed from the pending row, write on Save.
+    private val pendingId: Long = savedStateHandle[Routes.ARG_PENDING_ID] ?: Routes.NO_PENDING_ID
+    private val isPending: Boolean = !isEdit && pendingId != Routes.NO_PENDING_ID
+
+    // Reviewing an unsaved live-capture draft (notification "Edit", #4): consume it once from the store.
+    private val fromDraft: Boolean = savedStateHandle[Routes.ARG_FROM_DRAFT] ?: false
+    private val draft: CaptureDraft? = if (fromDraft && !isEdit && !isPending) captureDraftStore.consume() else null
+    private val isDraft: Boolean = draft != null
+
+    /** Whether this is one of the review-and-add flows (a capture being confirmed for the first time). */
+    private val isCapture: Boolean = isPending || isDraft
+
+    val screenTitle: String = when {
+        isEdit -> "Edit transaction"
+        isCapture -> "Review & add"
+        else -> "Add transaction"
+    }
+
+    val saveLabel: String = when {
+        isEdit -> "Save changes"
+        isCapture -> "Add transaction"
+        else -> "Save"
+    }
 
     // Most-used categories first, so the picker surfaces the user's frequent ones at the top.
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
@@ -56,8 +85,8 @@ class AddEditViewModel @Inject constructor(
     val finished: StateFlow<Boolean> = _finished
 
     init {
-        if (isEdit) {
-            viewModelScope.launch {
+        when {
+            isEdit -> viewModelScope.launch {
                 val e = expenseRepository.getById(expenseId)
                 _initial.value = if (e != null) {
                     AddEditInitial(
@@ -72,8 +101,35 @@ class AddEditViewModel @Inject constructor(
                     newInitial()
                 }
             }
-        } else {
-            _initial.value = newInitial()
+            // Seed from the queued capture — keep its SMS date (occurredAt) so it lands in the right place
+            // in the timeline once added (#9), not at "today".
+            isPending -> viewModelScope.launch {
+                val p = captureRepository.getPending(pendingId)
+                _initial.value = if (p != null) {
+                    AddEditInitial(
+                        amountText = Money.toEditString(p.amountMinor),
+                        kind = p.kind,
+                        categoryId = p.categoryId,
+                        merchant = p.merchant.orEmpty(),
+                        note = "",
+                        occurredAt = p.occurredAt,
+                    )
+                } else {
+                    newInitial() // the row was confirmed/rejected elsewhere — fall back to a blank add
+                }
+            }
+            // Seed from the unsaved live-capture draft (#4).
+            isDraft -> _initial.value = draft!!.let {
+                AddEditInitial(
+                    amountText = Money.toEditString(it.amountMinor),
+                    kind = it.kind,
+                    categoryId = it.categoryId,
+                    merchant = it.merchant.orEmpty(),
+                    note = "",
+                    occurredAt = it.occurredAt,
+                )
+            }
+            else -> _initial.value = newInitial()
         }
     }
 
@@ -105,15 +161,28 @@ class AddEditViewModel @Inject constructor(
         if (_saving.value) return
         _saving.value = true
         viewModelScope.launch {
-            val input = TransactionInput(
-                amountMinor = amountMinor,
-                kind = kind,
-                occurredAt = occurredAt,
-                merchantRaw = merchant.ifBlank { null },
-                note = note.ifBlank { null },
-                allocations = listOf(AllocationInput(categoryId, amountMinor)),
-            )
-            if (isEdit) expenseRepository.update(expenseId, input) else expenseRepository.create(input)
+            when {
+                // Confirm a queued capture (#9): keeps TxnSource.SMS + dedupe hash + merchant learning,
+                // then removes the pending row. The ledger write happens HERE, on explicit Save only.
+                isPending -> captureRepository.confirmPendingEdited(
+                    pendingId, amountMinor, kind, categoryId, merchant, note, occurredAt,
+                )
+                // Save an unsaved live-capture draft (#4): tags TxnSource.NOTIFICATION + the dedupe hash.
+                isDraft -> captureRepository.commitDraft(
+                    amountMinor, kind, categoryId, merchant, note, occurredAt, draft!!.dedupeHash,
+                )
+                else -> {
+                    val input = TransactionInput(
+                        amountMinor = amountMinor,
+                        kind = kind,
+                        occurredAt = occurredAt,
+                        merchantRaw = merchant.ifBlank { null },
+                        note = note.ifBlank { null },
+                        allocations = listOf(AllocationInput(categoryId, amountMinor)),
+                    )
+                    if (isEdit) expenseRepository.update(expenseId, input) else expenseRepository.create(input)
+                }
+            }
             _saving.value = false
             _finished.value = true
         }

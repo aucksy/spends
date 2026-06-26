@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentSender
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.data.backup.BackupNeedsPasswordException
@@ -39,7 +40,8 @@ sealed interface PendingPasswordRestore {
 data class BackupUiState(
     val lastBackupAt: Long? = null,
     val working: Boolean = false,
-    val message: String? = null,
+    val message: String? = null, // calm info/success (e.g. "Backed up just now")
+    val blockingError: String? = null, // a LOUD failure the user must acknowledge (e.g. a backup that didn't write)
     val autoBackupEnabled: Boolean = false,
     val hasBackupPassword: Boolean = false,
     val backups: List<DriveFile>? = null, // non-null => show the restore picker
@@ -71,16 +73,15 @@ class BackupViewModel @Inject constructor(
     /** Build a single-sheet .xlsx of all transactions and write it to the chosen file (readable, not encrypted). */
     fun exportExcel(uri: Uri) {
         viewModelScope.launch {
-            _state.update { it.copy(working = true, message = null) }
+            _state.update { it.copy(working = true, message = null, blockingError = null) }
             try {
                 val bytes = excelExporter.build()
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                        ?: throw IllegalStateException("Couldn't open the chosen file.")
-                }
-                _state.update { it.copy(working = false, message = "Spreadsheet exported") }
+                check(bytes.isNotEmpty()) { "The spreadsheet came out empty." }
+                writeAllBytes(uri, bytes)
+                _state.update { it.copy(working = false, message = "Spreadsheet exported (${bytes.size / 1024} KB)") }
             } catch (e: Exception) {
-                _state.update { it.copy(working = false, message = "Couldn't export. ${e.message ?: ""}".trim()) }
+                deleteFailedFile(uri) // never leave a 0-byte/partial file behind
+                _state.update { it.copy(working = false, blockingError = "Couldn't export the spreadsheet, so nothing was saved. ${e.message ?: ""}".trim()) }
             }
         }
     }
@@ -105,21 +106,47 @@ class BackupViewModel @Inject constructor(
 
     fun exportToFile(uri: Uri) {
         viewModelScope.launch {
-            _state.update { it.copy(working = true, message = null) }
+            _state.update { it.copy(working = true, message = null, blockingError = null) }
             try {
+                // Build the (encrypted) bytes FIRST; if this throws (e.g. no password set) we never write
+                // and we delete the empty document the file picker pre-created — no more 0-byte "backups".
                 val bytes = backupRepository.buildBackupBytes()
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                        ?: throw IllegalStateException("Couldn't open the chosen file.")
-                }
-                _state.update { it.copy(working = false, message = "Encrypted backup saved to file") }
+                check(bytes.isNotEmpty()) { "The backup came out empty." }
+                writeAllBytes(uri, bytes)
+                _state.update { it.copy(working = false, message = "Encrypted backup saved (${bytes.size / 1024} KB)") }
             } catch (e: BackupNotProtectedException) {
-                _state.update { it.copy(working = false, message = e.message) }
+                deleteFailedFile(uri)
+                _state.update { it.copy(working = false, blockingError = e.message) }
             } catch (e: Exception) {
-                _state.update { it.copy(working = false, message = "Couldn't save the file. ${e.message ?: ""}".trim()) }
+                deleteFailedFile(uri)
+                _state.update { it.copy(working = false, blockingError = "Couldn't save the backup, so nothing was written. ${e.message ?: ""}".trim()) }
             }
         }
     }
+
+    /** Write all [bytes] to [uri]. Throws on a write failure or a *proven* short write (caller deletes the file). */
+    private suspend fun writeAllBytes(uri: Uri, bytes: ByteArray) = withContext(Dispatchers.IO) {
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            out.write(bytes)
+            out.flush()
+        } ?: throw IllegalStateException("Couldn't open the chosen file.")
+        // Best-effort integrity check. Only a definitive, NON-ZERO mismatch proves a short/corrupt write.
+        // If the provider can't re-read the freshly-created doc (null / 0 / throws), the write+flush+close
+        // already succeeded — do NOT treat that as a failure, or we'd delete a perfectly good backup.
+        val written = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes().size }
+        }.getOrNull()
+        check(written == null || written == 0 || written == bytes.size) {
+            "The file didn't save completely ($written of ${bytes.size} bytes)."
+        }
+    }
+
+    /** Delete a document the SAF picker pre-created, so a failed export never leaves an empty/partial file. */
+    private suspend fun deleteFailedFile(uri: Uri) = withContext(Dispatchers.IO) {
+        runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+    }
+
+    fun clearBlockingError() = _state.update { it.copy(blockingError = null) }
 
     fun importFromFile(uri: Uri) {
         viewModelScope.launch {
@@ -203,7 +230,7 @@ class BackupViewModel @Inject constructor(
     /** Resolve an access token (prompting consent if needed) then run [op]. */
     private fun withToken(op: suspend (String) -> Unit) {
         viewModelScope.launch {
-            _state.update { it.copy(working = true, message = null) }
+            _state.update { it.copy(working = true, message = null, blockingError = null) }
             try {
                 when (val result = driveAuthManager.authorize()) {
                     is DriveAuthManager.AuthResult.Authorized -> op(result.accessToken)
@@ -212,6 +239,8 @@ class BackupViewModel @Inject constructor(
                         consentChannel.send(result.intentSender)
                     }
                 }
+            } catch (e: BackupNotProtectedException) {
+                _state.update { it.copy(working = false, blockingError = e.message) }
             } catch (e: Exception) {
                 _state.update { it.copy(working = false, message = friendly(e)) }
             }
@@ -229,6 +258,8 @@ class BackupViewModel @Inject constructor(
             try {
                 val token = driveAuthManager.accessTokenFromConsent(data)
                 op(token)
+            } catch (e: BackupNotProtectedException) {
+                _state.update { it.copy(working = false, blockingError = e.message) }
             } catch (e: Exception) {
                 _state.update { it.copy(working = false, message = friendly(e)) }
             }

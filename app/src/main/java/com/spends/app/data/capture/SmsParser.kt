@@ -41,7 +41,7 @@ object SmsParser {
         val low = text.lowercase()
 
         // 1) Hard rejects — not a money movement.
-        if (isOtp(low) || isPromo(low) || isDeclined(low) || isLimitAlert(low) || isFutureMandate(low)) {
+        if (isOtp(low) || isPromo(low) || isEmiConversion(low) || isDeclined(low) || isLimitAlert(low) || isFutureMandate(low)) {
             return ignored
         }
         // 2) Statements / bill-due alerts — extract nothing to log (cycle config is a later phase).
@@ -142,6 +142,26 @@ object SmsParser {
     /** Future-dated mandate/auto-pay notices ("will be debited/processed") are reminders, not txns. */
     private fun isFutureMandate(low: String) =
         low.containsAny("will be debited", "will be processed", "will be deducted", "maintain sufficient balance", "ensure sufficient balance")
+
+    /**
+     * EMI-CONVERSION offers / notices / confirmations ("…spent…converted into EMIs", "convert to EMI",
+     * "avail EMI", "no-cost EMI", "EMI conversion successful"). These echo the ORIGINAL purchase amount
+     * and would double-count it — they are NOT a fresh money movement, even though they usually contain
+     * a spend/debit verb. Gated on the literal "emi" PLUS a conversion/offer token so a genuine EMI /
+     * NACH installment debit (which never says convert / into-emi / avail) still logs as an expense.
+     */
+    private fun isEmiConversion(low: String): Boolean {
+        // Match the WORD "emi"/"emis" only — a raw substring would also hit "pr[emi]um"/"acad[emi]c" and
+        // (with the broad convert tokens) silently drop a genuine premium/installment debit. "emis?" keeps
+        // the plural "EMIs" so real conversion notices ("converted into 6 EMIs") still reject.
+        if (!emiWordRegex.containsMatchIn(low)) return false
+        return low.containsAny(
+            "convert", "conversion", "into emi", "to emis", "avail emi", "emi option",
+            "no cost emi", "no-cost emi", "emi offer", "emi facility", "emi plan",
+        )
+    }
+
+    private val emiWordRegex = Regex("\\bemis?\\b")
 
     private fun isStatement(low: String) = low.containsAny(
         "stmt alert", "statement for", "statement has been", "e-statement", "estatement",

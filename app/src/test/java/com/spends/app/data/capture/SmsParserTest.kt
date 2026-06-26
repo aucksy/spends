@@ -221,4 +221,47 @@ class SmsParserTest {
         val r = p("VM-LNTFIN", "Dear Customer, EMI debit of Rs.5000/- against loan account number H123 will be processed on 25-SEP-2026. Please maintain sufficient balance.")
         assertThat(r.result).isEqualTo(Result.IGNORED)
     }
+
+    // ---- EMI-conversion notices (#1): NOT a fresh money movement — must NOT be queued ----
+
+    /** Regression guard for the reported bug: a conversion notice that ALSO carries a spend verb. */
+    @Test fun emi_conversion_with_spend_ignored() {
+        val r = p("VM-INDUSB", "INR 49,993.00 spent on IndusInd Card XX1234 at <MERCHANT> has been converted into 6 EMIs of INR 8,500.00 each. -IndusInd Bank")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    @Test fun emi_conversion_offer_ignored() {
+        val r = p("VM-SBICRD", "Convert your recent transaction of Rs.12,000.00 to EMI at low interest. Click to avail EMI now. -SBI Card")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    @Test fun emi_conversion_request_ignored() {
+        val r = p("VM-INDUSB", "Your EMI conversion request for INR 49,993.00 on Card XX1234 has been processed successfully. -IndusInd Bank")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    /** "Spend → no-cost EMI" promo that contains the spend verb 'purchase' must still be IGNORED. */
+    @Test fun emi_avail_offer_ignored() {
+        val r = p("AD-HDFCBK", "Avail EMI on your recent purchase of Rs.15,000.00 on HDFC Bank Card 1234. No-cost EMI available. T&C apply.")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    /** Boundary lock: a GENUINE EMI installment auto-debit (no convert/avail tokens) STILL logs as expense. */
+    @Test fun emi_installment_debit_txn() {
+        val r = p("VM-LNTFIN", "Your EMI of Rs.5,000.00 has been debited from A/c XX1234 towards loan account H123 on 21-06-2026. -L&T Finance")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(r.categoryHint).isEqualTo("Loan/EMI")
+    }
+
+    /**
+     * Over-rejection guard: "premium"/"academic" contain the substring "emi", so a raw substring check +
+     * a "convert" token would WRONGLY drop this real debit. The word-boundary anchor must keep it logging.
+     */
+    @Test fun premium_debit_with_convert_word_txn() {
+        val r = p("AD-AXISBK", "INR 12,000.00 debited A/c no. XX5678 for insurance premium, converted to annual mode. -Axis Bank")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(r.categoryHint).isEqualTo("Investments")
+    }
 }

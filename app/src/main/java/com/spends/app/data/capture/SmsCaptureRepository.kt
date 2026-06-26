@@ -26,10 +26,12 @@ import javax.inject.Singleton
 
 /**
  * Review-only bank-SMS capture (PRD §4.1). NOTHING is added automatically:
- *  - **Live** texts surface as an Add/Edit/Ignore notification; "Add"/"Edit" call [captureReturningId]
- *    to create a (user-confirmed) ledger transaction.
+ *  - **Live** texts surface as an Add/Edit/Ignore notification. "Add" calls [captureReturningId] (the
+ *    explicit silent add); "Edit"/tap opens the editor on an unsaved [draftFor] draft and only writes on
+ *    Save via [commitDraft]; "Ignore" dismisses. So opening the editor never persists anything (#4).
  *  - **Historical** texts are pulled in via [scanHistory] over a user-chosen date range and land in the
- *    `pending_captures` table — a review queue that never touches balance/analytics until confirmed.
+ *    `pending_captures` table — a review queue that never touches balance/analytics until confirmed
+ *    (tapping a row opens the editor and only writes on Save via [confirmPendingEdited], #9).
  *
  * Dedup is layered so a re-scan / multipart SMS / a manual entry the user already typed never double up.
  */
@@ -64,7 +66,7 @@ class SmsCaptureRepository @Inject constructor(
         return CapturePreview(amount, kind, parsed.merchant ?: parsed.institution ?: "Transaction")
     }
 
-    /** User confirmed a live capture (notification Add/Edit): create the ledger transaction. Returns its id. */
+    /** Live notification "Add" (the explicit, silent add): create the ledger transaction. Returns its id. */
     suspend fun captureReturningId(sender: String?, body: String?, receivedAt: Long): Long? = captureMutex.withLock {
         val parsed = SmsParser.parse(sender, body, receivedAt)
         if (parsed.result != SmsParser.Result.TRANSACTION) return@withLock null
@@ -77,6 +79,57 @@ class SmsCaptureRepository @Inject constructor(
         // Live, user-confirmed captures are tagged NOTIFICATION (a deliberate add) — distinct from the
         // bulk historical scan (SMS) so the hide/delete-bulk controls never touch these (#11).
         createLedgerTxn(amount, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION)
+    }
+
+    /**
+     * Parse a live SMS into an UNSAVED draft for the editor (notification "Edit"/tap). Writes NOTHING —
+     * the transaction is created only when the user Saves, via [commitDraft] (#4). Null when not a txn.
+     */
+    suspend fun draftFor(sender: String?, body: String?, receivedAt: Long): CaptureDraft? {
+        val parsed = SmsParser.parse(sender, body, receivedAt)
+        if (parsed.result != SmsParser.Result.TRANSACTION) return null
+        val amount = parsed.amountMinor ?: return null
+        val kind = parsed.kind ?: return null
+        val occurredAt = parsed.occurredAt ?: receivedAt
+        return CaptureDraft(
+            amountMinor = amount,
+            kind = kind,
+            categoryId = resolveCategory(parsed, kind),
+            merchant = parsed.merchant?.ifBlank { null },
+            occurredAt = occurredAt,
+            dedupeHash = hashFor(parsed, occurredAt, amount, kind),
+        )
+    }
+
+    /** Save an edited live-capture draft to the ledger (explicit Save). Tags NOTIFICATION + the dedupe hash. */
+    suspend fun commitDraft(
+        amountMinor: Long,
+        kind: TxnKind,
+        categoryId: Long,
+        merchant: String?,
+        note: String?,
+        occurredAt: Long,
+        dedupeHash: String,
+    ): Long = captureMutex.withLock {
+        // Same guard the silent "Add" path has: never double-count an SMS already in the ledger (e.g. a
+        // re-delivered alert, or one the user already added). Returns a sentinel; the editor only needs
+        // to know Save finished — it ignores the id.
+        if (dedupeHash in expenseDao.allDedupeHashes().toHashSet()) return@withLock -1L
+        val newId = expenseRepository.create(
+            TransactionInput(
+                amountMinor = amountMinor,
+                kind = kind,
+                occurredAt = occurredAt,
+                merchantRaw = merchant?.ifBlank { null },
+                note = note?.ifBlank { null },
+                allocations = listOf(AllocationInput(categoryId, amountMinor)),
+                source = TxnSource.NOTIFICATION,
+                dedupeHash = dedupeHash,
+                parseConfidence = 100,
+            ),
+        )
+        learnMerchantCategory(merchant?.ifBlank { null }, categoryId)
+        newId
     }
 
     // ---- Review queue (pending captures) ----
@@ -162,6 +215,46 @@ class SmsCaptureRepository @Inject constructor(
         val newId = createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, finalCategory, p.dedupeHash, TxnSource.SMS)
         // Remember the user's category choice for this merchant so future captures pre-fill it (#14).
         learnMerchantCategory(p.merchant, finalCategory)
+        pendingDao.deleteById(id)
+        newId
+    }
+
+    /** Load a queued capture so the editor can prefill from it (review → "Review and Add", #9). */
+    suspend fun getPending(id: Long): PendingCaptureEntity? = pendingDao.getById(id)
+
+    /** Re-categorise a queued capture in place — review-only, NEVER writes to the ledger (#9). */
+    suspend fun setPendingCategory(id: Long, categoryId: Long) = pendingDao.setCategory(id, categoryId)
+
+    /**
+     * Confirm a pending capture the user reviewed/edited in the full editor (#9). Creates the ledger txn
+     * from the EDITED values while preserving the capture's TxnSource.SMS tag, its dedupe hash (so a
+     * re-scan won't re-queue it), and the merchant→category learning — the three things a plain editor
+     * save would drop — then removes the queued row. No-op (null) if the row is already gone.
+     */
+    suspend fun confirmPendingEdited(
+        id: Long,
+        amountMinor: Long,
+        kind: TxnKind,
+        categoryId: Long,
+        merchant: String?,
+        note: String?,
+        occurredAt: Long,
+    ): Long? = captureMutex.withLock {
+        val p = pendingDao.getById(id) ?: return@withLock null
+        val newId = expenseRepository.create(
+            TransactionInput(
+                amountMinor = amountMinor,
+                kind = kind,
+                occurredAt = occurredAt,
+                merchantRaw = merchant?.ifBlank { null },
+                note = note?.ifBlank { null },
+                allocations = listOf(AllocationInput(categoryId, amountMinor)),
+                source = TxnSource.SMS,
+                dedupeHash = p.dedupeHash,
+                parseConfidence = 100,
+            ),
+        )
+        learnMerchantCategory(merchant?.ifBlank { null } ?: p.merchant, categoryId)
         pendingDao.deleteById(id)
         newId
     }

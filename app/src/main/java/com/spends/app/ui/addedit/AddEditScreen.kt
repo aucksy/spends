@@ -85,7 +85,7 @@ fun AddEditScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (viewModel.isEdit) "Edit transaction" else "Add transaction") },
+                title = { Text(viewModel.screenTitle) },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel")
@@ -112,7 +112,7 @@ fun AddEditScreen(
                 initial = seed,
                 categories = categories,
                 saving = saving,
-                isEdit = viewModel.isEdit,
+                saveLabel = viewModel.saveLabel,
                 onAddCategory = { name, usage, onCreated -> viewModel.addCategory(name, usage, onCreated) },
                 onSave = { amount, kind, categoryId, merchant, note, occurredAt ->
                     viewModel.save(amount, kind, categoryId, merchant, note, occurredAt)
@@ -141,7 +141,7 @@ private fun AddEditForm(
     initial: AddEditInitial,
     categories: List<CategoryEntity>,
     saving: Boolean,
-    isEdit: Boolean,
+    saveLabel: String,
     onAddCategory: (String, CategoryUsage, (Long) -> Unit) -> Unit,
     onSave: (Long, TxnKind, Long, String, String, Long) -> Unit,
 ) {
@@ -275,7 +275,7 @@ private fun AddEditForm(
             enabled = canSave,
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) {
-            Text(if (isEdit) "Save changes" else "Save")
+            Text(saveLabel)
         }
 
         Spacer(Modifier.height(24.dp))

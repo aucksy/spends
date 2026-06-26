@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,20 +66,25 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Encryption — backups are unreadable without this password if the file is ever accessed by someone else.
+        // Encryption — backups are unreadable without this password if the file is ever accessed by someone
+        // else, AND a password is required before any backup can run (so a backup can never silently no-op).
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
-            Icon(Icons.Filled.Lock, contentDescription = null)
+            Icon(
+                if (state.hasBackupPassword) Icons.Filled.Lock else Icons.Filled.Warning,
+                contentDescription = null,
+                tint = if (state.hasBackupPassword) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+            )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Backup encryption", style = MaterialTheme.typography.bodyLarge)
                 Text(
                     if (state.hasBackupPassword) {
-                        "On — backups are encrypted. Needed only when restoring on a new phone."
+                        "On — backups are encrypted. You'll need this password to restore on a new phone."
                     } else {
-                        "Set a password so a stolen backup file can't be read. Required before backing up."
+                        "Backups are OFF. Set a password first — it encrypts your backups and lets you restore on a new phone."
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (state.hasBackupPassword) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 )
             }
             TextButton(onClick = { showSetPassword = true }) {
@@ -102,9 +108,12 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            Button(onClick = viewModel::backupNow, enabled = !state.working, modifier = Modifier.weight(1f)) {
-                Text("Back up now")
-            }
+            Button(
+                // Require a password first so a backup always writes real, recoverable bytes (#7).
+                onClick = { if (state.hasBackupPassword) viewModel.backupNow() else showSetPassword = true },
+                enabled = !state.working,
+                modifier = Modifier.weight(1f),
+            ) { Text("Back up now") }
             OutlinedButton(onClick = viewModel::openRestore, enabled = !state.working, modifier = Modifier.weight(1f)) {
                 Text("Restore")
             }
@@ -120,7 +129,13 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = state.autoBackupEnabled, onCheckedChange = viewModel::setAutoBackup)
+            Switch(
+                checked = state.autoBackupEnabled,
+                // Can't enable daily backups without a password, or they'd silently do nothing (#7).
+                onCheckedChange = { enabled ->
+                    if (enabled && !state.hasBackupPassword) showSetPassword = true else viewModel.setAutoBackup(enabled)
+                },
+            )
         }
 
         // Local file backup (no account needed).
@@ -132,7 +147,8 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             OutlinedButton(
-                onClick = { exportLauncher.launch(viewModel.exportFileName) },
+                // Gate the file picker on a password so it never pre-creates a doc we then leave empty (#7).
+                onClick = { if (state.hasBackupPassword) exportLauncher.launch(viewModel.exportFileName) else showSetPassword = true },
                 enabled = !state.working,
                 modifier = Modifier.weight(1f),
             ) { Text("Export file", maxLines = 1) }
@@ -204,6 +220,17 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
         RestorePasswordDialog(
             onConfirm = viewModel::restoreWithPassword,
             onCancel = viewModel::cancelPasswordRestore,
+        )
+    }
+
+    // A LOUD, must-acknowledge failure (e.g. a backup that produced no bytes) — never a calm toast (#7).
+    state.blockingError?.let { err ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearBlockingError,
+            icon = { Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Backup didn't save") },
+            text = { Text(err) },
+            confirmButton = { TextButton(onClick = viewModel::clearBlockingError) { Text("OK") } },
         )
     }
 }

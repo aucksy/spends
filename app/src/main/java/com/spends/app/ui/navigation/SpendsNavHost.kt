@@ -25,19 +25,20 @@ import com.spends.app.ui.trash.TrashScreen
 @Composable
 fun SpendsNavHost(
     settings: SettingsState,
-    pendingEditExpenseId: Long? = null,
-    onPendingEditConsumed: () -> Unit = {},
+    pendingCaptureDraft: Boolean = false,
+    onCaptureDraftConsumed: () -> Unit = {},
     pendingQuickAdd: Boolean = false,
     onQuickAddConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val start = if (settings.onboardingComplete) Routes.HOME else Routes.ONBOARDING
 
-    // A capture-prompt "Edit" tap persisted a transaction and handed us its id — open the editor for it.
-    LaunchedEffect(pendingEditExpenseId) {
-        val id = pendingEditExpenseId ?: return@LaunchedEffect
-        if (settings.onboardingComplete) navController.navigate(Routes.addEdit(id))
-        onPendingEditConsumed()
+    // A capture-prompt "Edit" tap parsed an UNSAVED draft (held in CaptureDraftStore) — open the editor
+    // on it; nothing is written until the user Saves (#4).
+    LaunchedEffect(pendingCaptureDraft) {
+        if (!pendingCaptureDraft) return@LaunchedEffect
+        if (settings.onboardingComplete) navController.navigate(Routes.addEditDraft())
+        onCaptureDraftConsumed()
     }
 
     NavHost(
@@ -97,6 +98,14 @@ fun SpendsNavHost(
                     type = NavType.LongType
                     defaultValue = Routes.NO_EXPENSE_ID
                 },
+                navArgument(Routes.ARG_PENDING_ID) {
+                    type = NavType.LongType
+                    defaultValue = Routes.NO_PENDING_ID
+                },
+                navArgument(Routes.ARG_FROM_DRAFT) {
+                    type = NavType.BoolType
+                    defaultValue = false
+                },
             ),
         ) {
             AddEditScreen(onDone = { navController.popBackStack() })
@@ -145,7 +154,10 @@ fun SpendsNavHost(
         }
 
         composable(Routes.REVIEW) {
-            ReviewScreen(onBack = { navController.popBackStack() })
+            ReviewScreen(
+                onBack = { navController.popBackStack() },
+                onEditPending = { id -> navController.navigate(Routes.addEditPending(id)) },
+            )
         }
 
         composable(

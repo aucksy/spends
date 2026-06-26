@@ -2,6 +2,7 @@ package com.spends.app.core
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.data.capture.CaptureDraftStore
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.ExpenseRepository
@@ -30,6 +31,7 @@ class MainViewModel @Inject constructor(
     private val recurringRepository: RecurringRepository,
     private val categoryRepository: CategoryRepository,
     private val captureRepository: SmsCaptureRepository,
+    private val captureDraftStore: CaptureDraftStore,
 ) : ViewModel() {
 
     val uiState: StateFlow<MainUiState> = settingsRepository.settings
@@ -40,21 +42,24 @@ class MainViewModel @Inject constructor(
             initialValue = MainUiState(loading = true),
         )
 
-    // When the "Edit" action of a capture-prompt notification is tapped, we persist the parsed SMS and
-    // expose its new id so the nav host can open the editor for it.
-    private val _pendingEditId = MutableStateFlow<Long?>(null)
-    val pendingEditId: StateFlow<Long?> = _pendingEditId
+    // Tapping a capture-prompt notification's "Edit" (or its body) parses the SMS into an UNSAVED draft
+    // and signals the nav host to open the editor on it — NOTHING is written until the user Saves (#4).
+    private val _pendingCaptureDraft = MutableStateFlow(false)
+    val pendingCaptureDraft: StateFlow<Boolean> = _pendingCaptureDraft
 
     fun handleCaptureEdit(sender: String?, body: String?, receivedAt: Long) {
         if (body.isNullOrBlank()) return
         viewModelScope.launch {
-            val id = runCatching { captureRepository.captureReturningId(sender, body, receivedAt) }.getOrNull()
-            if (id != null) _pendingEditId.value = id
+            val draft = runCatching { captureRepository.draftFor(sender, body, receivedAt) }.getOrNull()
+            if (draft != null) {
+                captureDraftStore.set(draft)
+                _pendingCaptureDraft.value = true
+            }
         }
     }
 
-    fun consumePendingEdit() {
-        _pendingEditId.value = null
+    fun consumeCaptureDraft() {
+        _pendingCaptureDraft.value = false
     }
 
     // Set when the home-screen widget is tapped (#14) — the nav host opens the quick-add sheet.

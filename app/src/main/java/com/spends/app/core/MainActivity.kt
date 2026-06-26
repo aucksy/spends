@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
-            val pendingEdit by viewModel.pendingEditId.collectAsStateWithLifecycle()
+            val pendingCaptureDraft by viewModel.pendingCaptureDraft.collectAsStateWithLifecycle()
             val pendingQuickAdd by viewModel.pendingQuickAdd.collectAsStateWithLifecycle()
             // Quiet brand splash on every cold start (#10), then hand off to the app.
             var showSplash by rememberSaveable { mutableStateOf(true) }
@@ -53,8 +53,8 @@ class MainActivity : ComponentActivity() {
                     showSplash || state.loading -> SplashScreenContent()
                     else -> SpendsNavHost(
                         settings = state.settings,
-                        pendingEditExpenseId = pendingEdit,
-                        onPendingEditConsumed = viewModel::consumePendingEdit,
+                        pendingCaptureDraft = pendingCaptureDraft,
+                        onCaptureDraftConsumed = viewModel::consumeCaptureDraft,
                         pendingQuickAdd = pendingQuickAdd,
                         onQuickAddConsumed = viewModel::consumeQuickAdd,
                     )
@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
         intent.removeExtra(EXTRA_OPEN_QUICK_ADD) // consume so a recreate doesn't re-fire
     }
 
-    /** "Edit" action of a capture-prompt notification: dismiss it, persist the SMS, open its editor. */
+    /** "Edit" action of a capture-prompt notification: dismiss it, then open the editor on an unsaved draft (#4). */
     private fun handleCaptureEditIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_CAPTURE_EDIT, false) != true) return
         val notifId = intent.getIntExtra(CaptureActionReceiver.EXTRA_NOTIF_ID, 0)
