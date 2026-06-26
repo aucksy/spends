@@ -9,6 +9,7 @@ import android.content.Intent
 import android.widget.RemoteViews
 import com.spends.app.R
 import com.spends.app.core.MainActivity
+import com.spends.app.core.QuickAddActivity
 import com.spends.app.core.money.Money
 import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
@@ -124,12 +125,20 @@ class SummaryWidget : AppWidgetProvider() {
             setContentDescription(R.id.widget_summary_eye, if (masked) "Show amounts" else "Hide amounts")
             setOnClickPendingIntent(R.id.widget_summary_root, openAppIntent(context))
             setOnClickPendingIntent(R.id.widget_summary_eye, toggleIntent(context, id))
+            // The "+" opens the standalone quick-add overlay directly (no app/list behind it) (#1).
+            setOnClickPendingIntent(R.id.widget_summary_add, openQuickAddIntent(context))
         }
     }
 
     private fun openAppIntent(context: Context): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
         return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    private fun openQuickAddIntent(context: Context): PendingIntent {
+        val intent = Intent(context, QuickAddActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
+        // Distinct requestCode from openAppIntent(0) so the two PendingIntents don't collide.
+        return PendingIntent.getActivity(context, 4202, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     private fun toggleIntent(context: Context, id: Int): PendingIntent {

@@ -21,4 +21,17 @@
         <item name="postSplashScreenTheme">@style/Theme.Spends</item>
     </style>
 
+    <!--
+      Transparent theme for the standalone quick-add overlay (#1): the window is see-through so whatever
+      is behind (the home screen) shows through, and ONLY the quick-add bottom sheet is drawn. The sheet
+      provides its own scrim/animation, so the window dim is disabled and no window animation is used.
+    -->
+    <style name="Theme.Spends.Transparent" parent="Theme.Spends">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+
 </resources>

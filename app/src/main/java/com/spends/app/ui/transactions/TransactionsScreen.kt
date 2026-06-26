@@ -1,5 +1,6 @@
 package com.spends.app.ui.transactions
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
@@ -98,6 +99,8 @@ fun TransactionsScreen(
     snackbarHostState: SnackbarHostState,
     onEditTransaction: (Long) -> Unit,
     onOpenSettings: () -> Unit,
+    searchActive: Boolean,
+    onSearchActiveChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
@@ -109,8 +112,13 @@ fun TransactionsScreen(
     // Search text is owned locally (synchronous snapshot state) so the cursor never jumps; the
     // ViewModel is fed for filtering only.
     var searchText by rememberSaveable { mutableStateOf("") }
-    // Search is revealed on demand via the period-bar icon (#16) instead of a permanent bar.
-    var searchVisible by rememberSaveable { mutableStateOf(false) }
+    // Search visibility is owned by HomeScreen's bottom "Search" tab now (#5); the query text stays local
+    // here so the cursor never jumps. ALWAYS reconcile the VM when search is inactive — even after a
+    // cross-tab remount where the local searchText has reset to "" — otherwise a stale VM query would keep
+    // filtering the timeline with no visible field to clear it (e.g. search → Analytics → Transactions).
+    LaunchedEffect(searchActive) {
+        if (!searchActive) { searchText = ""; viewModel.setSearch("") }
+    }
 
     val listState = rememberLazyListState()
 
@@ -143,6 +151,17 @@ fun TransactionsScreen(
         selectedIds = setOf(id)
     }
 
+    fun closeSearch() {
+        searchText = ""
+        viewModel.setSearch("")
+        onSearchActiveChange(false)
+    }
+
+    // Back exits a transient mode first (industry standard) instead of closing the app (#6): clear a
+    // multi-selection, else close an open search. At most one is active at a time.
+    BackHandler(enabled = selectionMode) { selectedIds = emptySet() }
+    BackHandler(enabled = searchActive && !selectionMode) { closeSearch() }
+
     val showScrollTop by remember { derivedStateOf { listState.firstVisibleItemIndex > 25 } }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -163,16 +182,13 @@ fun TransactionsScreen(
                 label = state.periodLabel,
                 onSelect = viewModel::applySelection,
                 onOpenSettings = onOpenSettings,
-                onToggleSearch = {
-                    searchVisible = !searchVisible
-                    if (!searchVisible) { searchText = ""; viewModel.setSearch("") }
-                },
-                searchActive = searchVisible,
+                // Search moved to the bottom bar (#5) — no search icon here, so the cycle pill gets the
+                // full width and the whole cycle name shows.
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
         }
         // Search field appears only when toggled on (#16), and autofocuses so the keyboard is ready.
-        if (searchVisible && !selectionMode) {
+        if (searchActive && !selectionMode) {
             val focusRequester = remember { FocusRequester() }
             LaunchedEffect(Unit) {
                 // The field is rememberSaveable but the VM's query isn't — re-apply a restored search so

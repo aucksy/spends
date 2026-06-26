@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Summary widget (#2): a teal card showing Balance + Expense/Income for the current cycle, with an
-     eye to hide/show. Whole card opens the app; the eye toggles this instance's privacy state. -->
+<!-- Summary widget (#2): a teal card showing Balance + Expense/Income for the current cycle. A bottom
+     action row carries the eye (bottom-left, hide/show) and a "+" (bottom-right, opens the standalone
+     quick-add overlay) as a matched pair (#1). The whole card opens the app. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_summary_root"
     android:layout_width="match_parent"
@@ -9,33 +10,16 @@
     android:background="@drawable/widget_summary_bg"
     android:padding="14dp">
 
-    <LinearLayout
+    <TextView
+        android:id="@+id/widget_summary_cycle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
-
-        <TextView
-            android:id="@+id/widget_summary_cycle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:textColor="#A7E0D8"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:text="BALANCE" />
-
-        <ImageView
-            android:id="@+id/widget_summary_eye"
-            android:layout_width="26dp"
-            android:layout_height="26dp"
-            android:padding="2dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_widget_eye"
-            android:contentDescription="Show amounts" />
-    </LinearLayout>
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textColor="#A7E0D8"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:text="BALANCE" />
 
     <TextView
         android:id="@+id/widget_summary_balance"
@@ -104,5 +88,37 @@
                 android:textSize="15sp"
                 android:text="••••" />
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- Bottom action row: eye (left) + "+" (right), a matched pair aligned to the card edges. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="12dp">
+
+        <ImageView
+            android:id="@+id/widget_summary_eye"
+            android:layout_width="29dp"
+            android:layout_height="29dp"
+            android:padding="3dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_widget_eye"
+            android:contentDescription="Show amounts" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <ImageView
+            android:id="@+id/widget_summary_add"
+            android:layout_width="29dp"
+            android:layout_height="29dp"
+            android:padding="3dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_widget_plus"
+            android:contentDescription="Add transaction" />
     </LinearLayout>
 </LinearLayout>

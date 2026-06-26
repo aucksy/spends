@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,6 +67,9 @@ fun HomeScreen(
     var amountsHidden by rememberSaveable { mutableStateOf(true) }
     // The + opens the fast half-screen quick-add sheet (calculator keypad). Editing still uses the full screen.
     var showQuickAdd by remember { mutableStateOf(false) }
+    // Search is driven from the bottom bar now (#5) — lifted here so the "Search" tab can toggle it and
+    // reflect its active state; the Transactions screen owns the actual query text.
+    var searchActive by rememberSaveable { mutableStateOf(false) }
 
     // The home-screen widget (#14) launches the app with this signal — open the quick-add sheet, once.
     androidx.compose.runtime.LaunchedEffect(openQuickAddSignal) {
@@ -79,16 +83,31 @@ fun HomeScreen(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = tab == HomeTab.TRANSACTIONS,
-                    onClick = { tab = HomeTab.TRANSACTIONS },
+                    selected = tab == HomeTab.TRANSACTIONS && !searchActive,
+                    onClick = { tab = HomeTab.TRANSACTIONS; searchActive = false },
                     icon = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
                     label = { Text("Transactions") },
                 )
                 NavigationBarItem(
-                    selected = tab == HomeTab.ANALYTICS,
-                    onClick = { tab = HomeTab.ANALYTICS },
+                    selected = tab == HomeTab.ANALYTICS && !searchActive,
+                    onClick = { tab = HomeTab.ANALYTICS; searchActive = false },
                     icon = { Icon(Icons.Filled.PieChart, contentDescription = null) },
                     label = { Text("Analytics") },
+                )
+                // Search lives in the bottom bar (#5): from Analytics it jumps to the timeline and opens
+                // search; on the timeline it toggles. It highlights while a search is active.
+                NavigationBarItem(
+                    selected = searchActive,
+                    onClick = {
+                        if (tab != HomeTab.TRANSACTIONS) {
+                            tab = HomeTab.TRANSACTIONS
+                            searchActive = true
+                        } else {
+                            searchActive = !searchActive
+                        }
+                    },
+                    icon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    label = { Text("Search") },
                 )
             }
         },
@@ -109,6 +128,8 @@ fun HomeScreen(
                         snackbarHostState = snackbarHostState,
                         onEditTransaction = onEditTransaction,
                         onOpenSettings = onOpenSettings,
+                        searchActive = searchActive,
+                        onSearchActiveChange = { searchActive = it },
                     )
                     HomeTab.ANALYTICS -> AnalyticsScreen(
                         onOpenRecurring = onOpenRecurring,

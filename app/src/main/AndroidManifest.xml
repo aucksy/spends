@@ -52,6 +52,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Standalone quick-add overlay (#1): the home-screen widgets' "+" launch this transparent
+             activity so only the keypad sheet appears (home shows behind), never the full app/list — and
+             a future app-lock on MainActivity won't gate it. Its own task affinity + noHistory +
+             excludeFromRecents keep it a transient overlay that never surfaces the main app task. -->
+        <activity
+            android:name=".core.QuickAddActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:taskAffinity="${applicationId}.quickadd"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Spends.Transparent"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Live SMS capture receiver. BROADCAST_SMS permission ensures only the system delivers it. -->
         <receiver
             android:name=".receiver.SmsReceiver"

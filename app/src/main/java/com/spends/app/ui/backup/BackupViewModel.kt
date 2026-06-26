@@ -64,8 +64,15 @@ class BackupViewModel @Inject constructor(
             s.copy(lastBackupAt = last, autoBackupEnabled = settings.autoBackupEnabled)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BackupUiState())
 
-    /** Suggested filename for a local export (encrypted container). */
-    val exportFileName: String get() = "spends-backup.spsenc"
+    /** Suggested filename for a local export, stamped with the local date + time so each file is unique
+     *  and identifiable (#8), e.g. "spends-backup-20260628-1845.spsenc". */
+    val exportFileName: String
+        get() {
+            val stamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
+                .withZone(com.spends.app.core.time.DateUtils.ZONE)
+                .format(java.time.Instant.ofEpochMilli(com.spends.app.core.time.DateUtils.nowMillis()))
+            return "spends-backup-$stamp.spsenc"
+        }
 
     /** Suggested filename for the readable spreadsheet export. */
     val excelFileName: String get() = "Spends.xlsx"

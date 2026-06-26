@@ -3,9 +3,9 @@
      update keeps it fresh and rolls the cycle over; the app also refreshes it on resume. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="180dp"
-    android:minHeight="110dp"
+    android:minHeight="150dp"
     android:targetCellWidth="4"
-    android:targetCellHeight="2"
+    android:targetCellHeight="3"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="86400000"

@@ -7,12 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
 import com.spends.app.R
-import com.spends.app.core.MainActivity
+import com.spends.app.core.QuickAddActivity
 
 /**
- * A small home-screen widget (#14): a single tap opens the app's quick-add sheet. It shows no figures
- * (balances stay private) — just an "add" affordance. Launches [MainActivity] with the
- * [MainActivity.EXTRA_OPEN_QUICK_ADD] extra, which the nav host turns into the quick-add bottom sheet.
+ * A small home-screen widget (#14): a single tap opens the quick-add keypad. It shows no figures
+ * (balances stay private) — just an "add" affordance. Launches the standalone transparent
+ * [QuickAddActivity] so only the keypad sheet appears (never the full app / list behind it), and a future
+ * app-lock can't block it (#1).
  */
 class QuickAddWidget : AppWidgetProvider() {
 
@@ -22,10 +23,7 @@ class QuickAddWidget : AppWidgetProvider() {
     }
 
     private fun buildRemoteViews(context: Context): RemoteViews {
-        // Explicit component → no ACTION_MAIN/CATEGORY_LAUNCHER needed; singleTask makes CLEAR_TOP
-        // redundant. Just carry the quick-add extra into a new task.
-        val intent = Intent(context, MainActivity::class.java).apply {
-            putExtra(MainActivity.EXTRA_OPEN_QUICK_ADD, true)
+        val intent = Intent(context, QuickAddActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         val pendingIntent = PendingIntent.getActivity(

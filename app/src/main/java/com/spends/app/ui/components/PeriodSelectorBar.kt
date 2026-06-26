@@ -38,7 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.view.HapticFeedbackConstants
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -159,6 +161,7 @@ fun PeriodSelectorBar(
 /** A square tappable chevron used for prev/next cycle stepping inside the period pill (#6). */
 @Composable
 private fun CycleArrow(icon: ImageVector, contentDescription: String, enabled: Boolean, onClick: () -> Unit) {
+    val view = LocalView.current
     val tint = if (enabled) {
         MaterialTheme.colorScheme.onSurface
     } else {
@@ -168,7 +171,10 @@ private fun CycleArrow(icon: ImageVector, contentDescription: String, enabled: B
         modifier = Modifier
             .size(34.dp)
             .clip(RoundedCornerShape(10.dp))
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(enabled = enabled) {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) // a felt tick on each step (#5)
+                onClick()
+            },
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(22.dp))

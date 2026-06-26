@@ -420,6 +420,17 @@ private fun SmsPermissionStep(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        Spacer(Modifier.height(8.dp))
+        // Heads-up (#4): RCS / verified-business chats aren't in the SMS inbox, so no app can read them.
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+            Text(
+                "Bank alerts delivered as RCS or TrueCaller Business Chat aren't plain SMS, so no app can read " +
+                    "them — switch those off to receive them as normal SMS.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
