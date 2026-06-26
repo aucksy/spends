@@ -377,15 +377,19 @@ private fun SmsPermissionStep(
 ) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StepBadge(Icons.Filled.Sms)
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(14.dp))
         Text("Capture spends from SMS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
+        // Restored (#1): this is the copy that actually explains WHY SMS + notification access is asked —
+        // the moment a bank SMS lands you get a one-tap notification. Decluttered via the smaller badge +
+        // body-medium type, NOT by deleting the explanation.
         Text(
-            "Spends reads bank SMS entirely on your phone — no logins, no uploads. Choose what it does:",
-            style = MaterialTheme.typography.bodyLarge,
+            "The moment a bank SMS arrives, Spends spots the transaction on your phone and notifies you to " +
+                "add it in one tap — that's why it asks for SMS and notification access. Nothing leaves your phone.",
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(16.dp))
         ToggleCard(
             selected = autoCapture,
             icon = Icons.Filled.NotificationsActive,
@@ -461,16 +465,16 @@ private fun ToggleCard(
 private fun BatteryStep() {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StepBadge(Icons.Filled.BatteryChargingFull)
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(14.dp))
         Text("Keep capture running", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             "Some phones stop background apps and make Spends miss bank SMS. Letting it ignore battery " +
                 "optimisation keeps capture reliable — change it anytime in Settings.",
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(16.dp))
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
@@ -489,7 +493,7 @@ private fun BatteryStep() {
 private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StepBadge(Icons.Filled.EventRepeat)
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(14.dp))
         Text("When does your salary land?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(8.dp))
         Text(
@@ -497,7 +501,7 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -530,11 +534,11 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
                 )
             }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
         Text("PICK A DAY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         DayGrid(selected = salaryDay, onSelect = onSelect)
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -564,15 +568,16 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
 @Composable
 private fun DayGrid(selected: Int, onSelect: (Int) -> Unit) {
     // 7-column grid of days 1..31 (design screen 4). Plain Column of Rows so it nests in a scroll.
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    // Compact cells (38dp) keep the whole step on one page without scrolling (#2).
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         (1..31).chunked(7).forEach { week ->
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                 week.forEach { day ->
                     val isSel = day == selected
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(38.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
                             .then(if (isSel) Modifier else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)))
@@ -680,11 +685,12 @@ private fun SetupOptionCard(
 
 @Composable
 private fun StepBadge(icon: ImageVector) {
+    // Compact (52dp, was 64) to de-clutter the steps and keep the salary screen on one page (#1/#2).
     Box(
-        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primaryContainer),
+        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(32.dp))
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(26.dp))
     }
 }
 

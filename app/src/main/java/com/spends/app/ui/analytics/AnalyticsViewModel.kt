@@ -96,6 +96,7 @@ class AnalyticsViewModel @Inject constructor(
                 earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
                 customStartMillis = sel.customStartMillis,
                 customEndExclusiveMillis = sel.customEndExclusiveMillis,
+                cycleOffset = sel.cycleOffset,
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, currentCycle())
 

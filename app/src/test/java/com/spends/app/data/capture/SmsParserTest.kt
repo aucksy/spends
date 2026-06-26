@@ -320,6 +320,25 @@ class SmsParserTest {
         assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
     }
 
+    // The two EXACT June-2026 SBI Card alerts the user reported as missed (verbatim bodies). These parse
+    // fine — proof the parser is NOT why they were dropped (they arrived as RCS "Business Chat", which the
+    // SMS scan can't read). Locked in so the parser never regresses on this real format.
+    @Test fun sbi_card_spend_razamul_txn() {
+        val r = p("VM-SBICRD", "Rs.3,168.00 spent on your SBI Credit Card ending 0436 at RAZAmul on 25/06/26. Trxn. not done by you? Report at https://sbicard.com/Dispute")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(316800)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(r.last4).isEqualTo("0436")
+    }
+
+    @Test fun sbi_card_emandate_debit_razfurlenco_txn() {
+        val r = p("VM-SBICRD", "Transaction of Rs.588.53 at RAZFurlenco against E-mandate (SiHub ID - XnmzrilzlS) registered by you at merchant has been debited to your SBI Credit Card ending 0436 on 25-06-26. To manage E-mandate, click: http://www.sbicard.com/emandates")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(58853)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(r.last4).isEqualTo("0436")
+    }
+
     // ---- #6: bank SMS carry only a date (no clock time); the transaction must take the SMS's actual
     // arrival time, not a hardcoded noon, so a day's spends keep their real order. ----
     @Test fun occurred_at_uses_sms_arrival_time_not_noon() {

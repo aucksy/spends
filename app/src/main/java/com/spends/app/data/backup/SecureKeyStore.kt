@@ -28,11 +28,29 @@ class SecureKeyStore @Inject constructor(
 ) {
     private val prefs = context.getSharedPreferences("spends_secure", Context.MODE_PRIVATE)
 
-    /** True when this device can both create and read encrypted backups without a password. */
-    fun isReady(): Boolean = hasDek() && hasPassword()
+    /**
+     * True when this device holds a DEK and can therefore decrypt its OWN encrypted backups (via the
+     * hardware-wrapped DEK) — independent of whether a recovery password is set. Embedding the recovery
+     * bundle so a NEW phone can recover still needs a password (see [wrapBundle]). Keeping this gated only
+     * on the DEK means removing the password (#8) doesn't lock the user out of their own earlier backups.
+     */
+    fun isReady(): Boolean = hasDek()
 
     /** True once the user has set a recovery password (a wrap bundle exists). */
     fun hasPassword(): Boolean = prefs.contains(KEY_WRAP_SALT)
+
+    /**
+     * Remove the recovery password so future backups are written unencrypted (#8). The DEK is kept, so any
+     * encrypted backup already made on THIS device still opens here.
+     */
+    fun clearPassword() {
+        prefs.edit()
+            .remove(KEY_WRAP_SALT)
+            .remove(KEY_WRAP_IV)
+            .remove(KEY_WRAPPED_DEK)
+            .remove(KEY_WRAP_ITER)
+            .apply()
+    }
 
     private fun hasDek(): Boolean = prefs.contains(KEY_DEK_BLOB)
 

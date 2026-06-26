@@ -55,6 +55,7 @@ object PeriodResolver {
         earliestDataDay: LocalDate?,
         customStartMillis: Long?,
         customEndExclusiveMillis: Long?,
+        cycleOffset: Int = 0,
     ): ResolvedPeriod {
         // The day-of-month the cycle anchors on (unused for MONTH, which is calendar-based).
         val anchorDay = when (type) {
@@ -66,11 +67,15 @@ object PeriodResolver {
         val current = currentWindow(type, anchorDay, today)
 
         return when (range) {
-            PeriodRange.CURRENT -> ResolvedPeriod(
-                startMillis = startMillis(current),
-                endExclusiveMillis = endExclusiveMillis(current),
-                label = currentLabel(type, current),
-            )
+            // The prev/next arrows step the single current cycle by [cycleOffset] (#6); other ranges ignore it.
+            PeriodRange.CURRENT -> {
+                val shown = shiftWindow(type, anchorDay, current, cycleOffset)
+                ResolvedPeriod(
+                    startMillis = startMillis(shown),
+                    endExclusiveMillis = endExclusiveMillis(shown),
+                    label = currentLabel(type, shown),
+                )
+            }
 
             PeriodRange.LAST_3 -> spanEndingAtCurrent(type, anchorDay, current, count = 3)
 
@@ -120,6 +125,24 @@ object PeriodResolver {
             PeriodType.SALARY_CYCLE, PeriodType.SMART_CYCLE ->
                 CycleUtils.previousWindow(window, anchorDay)
         }
+
+    /** The cycle immediately after [window] for the given [type]/[anchorDay]. */
+    private fun nextWindow(type: PeriodType, anchorDay: Int, window: CycleWindow): CycleWindow =
+        when (type) {
+            // window.endExclusive is the first day of the next calendar month.
+            PeriodType.MONTH -> CycleUtils.calendarMonth(window.endExclusive)
+            PeriodType.SALARY_CYCLE, PeriodType.SMART_CYCLE ->
+                CycleUtils.nextWindow(window, anchorDay)
+        }
+
+    /** Step [window] back/forward by [offset] whole cycles (negative = earlier, positive = later) (#6). */
+    private fun shiftWindow(type: PeriodType, anchorDay: Int, window: CycleWindow, offset: Int): CycleWindow {
+        var w = window
+        repeat(kotlin.math.abs(offset)) {
+            w = if (offset < 0) previousWindow(type, anchorDay, w) else nextWindow(type, anchorDay, w)
+        }
+        return w
+    }
 
     /**
      * A span of [count] consecutive cycles ending at (and including) [current].

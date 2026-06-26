@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -36,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,19 +75,31 @@ fun PeriodSelectorBar(
     searchActive: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
+    // Prev/next cycle stepping shows only for a single current cycle; future is capped at the present (#6).
+    val navigable = selection.isNavigable
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Surface(
-            modifier = Modifier.weight(1f).clickable { open = true },
+            modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                if (navigable) {
+                    CycleArrow(Icons.Filled.ChevronLeft, "Previous cycle", enabled = true) {
+                        onSelect(selection.copy(cycleOffset = selection.cycleOffset - 1))
+                    }
+                } else {
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(10.dp))
+                }
+                Column(
+                    modifier = Modifier.weight(1f).clickable { open = true }.padding(vertical = 2.dp),
+                    horizontalAlignment = if (navigable) Alignment.CenterHorizontally else Alignment.Start,
+                ) {
                     Text(
                         selection.describe(),
                         style = MaterialTheme.typography.titleSmall,
@@ -100,8 +115,20 @@ fun PeriodSelectorBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Change period", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (navigable) {
+                    // Can't step into the future — › is disabled once back at the current cycle.
+                    CycleArrow(Icons.Filled.ChevronRight, "Next cycle", enabled = selection.cycleOffset < 0) {
+                        onSelect(selection.copy(cycleOffset = selection.cycleOffset + 1))
+                    }
+                } else {
+                    Spacer(Modifier.width(4.dp))
+                }
+                Icon(
+                    Icons.Filled.ArrowDropDown,
+                    contentDescription = "Change period",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable { open = true }.padding(end = 4.dp),
+                )
             }
         }
         // Search lives here beside Settings (#16) so the timeline no longer needs a permanent search bar.
@@ -129,6 +156,25 @@ fun PeriodSelectorBar(
     }
 }
 
+/** A square tappable chevron used for prev/next cycle stepping inside the period pill (#6). */
+@Composable
+private fun CycleArrow(icon: ImageVector, contentDescription: String, enabled: Boolean, onClick: () -> Unit) {
+    val tint = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    }
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(22.dp))
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PeriodSelectorSheet(
@@ -149,7 +195,8 @@ private fun PeriodSelectorSheet(
                 selectedIndex = current.type.ordinal,
                 onSelect = { idx ->
                     val newType = PeriodType.entries[idx]
-                    current = current.copy(type = newType)
+                    // Reset any prev/next cycle stepping when the cycle type changes (#6).
+                    current = current.copy(type = newType, cycleOffset = 0)
                     onSelect(current) // apply immediately, keeping the range
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -159,16 +206,16 @@ private fun PeriodSelectorSheet(
             SectionLabel("Range")
             Spacer(Modifier.height(4.dp))
             RangeRow("All", current.range == PeriodRange.ALL) {
-                onSelect(current.copy(range = PeriodRange.ALL, customStartMillis = null, customEndExclusiveMillis = null)); onDismiss()
+                onSelect(current.copy(range = PeriodRange.ALL, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
             }
             RangeRow("Current", current.range == PeriodRange.CURRENT) {
-                onSelect(current.copy(range = PeriodRange.CURRENT, customStartMillis = null, customEndExclusiveMillis = null)); onDismiss()
+                onSelect(current.copy(range = PeriodRange.CURRENT, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
             }
             RangeRow("Last 3", current.range == PeriodRange.LAST_3) {
-                onSelect(current.copy(range = PeriodRange.LAST_3, customStartMillis = null, customEndExclusiveMillis = null)); onDismiss()
+                onSelect(current.copy(range = PeriodRange.LAST_3, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
             }
             RangeRow("Last 6", current.range == PeriodRange.LAST_6) {
-                onSelect(current.copy(range = PeriodRange.LAST_6, customStartMillis = null, customEndExclusiveMillis = null)); onDismiss()
+                onSelect(current.copy(range = PeriodRange.LAST_6, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
             }
             RangeRow("Custom range…", current.range == PeriodRange.CUSTOM) { showCustom = true }
         }
@@ -183,7 +230,7 @@ private fun PeriodSelectorSheet(
             onDismiss = { showCustom = false },
             onPick = { start, endExclusive ->
                 showCustom = false
-                onSelect(current.copy(range = PeriodRange.CUSTOM, customStartMillis = start, customEndExclusiveMillis = endExclusive))
+                onSelect(current.copy(range = PeriodRange.CUSTOM, customStartMillis = start, customEndExclusiveMillis = endExclusive, cycleOffset = 0))
                 onDismiss()
             },
         )

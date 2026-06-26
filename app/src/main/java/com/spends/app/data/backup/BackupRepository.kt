@@ -111,9 +111,18 @@ class BackupRepository @Inject constructor(
         secureKeyStore.setPassword(password)
     }
 
-    /** Encrypt a snapshot for storage. Requires a recovery password so any device can recover the file. */
-    private fun protectedBytes(snapshot: Snapshot): ByteArray {
-        val bundle = secureKeyStore.wrapBundle() ?: throw BackupNotProtectedException()
+    /** Remove the recovery password so future backups are written unencrypted (#8). */
+    fun clearBackupPassword() = secureKeyStore.clearPassword()
+
+    /**
+     * Bytes of a snapshot for storage. When a recovery password is set the backup is encrypted (any device
+     * can recover it with the password); otherwise it's plaintext gzip-JSON so it restores on ANY device
+     * with no password — passwords are now optional and a forgotten one can never lock the user out (#8).
+     * Either way real bytes are always produced, so a backup can never silently no-op (the #7 trap).
+     */
+    private fun backupBytesFor(snapshot: Snapshot): ByteArray {
+        val bundle = secureKeyStore.wrapBundle()
+            ?: return BackupCodec.encode(snapshot)
         return BackupCrypto.seal(BackupCodec.encode(snapshot), secureKeyStore.dek(), bundle)
     }
 
@@ -140,7 +149,7 @@ class BackupRepository @Inject constructor(
     // ---- Local file backup (no network) ----
 
     /** Encrypted bytes of the current full snapshot — for writing to a user-picked local file. */
-    suspend fun buildBackupBytes(): ByteArray = protectedBytes(buildSnapshot())
+    suspend fun buildBackupBytes(): ByteArray = backupBytesFor(buildSnapshot())
 
     /** Decode + apply a backup read from a local file (replaces all current data). */
     suspend fun restoreFromBytes(bytes: ByteArray) = applySnapshot(decodeAny(bytes))
@@ -155,7 +164,7 @@ class BackupRepository @Inject constructor(
     suspend fun backupNow(token: String): Long = driveMutex.withLock {
         val folderId = driveClient.ensureBackupFolder(token)
         val snapshot = buildSnapshot()
-        val bytes = protectedBytes(snapshot)
+        val bytes = backupBytesFor(snapshot)
         val name = BackupCodec.FILE_NAME_PREFIX + stamp(snapshot.createdAt) + BackupCodec.ENCRYPTED_EXTENSION
         val fileId = driveClient.create(token, name, bytes, folderId)
         // Validate: re-download + decode (cheap guard against truncation).
@@ -190,7 +199,7 @@ class BackupRepository @Inject constructor(
             val folderId = driveClient.ensureBackupFolder(token)
             val safety = buildSnapshot()
             val safetyName = BackupCodec.SAFETY_NAME_PREFIX + stamp(safety.createdAt) + BackupCodec.ENCRYPTED_EXTENSION
-            driveClient.create(token, safetyName, protectedBytes(safety), folderId)
+            driveClient.create(token, safetyName, backupBytesFor(safety), folderId)
         }
     }
 

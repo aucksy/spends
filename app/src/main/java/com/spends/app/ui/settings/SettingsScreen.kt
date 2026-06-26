@@ -110,7 +110,13 @@ fun SettingsScreen(
                             selected = state.themeMode == mode,
                             onClick = { viewModel.setTheme(mode) },
                             shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
-                        ) { Text(mode.label()) }
+                            // No check-icon slot — the filled segment already shows selection, and the icon
+                            // stole the width that made "System" wrap to two lines (#3).
+                            icon = {},
+                            label = {
+                                Text(mode.label(), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+                            },
+                        )
                     }
                 }
                 // Auto = dark inside a daily window the user sets (default 8 PM–6 AM).
@@ -140,19 +146,8 @@ fun SettingsScreen(
                     value = ordinal(state.salaryCycleStartDay),
                     onClick = { showSalaryDialog = true },
                 )
-            }
-
-            SettingsSection("Display") {
-                Text("Open on", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    DefaultLanding.entries.forEachIndexed { index, landing ->
-                        SegmentedButton(
-                            selected = state.defaultLanding == landing,
-                            onClick = { viewModel.setDefaultLanding(landing) },
-                            shape = SegmentedButtonDefaults.itemShape(index, DefaultLanding.entries.size),
-                        ) { Text(landing.label()) }
-                    }
-                }
+                // Carry forward lives WITH the cycle settings (it rolls a cycle's leftover into the next) —
+                // it was mis-filed under Display (#4).
                 SwitchRow(
                     title = "Carry forward",
                     subtitle = "Roll each period's leftover into the next.",
@@ -181,6 +176,23 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
+                }
+            }
+
+            SettingsSection("Startup screen") {
+                Text("Open on", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    DefaultLanding.entries.forEachIndexed { index, landing ->
+                        SegmentedButton(
+                            selected = state.defaultLanding == landing,
+                            onClick = { viewModel.setDefaultLanding(landing) },
+                            shape = SegmentedButtonDefaults.itemShape(index, DefaultLanding.entries.size),
+                            icon = {},
+                            label = {
+                                Text(landing.label(), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+                            },
+                        )
+                    }
                 }
             }
 
@@ -366,7 +378,8 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
         shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), content = content)
+        // 12dp inner padding (not 16) so a 4-way control like the Theme picker has room and doesn't wrap (#3).
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), content = content)
     }
 }
 

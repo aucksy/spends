@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -46,6 +47,7 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     var pendingRestore by remember { mutableStateOf<DriveFile?>(null) }
     var pendingFileRestore by remember { mutableStateOf<Uri?>(null) }
     var showSetPassword by remember { mutableStateOf(false) }
+    var showRemovePassword by remember { mutableStateOf(false) }
 
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
@@ -66,29 +68,30 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Encryption — backups are unreadable without this password if the file is ever accessed by someone
-        // else, AND a password is required before any backup can run (so a backup can never silently no-op).
+        // Encryption is OPTIONAL (#8). Off by default — backups are plaintext and restore on ANY device
+        // with no password, so a forgotten password can never lock the user out. Turn it on to encrypt;
+        // then the password is needed to restore on a new phone.
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
             Icon(
-                if (state.hasBackupPassword) Icons.Filled.Lock else Icons.Filled.Warning,
+                if (state.hasBackupPassword) Icons.Filled.Lock else Icons.Filled.LockOpen,
                 contentDescription = null,
-                tint = if (state.hasBackupPassword) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                tint = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Backup encryption", style = MaterialTheme.typography.bodyLarge)
+                Text("Backup encryption (optional)", style = MaterialTheme.typography.bodyLarge)
                 Text(
                     if (state.hasBackupPassword) {
                         "On — backups are encrypted. You'll need this password to restore on a new phone."
                     } else {
-                        "Backups are OFF. Set a password first — it encrypts your backups and lets you restore on a new phone."
+                        "Off — backups are unencrypted and restore on any device with no password. Add a password to encrypt."
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (state.hasBackupPassword) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = { showSetPassword = true }) {
-                Text(if (state.hasBackupPassword) "Change" else "Set password")
+            TextButton(onClick = { if (state.hasBackupPassword) showRemovePassword = true else showSetPassword = true }) {
+                Text(if (state.hasBackupPassword) "Remove" else "Add password")
             }
         }
 
@@ -109,8 +112,8 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             Button(
-                // Require a password first so a backup always writes real, recoverable bytes (#7).
-                onClick = { if (state.hasBackupPassword) viewModel.backupNow() else showSetPassword = true },
+                // No password gate (#8) — a backup always writes real bytes (encrypted or plaintext).
+                onClick = viewModel::backupNow,
                 enabled = !state.working,
                 modifier = Modifier.weight(1f),
             ) { Text("Back up now") }
@@ -131,10 +134,7 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
             }
             Switch(
                 checked = state.autoBackupEnabled,
-                // Can't enable daily backups without a password, or they'd silently do nothing (#7).
-                onCheckedChange = { enabled ->
-                    if (enabled && !state.hasBackupPassword) showSetPassword = true else viewModel.setAutoBackup(enabled)
-                },
+                onCheckedChange = { enabled -> viewModel.setAutoBackup(enabled) },
             )
         }
 
@@ -147,8 +147,7 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             OutlinedButton(
-                // Gate the file picker on a password so it never pre-creates a doc we then leave empty (#7).
-                onClick = { if (state.hasBackupPassword) exportLauncher.launch(viewModel.exportFileName) else showSetPassword = true },
+                onClick = { exportLauncher.launch(viewModel.exportFileName) },
                 enabled = !state.working,
                 modifier = Modifier.weight(1f),
             ) { Text("Export file", maxLines = 1) }
@@ -213,6 +212,23 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
             changing = state.hasBackupPassword,
             onConfirm = { pw -> viewModel.setBackupPassword(pw); showSetPassword = false },
             onDismiss = { showSetPassword = false },
+        )
+    }
+
+    if (showRemovePassword) {
+        AlertDialog(
+            onDismissRequest = { showRemovePassword = false },
+            title = { Text("Remove backup password?") },
+            text = {
+                Text(
+                    "Future backups will be unencrypted and restorable on any device with no password. " +
+                        "Backups you already made stay encrypted and still open on this phone.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.removeBackupPassword(); showRemovePassword = false }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { showRemovePassword = false }) { Text("Cancel") } },
         )
     }
 

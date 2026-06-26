@@ -104,7 +104,7 @@ fun AnalyticsScreen(
 private fun SummaryCard(state: AnalyticsUiState) {
     val semantic = LocalSemanticColors.current
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SummaryCell(Modifier.weight(1f), "Expense", Icons.Filled.ArrowUpward, semantic.expense, state.expenseMinor, false)
             SummaryCell(Modifier.weight(1f), "Income", Icons.Filled.ArrowDownward, semantic.income, state.incomeMinor, false)
             SummaryCell(
@@ -138,6 +138,9 @@ private fun SummaryCell(
             style = Numerals.amountLg,
             color = accent,
             withSign = withSign,
+            // Three big figures share one row, so allow a deeper shrink — the "Net" lakh amount with
+            // decimals was overflowing its cell and clipping the paise off-screen (#7).
+            minScale = 0.3f,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         )
     }

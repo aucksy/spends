@@ -89,7 +89,7 @@ class BackupViewModel @Inject constructor(
     fun setAutoBackup(enabled: Boolean) =
         viewModelScope.launch { settingsRepository.setAutoBackupEnabled(enabled) }
 
-    /** Set/replace the recovery password that encrypts every backup. */
+    /** Set/replace the OPTIONAL recovery password that encrypts every backup (#8). */
     fun setBackupPassword(password: String) {
         viewModelScope.launch {
             _state.update { it.copy(working = true, message = null) }
@@ -104,6 +104,16 @@ class BackupViewModel @Inject constructor(
         }
     }
 
+    /** Remove the recovery password — future backups are written unencrypted (#8). */
+    fun removeBackupPassword() {
+        viewModelScope.launch {
+            backupRepository.clearBackupPassword()
+            _state.update {
+                it.copy(hasBackupPassword = false, message = "Password removed — new backups are unencrypted and restore on any device.")
+            }
+        }
+    }
+
     fun exportToFile(uri: Uri) {
         viewModelScope.launch {
             _state.update { it.copy(working = true, message = null, blockingError = null) }
@@ -113,7 +123,9 @@ class BackupViewModel @Inject constructor(
                 val bytes = backupRepository.buildBackupBytes()
                 check(bytes.isNotEmpty()) { "The backup came out empty." }
                 writeAllBytes(uri, bytes)
-                _state.update { it.copy(working = false, message = "Encrypted backup saved (${bytes.size / 1024} KB)") }
+                // Tell the truth about protection — the file is plaintext when no password is set (#8).
+                val savedLabel = if (backupRepository.hasBackupPassword()) "Encrypted backup saved" else "Backup saved (unencrypted)"
+                _state.update { it.copy(working = false, message = "$savedLabel (${bytes.size / 1024} KB)") }
             } catch (e: BackupNotProtectedException) {
                 deleteFailedFile(uri)
                 _state.update { it.copy(working = false, blockingError = e.message) }
