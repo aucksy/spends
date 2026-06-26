@@ -27,7 +27,7 @@ import com.spends.app.data.seed.CategorySeed
         PendingCaptureEntity::class,
         MerchantCategoryEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -187,6 +187,15 @@ abstract class SpendsDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE pending_captures ADD COLUMN rawBody TEXT")
                 db.execSQL("ALTER TABLE pending_captures ADD COLUMN sender TEXT")
+            }
+        }
+
+        /** v8 -> v9: add `iconCustomized` so a hand-picked category icon (#5) sticks and isn't overwritten
+         *  by the launch-time auto re-icon. Boolean -> INTEGER NOT NULL DEFAULT 0, matching Room's
+         *  generated DDL exactly (and the entity's @ColumnInfo defaultValue) so validation passes. */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE categories ADD COLUMN iconCustomized INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

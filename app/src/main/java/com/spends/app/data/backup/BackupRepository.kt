@@ -227,12 +227,14 @@ class BackupRepository @Inject constructor(
 
 private fun CategoryEntity.toSnapshot() = SnapshotCategory(
     id, name, iconKey, colorHex, isCustom, isArchived, excludeFromSpend, sortOrder, usage.name,
+    iconCustomized = iconCustomized,
 )
 
 private fun SnapshotCategory.toEntity() = CategoryEntity(
     id = id, name = name, iconKey = iconKey, colorHex = colorHex, isCustom = isCustom,
     isArchived = isArchived, excludeFromSpend = excludeFromSpend, sortOrder = sortOrder,
     usage = runCatching { CategoryUsage.valueOf(usage) }.getOrDefault(CategoryUsage.EXPENSE),
+    iconCustomized = iconCustomized,
 )
 
 private fun ExpenseEntity.toSnapshot() = SnapshotExpense(

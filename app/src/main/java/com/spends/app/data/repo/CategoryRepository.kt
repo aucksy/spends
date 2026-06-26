@@ -25,17 +25,23 @@ class CategoryRepository @Inject constructor(
 
     suspend fun getById(id: Long): CategoryEntity? = dao.getById(id)
 
-    /** Create a custom category with an auto icon + a distinct auto color (PRD §4.4). */
+    /**
+     * Create a custom category with a distinct auto color (PRD §4.4). The icon is auto-assigned from the
+     * name unless the caller passes a hand-picked [iconKey] (#5), in which case it's stored as customized
+     * so the launch-time auto re-icon leaves it alone.
+     */
     suspend fun addCustom(
         name: String,
         usage: CategoryUsage = CategoryUsage.EXPENSE,
         excludeFromSpend: Boolean = false,
+        iconKey: String? = null,
     ): Long {
         val trimmed = name.trim()
         val taken = dao.allColors().toSet()
         val category = CategoryEntity(
             name = trimmed,
-            iconKey = IconAssigner.keyFor(trimmed),
+            iconKey = iconKey ?: IconAssigner.keyFor(trimmed),
+            iconCustomized = iconKey != null,
             colorHex = ColorAssigner.colorFor(trimmed, taken),
             isCustom = true,
             excludeFromSpend = excludeFromSpend,
@@ -50,6 +56,14 @@ class CategoryRepository @Inject constructor(
         if (trimmed.isNotEmpty()) dao.rename(id, trimmed)
     }
 
+    /** Apply an edit from the category editor (#5): rename (if non-blank) and set the icon. When the user
+     *  hand-picked the icon it's marked customized so it sticks; otherwise it stays auto-managed. */
+    suspend fun updateNameAndIcon(id: Long, newName: String, iconKey: String, iconCustomized: Boolean) {
+        val trimmed = newName.trim()
+        if (trimmed.isNotEmpty()) dao.rename(id, trimmed)
+        dao.setIconCustom(id, iconKey, iconCustomized)
+    }
+
     /**
      * Re-derive the auto icon for every category from its name. Run on launch so categories created
      * by older imports (when the keyword rules were thinner) pick up the better-matching icons —
@@ -57,6 +71,8 @@ class CategoryRepository @Inject constructor(
      */
     suspend fun refreshAutoIcons() {
         dao.getAllOnce().forEach { cat ->
+            // Never overwrite an icon the user hand-picked (#5) — only auto-managed ones get re-derived.
+            if (cat.iconCustomized) return@forEach
             val key = IconAssigner.keyFor(cat.name)
             if (key != cat.iconKey) dao.updateIcon(cat.id, key)
         }

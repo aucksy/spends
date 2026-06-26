@@ -30,6 +30,9 @@ class QuickAddActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Confirm the widget "+" tap with a light buzz — the launcher fired a PendingIntent, so there was
+        // no View to drive haptics on the tap itself. Only widget taps reach here (the in-app FAB doesn't).
+        if (savedInstanceState == null) Haptics.tick(this)
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             SpendsTheme(

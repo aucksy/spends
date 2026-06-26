@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -74,6 +76,9 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -375,6 +380,7 @@ private fun SmsPermissionStep(
     onToggleAuto: (Boolean) -> Unit,
     onToggleScan: (Boolean) -> Unit,
 ) {
+    var showRcsInfo by rememberSaveable { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StepBadge(Icons.Filled.Sms)
         Spacer(Modifier.height(14.dp))
@@ -382,10 +388,32 @@ private fun SmsPermissionStep(
         Spacer(Modifier.height(8.dp))
         // Restored (#1): this is the copy that actually explains WHY SMS + notification access is asked —
         // the moment a bank SMS lands you get a one-tap notification. Decluttered via the smaller badge +
-        // body-medium type, NOT by deleting the explanation.
+        // body-medium type, NOT by deleting the explanation. The RCS/TrueCaller caveat is tucked behind the
+        // inline (i) right after the copy (#1, this round) — tap it for a themed dialog, instead of a long
+        // always-on note under the toggles.
+        val infoTag = "rcsInfo"
+        val body = buildAnnotatedString {
+            append(
+                "The moment a bank SMS arrives, Spends spots the transaction on your phone and notifies you to " +
+                    "add it in one tap — that's why it asks for SMS and notification access. Nothing leaves your phone. ",
+            )
+            appendInlineContent(infoTag, "(i)")
+        }
+        val inlineInfo = mapOf(
+            infoTag to InlineTextContent(
+                Placeholder(width = 20.sp, height = 18.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter),
+            ) {
+                Icon(
+                    Icons.Filled.Info,
+                    contentDescription = "Why some bank alerts aren't captured",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxSize().clickable { showRcsInfo = true },
+                )
+            },
+        )
         Text(
-            "The moment a bank SMS arrives, Spends spots the transaction on your phone and notifies you to " +
-                "add it in one tap — that's why it asks for SMS and notification access. Nothing leaves your phone.",
+            body,
+            inlineContent = inlineInfo,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -420,17 +448,28 @@ private fun SmsPermissionStep(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(Modifier.height(8.dp))
-        // Heads-up (#4): RCS / verified-business chats aren't in the SMS inbox, so no app can read them.
-        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
-            Text(
-                "Bank alerts delivered as RCS or TrueCaller Business Chat aren't plain SMS, so no app can read " +
-                    "them — switch those off to receive them as normal SMS.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    }
+
+    // Tapping the inline (i) opens this themed dialog with the full RCS / TrueCaller caveat (#1).
+    if (showRcsInfo) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRcsInfo = false },
+            icon = { Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Some alerts can't be read") },
+            text = {
+                Text(
+                    "Some banks send alerts as RCS or TrueCaller “Business Chat” rather than a normal SMS. " +
+                        "No app — including Spends — can read those, so those transactions won't be captured.\n\n" +
+                        "TrueCaller's Business Chat is turned on by the bank, so you can't switch it off.\n\n" +
+                        "RCS you can switch off: in your Messages app, turn off RCS chats. Your bank's alerts then " +
+                        "arrive as a normal SMS, which Spends can detect.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showRcsInfo = false }) { Text("Got it") }
+            },
+        )
     }
 }
 

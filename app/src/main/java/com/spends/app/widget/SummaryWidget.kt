@@ -61,6 +61,7 @@ class SummaryWidget : AppWidgetProvider() {
         if (intent.action == ACTION_TOGGLE_MASK) {
             val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
             if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                com.spends.app.core.Haptics.tick(context) // confirm the eye tap (no View in a widget)
                 entryPoint(context).widgetMaskStore().toggle(id)
                 renderAsync(context, AppWidgetManager.getInstance(context), intArrayOf(id))
             }

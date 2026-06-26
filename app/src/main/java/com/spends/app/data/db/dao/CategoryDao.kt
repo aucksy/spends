@@ -71,6 +71,10 @@ interface CategoryDao {
     @Query("UPDATE categories SET iconKey = :iconKey WHERE id = :id")
     suspend fun updateIcon(id: Long, iconKey: String)
 
+    /** Set the icon AND mark it customized in one write (#5) — used when the user hand-picks an icon. */
+    @Query("UPDATE categories SET iconKey = :iconKey, iconCustomized = :customized WHERE id = :id")
+    suspend fun setIconCustom(id: Long, iconKey: String, customized: Boolean)
+
     @Query("UPDATE categories SET isArchived = :archived WHERE id = :id")
     suspend fun setArchived(id: Long, archived: Boolean)
 

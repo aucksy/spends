@@ -15,9 +15,9 @@ data class Snapshot(
     val data: SnapshotData,
 ) {
     companion object {
-        // v2 adds `recurring`. Decoders use ignoreUnknownKeys + default empty lists, so v1 backups
-        // still restore cleanly.
-        const val CURRENT_SCHEMA = 2
+        // v2 adds `recurring`; v3 adds category `iconCustomized`. Decoders use ignoreUnknownKeys + field
+        // defaults, so older backups (no recurring / no iconCustomized) still restore cleanly.
+        const val CURRENT_SCHEMA = 3
     }
 }
 
@@ -60,6 +60,8 @@ data class SnapshotCategory(
     val excludeFromSpend: Boolean,
     val sortOrder: Int,
     val usage: String,
+    // Added in v3 (#5); default keeps older backups deserialising (ignoreUnknownKeys + this default).
+    val iconCustomized: Boolean = false,
 )
 
 @Serializable

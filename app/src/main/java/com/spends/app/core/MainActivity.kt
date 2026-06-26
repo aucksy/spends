@@ -6,6 +6,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,15 +60,29 @@ class MainActivity : ComponentActivity() {
                 autoDarkStartMinute = state.settings.autoDarkStartMinute,
                 autoDarkEndMinute = state.settings.autoDarkEndMinute,
             ) {
-                when {
-                    showSplash || state.loading -> SplashScreenContent()
-                    else -> SpendsNavHost(
-                        settings = state.settings,
-                        pendingCaptureDraft = pendingCaptureDraft,
-                        onCaptureDraftConsumed = viewModel::consumeCaptureDraft,
-                        pendingQuickAdd = pendingQuickAdd,
-                        onQuickAddConsumed = viewModel::consumeQuickAdd,
-                    )
+                // Reveal the app with a calm fade + gentle scale-up while the brand splash fades out —
+                // a system-like settle-in instead of an abrupt cut from the dark splash to the app (#3).
+                val showAppContent = !(showSplash || state.loading)
+                AnimatedContent(
+                    targetState = showAppContent,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(durationMillis = 420)) +
+                            scaleIn(initialScale = 0.94f, animationSpec = tween(durationMillis = 420))) togetherWith
+                            fadeOut(animationSpec = tween(durationMillis = 260))
+                    },
+                    label = "splash-reveal",
+                ) { appVisible ->
+                    if (appVisible) {
+                        SpendsNavHost(
+                            settings = state.settings,
+                            pendingCaptureDraft = pendingCaptureDraft,
+                            onCaptureDraftConsumed = viewModel::consumeCaptureDraft,
+                            pendingQuickAdd = pendingQuickAdd,
+                            onQuickAddConsumed = viewModel::consumeQuickAdd,
+                        )
+                    } else {
+                        SplashScreenContent()
+                    }
                 }
             }
         }

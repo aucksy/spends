@@ -36,12 +36,18 @@ class CategoriesViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CategoriesUiState())
 
-    fun add(name: String, usage: CategoryUsage) {
-        viewModelScope.launch { categoryRepository.addCustom(name, usage) }
+    /** Create a category. [iconKey] is set only when the user hand-picked one (#5); else it's auto. */
+    fun add(name: String, usage: CategoryUsage, iconKey: String? = null) {
+        viewModelScope.launch { categoryRepository.addCustom(name, usage, iconKey = iconKey) }
     }
 
     fun rename(id: Long, newName: String) {
         viewModelScope.launch { categoryRepository.rename(id, newName) }
+    }
+
+    /** Save an edit from the category editor: name + (possibly hand-picked) icon (#5). */
+    fun saveEdits(id: Long, name: String, iconKey: String, iconCustomized: Boolean) {
+        viewModelScope.launch { categoryRepository.updateNameAndIcon(id, name, iconKey, iconCustomized) }
     }
 
     fun deleteOrArchive(id: Long, onResult: (CategoryDeleteResult) -> Unit) {

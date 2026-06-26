@@ -25,4 +25,7 @@ data class CategoryEntity(
     // single quotes ('EXPENSE'); this matches the MIGRATION_1_2 `DEFAULT 'EXPENSE'` exactly so the
     // schema validates on both fresh installs and upgrades.
     @ColumnInfo(defaultValue = "'EXPENSE'") val usage: CategoryUsage = CategoryUsage.EXPENSE,
+    // True once the user hand-picks an icon (#5). It then sticks: [CategoryRepository.refreshAutoIcons]
+    // skips customized categories so the launch-time auto re-icon never clobbers a deliberate choice.
+    @ColumnInfo(defaultValue = "0") val iconCustomized: Boolean = false,
 )

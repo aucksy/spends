@@ -27,6 +27,10 @@
          notification capture isn't killed on aggressive OEMs. Optional; the user can decline. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Light haptic "tick" confirming taps on the home-screen widget buttons (eye / quick-add "+"),
+         whose taps fire a PendingIntent so there's no View to drive performHapticFeedback. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:name=".core.SpendsApp"
         android:allowBackup="true"
