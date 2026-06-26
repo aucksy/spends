@@ -7,6 +7,7 @@ import androidx.room.withTransaction
 import com.spends.app.core.category.IconAssigner
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.SpendsDatabase
+import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
 import com.spends.app.data.repo.AllocationInput
 import com.spends.app.data.repo.ExpenseRepository
@@ -41,6 +42,7 @@ class SmsCaptureRepository @Inject constructor(
     private val categoryDao = db.categoryDao()
     private val expenseDao = db.expenseDao()
     private val pendingDao = db.pendingCaptureDao()
+    private val merchantDao = db.merchantCategoryDao()
 
     // Serialises capture so concurrent broadcasts / a scan can't both pass the read-then-insert check.
     private val captureMutex = Mutex()
@@ -72,7 +74,9 @@ class SmsCaptureRepository @Inject constructor(
         val hash = hashFor(parsed, occurredAt, amount, kind)
         if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null // already in the ledger
         val categoryId = resolveCategory(parsed, kind)
-        createLedgerTxn(amount, kind, occurredAt, parsed.merchant, categoryId, hash)
+        // Live, user-confirmed captures are tagged NOTIFICATION (a deliberate add) — distinct from the
+        // bulk historical scan (SMS) so the hide/delete-bulk controls never touch these (#11).
+        createLedgerTxn(amount, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION)
     }
 
     // ---- Review queue (pending captures) ----
@@ -152,7 +156,12 @@ class SmsCaptureRepository @Inject constructor(
     /** Confirm one pending capture into the ledger (optionally overriding the guessed category). */
     suspend fun confirmPending(id: Long, categoryId: Long? = null): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
-        val newId = createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, categoryId ?: p.categoryId, p.dedupeHash)
+        val finalCategory = categoryId ?: p.categoryId
+        // Bulk-scanned confirmations stay TxnSource.SMS so the "hide / delete bulk-captured" controls
+        // target exactly these (and not the live NOTIFICATION ones).
+        val newId = createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, finalCategory, p.dedupeHash, TxnSource.SMS)
+        // Remember the user's category choice for this merchant so future captures pre-fill it (#14).
+        learnMerchantCategory(p.merchant, finalCategory)
         pendingDao.deleteById(id)
         newId
     }
@@ -160,7 +169,10 @@ class SmsCaptureRepository @Inject constructor(
     /** Confirm every pending capture as-is. Returns the number added. */
     suspend fun confirmAllPending(): Int = captureMutex.withLock {
         val all = pendingDao.getAllOnce()
-        for (p in all) createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash)
+        for (p in all) {
+            createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS)
+            learnMerchantCategory(p.merchant, p.categoryId)
+        }
         pendingDao.deleteAll()
         all.size
     }
@@ -187,6 +199,7 @@ class SmsCaptureRepository @Inject constructor(
         merchant: String?,
         categoryId: Long,
         hash: String,
+        source: TxnSource,
     ): Long = expenseRepository.create(
         TransactionInput(
             amountMinor = amount,
@@ -195,11 +208,36 @@ class SmsCaptureRepository @Inject constructor(
             merchantRaw = merchant?.ifBlank { null },
             note = null,
             allocations = listOf(AllocationInput(categoryId, amount)),
-            source = TxnSource.SMS,
+            source = source,
             dedupeHash = hash,
             parseConfidence = 100, // user-reviewed
         ),
     )
+
+    // ---- Merchant→category learning (#14) ----
+
+    private fun merchantKeyOf(merchant: String?): String? =
+        merchant?.lowercase()?.trim()?.takeIf { it.isNotBlank() }
+
+    /** Remember that this merchant maps to [categoryId] so future captures pre-select it. */
+    private suspend fun learnMerchantCategory(merchant: String?, categoryId: Long) {
+        val key = merchantKeyOf(merchant) ?: return
+        merchantDao.upsert(MerchantCategoryEntity(key, categoryId, DateUtils.nowMillis()))
+    }
+
+    /**
+     * Learn from a manual recategorization of a captured transaction (the user correcting a guess in
+     * the timeline). No-op for non-capture rows or rows without a merchant.
+     */
+    suspend fun learnFromTransaction(expenseId: Long, categoryId: Long) {
+        val expense = expenseDao.getByIdWithAllocations(expenseId)?.expense ?: return
+        if (expense.source == TxnSource.SMS || expense.source == TxnSource.NOTIFICATION) {
+            learnMerchantCategory(expense.merchantRaw, categoryId)
+        }
+    }
+
+    /** Drop learned mappings whose category was since deleted (so a stale id is never reused). */
+    suspend fun pruneLearnedOrphans() = runCatching { merchantDao.pruneOrphans() }
 
     private fun hashFor(parsed: SmsParser.Parsed, occurredAt: Long, amount: Long, kind: TxnKind): String {
         val day = DateUtils.toLocalDate(occurredAt).toEpochDay()
@@ -213,8 +251,10 @@ class SmsCaptureRepository @Inject constructor(
         return "$day|$amount|${kind.name}"
     }
 
-    /** @return the resolved category id (best guess; falls back to "Other"). */
+    /** @return the resolved category id (learned merchant mapping first, then best guess; falls back to "Other"). */
     private suspend fun resolveCategory(parsed: SmsParser.Parsed, kind: TxnKind): Long {
+        // #14: if the user has categorised this merchant before, reuse that choice.
+        merchantKeyOf(parsed.merchant)?.let { key -> merchantDao.categoryFor(key)?.let { return it } }
         parsed.categoryHint?.let { hint -> categoryId(hint)?.let { return it } }
         return when (kind) {
             TxnKind.TRANSFER -> fallbackCategory()

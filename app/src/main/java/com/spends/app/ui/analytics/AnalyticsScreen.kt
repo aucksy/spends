@@ -57,6 +57,7 @@ import com.spends.app.ui.components.parseHexColor
 fun AnalyticsScreen(
     onOpenRecurring: () -> Unit,
     onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: AnalyticsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -77,6 +78,7 @@ fun AnalyticsScreen(
             selection = selection,
             label = state.periodLabel,
             onSelect = viewModel::applySelection,
+            onOpenSettings = onOpenSettings,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))

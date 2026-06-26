@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
+import com.spends.app.data.db.dao.MerchantCategoryDao
 import com.spends.app.data.db.dao.PendingCaptureDao
 import com.spends.app.data.db.dao.RecurringDao
 import dagger.Module
@@ -29,6 +30,7 @@ object DatabaseModule {
                 SpendsDatabase.MIGRATION_3_4,
                 SpendsDatabase.MIGRATION_4_5,
                 SpendsDatabase.MIGRATION_5_6,
+                SpendsDatabase.MIGRATION_6_7,
             )
             .build()
 
@@ -43,4 +45,7 @@ object DatabaseModule {
 
     @Provides
     fun providePendingCaptureDao(db: SpendsDatabase): PendingCaptureDao = db.pendingCaptureDao()
+
+    @Provides
+    fun provideMerchantCategoryDao(db: SpendsDatabase): MerchantCategoryDao = db.merchantCategoryDao()
 }

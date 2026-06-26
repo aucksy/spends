@@ -75,6 +75,7 @@ class MainViewModel @Inject constructor(
             }
             runCatching { recurringRepository.materializeDue(System.currentTimeMillis()) }
             runCatching { categoryRepository.refreshAutoIcons() }
+            runCatching { captureRepository.pruneLearnedOrphans() }
         }
     }
 }

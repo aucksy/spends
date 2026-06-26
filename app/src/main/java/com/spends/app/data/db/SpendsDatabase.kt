@@ -7,11 +7,13 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
+import com.spends.app.data.db.dao.MerchantCategoryDao
 import com.spends.app.data.db.dao.PendingCaptureDao
 import com.spends.app.data.db.dao.RecurringDao
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
+import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.seed.CategorySeed
@@ -23,8 +25,9 @@ import com.spends.app.data.seed.CategorySeed
         AllocationEntity::class,
         RecurringRuleEntity::class,
         PendingCaptureEntity::class,
+        MerchantCategoryEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -34,6 +37,7 @@ abstract class SpendsDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
     abstract fun recurringDao(): RecurringDao
     abstract fun pendingCaptureDao(): PendingCaptureDao
+    abstract fun merchantCategoryDao(): MerchantCategoryDao
 
     companion object {
         const val NAME = "spends.db"
@@ -158,6 +162,20 @@ abstract class SpendsDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "UPDATE categories SET excludeFromSpend = 0 WHERE name IN ('Investments', 'Loan/EMI')",
+                )
+            }
+        }
+
+        /** v6 -> v7: add the learned merchant→category table (#14). DDL must mirror Room's generated
+         *  schema for [MerchantCategoryEntity] exactly so validation passes. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `merchant_categories` (" +
+                        "`merchantKey` TEXT NOT NULL, " +
+                        "`categoryId` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`merchantKey`))",
                 )
             }
         }

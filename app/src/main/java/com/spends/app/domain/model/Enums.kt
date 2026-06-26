@@ -36,5 +36,10 @@ enum class DefaultLanding { TRANSACTIONS, ANALYTICS }
  */
 enum class SmsCaptureMode { AUTO_ADD, REVIEW_PROMPT }
 
-/** Theme preference (PRD §4.15). */
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+/**
+ * Theme preference (PRD §4.15).
+ *  - [SYSTEM] follows the OS light/dark setting.
+ *  - [LIGHT]/[DARK] force one.
+ *  - [AUTO] switches to dark inside a user-defined daily window (default 8 PM–6 AM).
+ */
+enum class ThemeMode { SYSTEM, LIGHT, DARK, AUTO }

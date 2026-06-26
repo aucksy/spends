@@ -1,18 +1,21 @@
 package com.spends.app.core.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import com.spends.app.domain.model.ThemeMode
+import kotlinx.coroutines.delay
+import java.time.LocalTime
 
 private val LightColors = lightColorScheme(
     primary = LightPrimary,
@@ -83,24 +86,31 @@ private val DarkSemantic = SemanticColors(
 
 val LocalSemanticColors = staticCompositionLocalOf { LightSemantic }
 
+/**
+ * The app theme. We always use the hand-tuned design-system palette (no Material You / dynamic colour —
+ * the user prefers the brand green and wallpaper extraction never matched it well). [ThemeMode.AUTO]
+ * flips to dark inside the user's daily window ([autoDarkStartMinute], [autoDarkEndMinute) minutes-of-day).
+ */
 @Composable
 fun SpendsTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    dynamicColor: Boolean = true,
+    autoDarkStartMinute: Int = 20 * 60,
+    autoDarkEndMinute: Int = 6 * 60,
     content: @Composable () -> Unit,
 ) {
+    val systemDark = isSystemInDarkTheme()
+    val autoDark = if (themeMode == ThemeMode.AUTO) {
+        rememberAutoDark(autoDarkStartMinute, autoDarkEndMinute)
+    } else {
+        false
+    }
     val dark = when (themeMode) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.SYSTEM -> systemDark
+        ThemeMode.AUTO -> autoDark
     }
-    val context = LocalContext.current
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> DarkColors
-        else -> LightColors
-    }
+    val colorScheme = if (dark) DarkColors else LightColors
 
     CompositionLocalProvider(LocalSemanticColors provides if (dark) DarkSemantic else LightSemantic) {
         MaterialTheme(
@@ -110,4 +120,26 @@ fun SpendsTheme(
             content = content,
         )
     }
+}
+
+/** Recomputes "is it dark now" every 30s so an open app flips at the window boundary, not just on launch. */
+@Composable
+private fun rememberAutoDark(startMinute: Int, endMinute: Int): Boolean {
+    var nowMinute by remember { mutableIntStateOf(currentMinuteOfDay()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMinute = currentMinuteOfDay()
+            delay(30_000L)
+        }
+    }
+    return isWithinDarkWindow(nowMinute, startMinute, endMinute)
+}
+
+private fun currentMinuteOfDay(): Int = LocalTime.now().let { it.hour * 60 + it.minute }
+
+/** True if [nowMinute] is inside [start, end); handles windows that wrap past midnight (start > end). */
+internal fun isWithinDarkWindow(nowMinute: Int, start: Int, end: Int): Boolean = when {
+    start == end -> false // empty window → never auto-dark
+    start < end -> nowMinute in start until end
+    else -> nowMinute >= start || nowMinute < end // wraps midnight, e.g. 20:00 → 06:00
 }

@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -42,6 +41,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,7 +56,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,6 +69,7 @@ import com.spends.app.data.repo.RecurringInput
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.components.AmountKeypadSheet
 import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
@@ -243,7 +243,7 @@ private fun RecurringEditor(
     onDelete: (() -> Unit)?,
     onSave: (RecurringInput) -> Unit,
 ) {
-    var amountText by remember { mutableStateOf(initial?.let { Money.toEditString(it.amountMinor) } ?: "") }
+    var amountMinor by remember { mutableStateOf(initial?.amountMinor?.takeIf { it > 0 }) }
     var kind by remember { mutableStateOf(initial?.kind ?: TxnKind.EXPENSE) }
     var categoryId by remember { mutableStateOf(initial?.categoryId) }
     var frequency by remember { mutableStateOf(initial?.frequency ?: RecurrenceFreq.MONTHLY) }
@@ -254,12 +254,14 @@ private fun RecurringEditor(
     var showDatePicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showAddBlocked by remember { mutableStateOf(false) }
+    var showAmountKeypad by remember { mutableStateOf(false) }
 
     val usageFilter = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
     val selectedCategory = visibleCategories.firstOrNull { it.id == categoryId }
 
-    val amountMinor = Money.parseRupeesToMinor(amountText)?.takeIf { it > 0 }
+    val semantic = LocalSemanticColors.current
+    val amountAccent = if (kind == TxnKind.INCOME) semantic.income else semantic.expense
     val canSave = amountMinor != null && categoryId != null
 
     Scaffold(
@@ -304,15 +306,30 @@ private fun RecurringEditor(
             }
 
             Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = amountText,
-                onValueChange = { input -> amountText = input.filter { it.isDigit() || it == '.' } },
+            Text("Amount", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            // Same calculator keypad as quick-add (#12): tap to open it.
+            Surface(
+                onClick = { showAmountKeypad = true },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Amount") },
-                prefix = { Text("₹") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            )
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("₹", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = amountMinor?.let { Money.formatRupees(it, withSymbol = false) } ?: "Tap to enter amount",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (amountMinor != null) amountAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
             Text("Category", style = MaterialTheme.typography.labelLarge)
@@ -457,6 +474,16 @@ private fun RecurringEditor(
             title = { Text("Add categories first") },
             text = { Text("Create the category you need under Settings → Manage categories, then come back to schedule it.") },
             confirmButton = { TextButton(onClick = { showAddBlocked = false }) { Text("OK") } },
+        )
+    }
+
+    if (showAmountKeypad) {
+        AmountKeypadSheet(
+            initialMinor = amountMinor ?: 0,
+            accent = amountAccent,
+            title = "Amount",
+            onConfirm = { amountMinor = it },
+            onDismiss = { showAmountKeypad = false },
         )
     }
 }

@@ -36,6 +36,7 @@ class TransactionsViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val settingsRepository: SettingsRepository,
     private val periodSelectionStore: PeriodSelectionStore,
+    private val captureRepository: com.spends.app.data.capture.SmsCaptureRepository,
     categoryRepository: CategoryRepository,
 ) : ViewModel() {
 
@@ -99,14 +100,23 @@ class TransactionsViewModel @Inject constructor(
     fun restore(id: Long) = viewModelScope.launch { expenseRepository.restore(id) }
 
     fun changeCategory(id: Long, categoryId: Long) =
-        viewModelScope.launch { expenseRepository.reassignCategory(id, categoryId) }
+        viewModelScope.launch {
+            expenseRepository.reassignCategory(id, categoryId)
+            // #14: correcting a captured transaction's category teaches the merchant mapping.
+            captureRepository.learnFromTransaction(id, categoryId)
+        }
 
     fun bulkMoveToTrash(ids: Set<Long>) = viewModelScope.launch { ids.forEach { expenseRepository.moveToTrash(it) } }
 
     fun bulkRestore(ids: Set<Long>) = viewModelScope.launch { ids.forEach { expenseRepository.restore(it) } }
 
     fun bulkChangeCategory(ids: Set<Long>, categoryId: Long) =
-        viewModelScope.launch { ids.forEach { expenseRepository.reassignCategory(it, categoryId) } }
+        viewModelScope.launch {
+            ids.forEach {
+                expenseRepository.reassignCategory(it, categoryId)
+                captureRepository.learnFromTransaction(it, categoryId)
+            }
+        }
 
     private fun currentSalaryCycle(): ResolvedPeriod = PeriodResolver.resolve(
         type = PeriodType.SALARY_CYCLE,
@@ -171,9 +181,14 @@ class TransactionsViewModel @Inject constructor(
             totals = totals,
             carryForward = when {
                 !settings.carryForwardEnabled -> null
-                // Suppress only for periods that start STRICTLY before the anchor; a period starting on
-                // the anchor carries in the opening balance (opening + 0).
-                anchorMillis > 0 && resolved.startMillis < anchorMillis -> null
+                // Carry-forward REQUIRES an anchor. Without one, never fold in all incomplete old
+                // history (that produced the hugely-negative balance the user hit).
+                anchorMillis <= 0 -> null
+                // Periods that start strictly before the anchor get no carry-in (the opening balance
+                // applies from the anchor onward only).
+                resolved.startMillis < anchorMillis -> null
+                // Opening balance as of the anchor + the net of everything from the anchor up to this
+                // period's start (pre-anchor data excluded by the subtraction).
                 else -> settings.carryForwardOpeningMinor + carryBeforePeriod - carryBeforeAnchor
             },
             groups = groups,

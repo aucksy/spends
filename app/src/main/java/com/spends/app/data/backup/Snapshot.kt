@@ -44,6 +44,9 @@ data class SnapshotSettings(
     val carryForwardAnchorEpochDay: Long = 0,
     val carryForwardOpeningMinor: Long = 0,
     val hideCapturedInLists: Boolean = false,
+    // Added in v0.12.0 (auto theme window). Additive defaults keep older backups valid.
+    val autoDarkStartMinute: Int = 20 * 60,
+    val autoDarkEndMinute: Int = 6 * 60,
 )
 
 @Serializable

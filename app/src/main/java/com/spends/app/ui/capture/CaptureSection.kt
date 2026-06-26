@@ -135,9 +135,10 @@ fun CaptureSection(
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Hide captured in timeline", style = MaterialTheme.typography.bodyLarge)
+                    Text("Hide bulk-scanned in timeline", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Keeps confirmed SMS transactions out of the timeline list (still counted in totals).",
+                        "Keeps transactions from a past-SMS scan out of the timeline list (still counted in totals). " +
+                            "Live notification adds always stay.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -146,7 +147,7 @@ fun CaptureSection(
             }
 
             TextButton(onClick = { showDelete = true }, enabled = !state.working) {
-                Text("Delete all SMS-captured transactions", color = MaterialTheme.colorScheme.error)
+                Text("Delete bulk-scanned SMS transactions", color = MaterialTheme.colorScheme.error)
             }
         }
 
@@ -182,8 +183,8 @@ fun CaptureSection(
     if (showDelete) {
         AlertDialog(
             onDismissRequest = { showDelete = false },
-            title = { Text("Delete all SMS-captured?") },
-            text = { Text("Permanently removes every transaction that was captured from SMS. Your manual entries are kept. This can't be undone.") },
+            title = { Text("Delete bulk-scanned SMS?") },
+            text = { Text("Removes only transactions added by scanning past SMS. Live notification adds and your manual entries are kept. This can't be undone.") },
             confirmButton = {
                 TextButton(onClick = { showDelete = false; viewModel.deleteAllCaptured() }) {
                     Text("Delete all", color = MaterialTheme.colorScheme.error)

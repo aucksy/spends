@@ -3,13 +3,11 @@ package com.spends.app.ui.quickadd
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -17,10 +15,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,7 +27,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -46,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,6 +51,7 @@ import com.spends.app.core.theme.Numerals
 import com.spends.app.core.time.DateUtils
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.components.CalculatorKeypad
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
 import kotlinx.coroutines.launch
@@ -171,10 +166,8 @@ fun QuickAddSheet(
 
             Spacer(Modifier.height(12.dp))
             CalculatorKeypad(
-                onKey = { key ->
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    expr = CalculatorEngine.append(expr, key)
-                },
+                // Key-tap haptics live inside the shared keypad now; here we just feed the expression.
+                onKey = { key -> expr = CalculatorEngine.append(expr, key) },
                 canSave = amountReady,
                 saving = saving,
                 onSave = {
@@ -261,88 +254,3 @@ private fun AmountDisplay(expr: String, currentMinor: Long, kind: TxnKind) {
 /** Map the stored ASCII operators to their display glyphs for the expression line. */
 private fun displayExpression(expr: String): String =
     expr.replace("*", " × ").replace("/", " ÷ ").replace("+", " + ").replace("-", " − ")
-
-@Composable
-private fun CalculatorKeypad(
-    onKey: (String) -> Unit,
-    canSave: Boolean,
-    saving: Boolean,
-    onSave: () -> Unit,
-) {
-    val rows = listOf(
-        listOf("C", "/", "*", "<"),
-        listOf("7", "8", "9", "-"),
-        listOf("4", "5", "6", "+"),
-        listOf("1", "2", "3", "="),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                row.forEach { key ->
-                    KeypadKey(key = key, modifier = Modifier.weight(1f), onClick = { onKey(key) })
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            KeypadKey(key = "0", modifier = Modifier.weight(1f), onClick = { onKey("0") })
-            KeypadKey(key = ".", modifier = Modifier.weight(1f), onClick = { onKey(".") })
-            SaveKey(modifier = Modifier.weight(2f), enabled = canSave, saving = saving, onClick = onSave)
-        }
-    }
-}
-
-@Composable
-private fun KeypadKey(key: String, modifier: Modifier, onClick: () -> Unit) {
-    val isOperator = key in listOf("/", "*", "-", "+", "=")
-    val isUtil = key in listOf("C", "<")
-    val container = when {
-        isOperator -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    val content = when {
-        isOperator -> MaterialTheme.colorScheme.onSecondaryContainer
-        isUtil -> MaterialTheme.colorScheme.onSurfaceVariant
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = container,
-        modifier = modifier.height(54.dp).clickable(onClick = onClick),
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Text(
-                text = keyLabel(key),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = content,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SaveKey(modifier: Modifier, enabled: Boolean, saving: Boolean, onClick: () -> Unit) {
-    val container = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-    val content = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = container,
-        modifier = modifier.height(54.dp).clickable(enabled = enabled && !saving) { onClick() },
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            if (saving) {
-                CircularProgressIndicator(modifier = Modifier.size(22.dp), color = content, strokeWidth = 2.dp)
-            } else {
-                Text("Save", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = content)
-            }
-        }
-    }
-}
-
-private fun keyLabel(key: String): String = when (key) {
-    "/" -> "÷"
-    "*" -> "×"
-    "-" -> "−"
-    "<" -> "⌫"
-    else -> key
-}

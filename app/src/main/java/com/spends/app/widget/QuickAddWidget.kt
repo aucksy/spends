@@ -22,11 +22,11 @@ class QuickAddWidget : AppWidgetProvider() {
     }
 
     private fun buildRemoteViews(context: Context): RemoteViews {
+        // Explicit component → no ACTION_MAIN/CATEGORY_LAUNCHER needed; singleTask makes CLEAR_TOP
+        // redundant. Just carry the quick-add extra into a new task.
         val intent = Intent(context, MainActivity::class.java).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
             putExtra(MainActivity.EXTRA_OPEN_QUICK_ADD, true)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         val pendingIntent = PendingIntent.getActivity(
             context,

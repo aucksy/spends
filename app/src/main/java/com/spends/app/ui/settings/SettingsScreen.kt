@@ -35,8 +35,10 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +57,7 @@ import com.spends.app.core.time.DateUtils
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.ui.backup.BackupSection
+import com.spends.app.ui.backup.SpreadsheetSection
 import com.spends.app.ui.components.NumberWheelPicker
 import java.time.LocalDate
 
@@ -73,6 +76,8 @@ fun SettingsScreen(
     var showSalaryDialog by remember { mutableStateOf(false) }
     var showAnchorPicker by remember { mutableStateOf(false) }
     var showOpeningDialog by remember { mutableStateOf(false) }
+    var showDarkStartPicker by remember { mutableStateOf(false) }
+    var showDarkEndPicker by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -104,12 +109,24 @@ fun SettingsScreen(
                     ) { Text(mode.label()) }
                 }
             }
-            SwitchRow(
-                title = "Material You colors",
-                subtitle = "Use your wallpaper's palette (Android 12+).",
-                checked = state.dynamicColor,
-                onChange = viewModel::setDynamicColor,
-            )
+            // Auto = dark inside a daily window the user sets (default 8 PM–6 AM).
+            if (state.themeMode == ThemeMode.AUTO) {
+                ClickableRow(
+                    title = "Dark from",
+                    value = formatMinuteOfDay(state.autoDarkStartMinute),
+                    onClick = { showDarkStartPicker = true },
+                )
+                ClickableRow(
+                    title = "Dark until",
+                    value = formatMinuteOfDay(state.autoDarkEndMinute),
+                    onClick = { showDarkEndPicker = true },
+                )
+                Text(
+                    "Dark mode turns on between these times each day.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Spending cycle")
@@ -143,22 +160,18 @@ fun SettingsScreen(
                     value = if (state.carryForwardAnchorEpochDay > 0) {
                         DateUtils.formatDay(DateUtils.startOfDayMillis(LocalDate.ofEpochDay(state.carryForwardAnchorEpochDay)))
                     } else {
-                        "Beginning of your data"
+                        "Pick a date"
                     },
                     onClick = { showAnchorPicker = true },
                 )
                 ClickableRow(
                     title = "Opening balance",
-                    value = if (state.carryForwardAnchorEpochDay > 0) {
-                        Money.formatRupees(state.carryForwardOpeningMinor)
-                    } else {
-                        "Set a start date first"
-                    },
-                    onClick = { if (state.carryForwardAnchorEpochDay > 0) showOpeningDialog = true },
+                    value = Money.formatRupees(state.carryForwardOpeningMinor),
+                    onClick = { showOpeningDialog = true },
                 )
                 Text(
-                    "Fixes a wrong carry-forward from incomplete old months: only transactions on/after this date count, " +
-                        "starting from your opening balance.",
+                    "Your balance was the opening amount on this date; only transactions on/after it count, so " +
+                        "incomplete older months can't drag the balance negative.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 4.dp),
@@ -193,23 +206,21 @@ fun SettingsScreen(
             )
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SectionHeader("Spreadsheet (Excel / CSV)")
+            SpreadsheetSection(onImport = onOpenImport)
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SectionHeader("Backup")
+            BackupSection()
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SectionHeader("Data")
-            ClickableRow(
-                title = "Import data",
-                value = "Excel (.xlsx/.xls) or CSV — adds & merges",
-                onClick = onOpenImport,
-                leading = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
-            )
             ClickableRow(
                 title = "Trash",
                 value = "Auto-purge after ${state.trashRetentionDays} days",
                 onClick = onOpenTrash,
                 leading = { Icon(Icons.Filled.Delete, contentDescription = null) },
             )
-
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            SectionHeader("Backup")
-            BackupSection(onImportSpreadsheet = onOpenImport)
 
             Spacer(Modifier.height(24.dp))
             Text(
@@ -281,6 +292,50 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { showOpeningDialog = false }) { Text("Cancel") } },
         )
     }
+
+    if (showDarkStartPicker) {
+        TimeOfDayDialog(
+            title = "Dark from",
+            initialMinute = state.autoDarkStartMinute,
+            onConfirm = { minute ->
+                viewModel.setAutoDarkWindow(minute, state.autoDarkEndMinute)
+                showDarkStartPicker = false
+            },
+            onDismiss = { showDarkStartPicker = false },
+        )
+    }
+    if (showDarkEndPicker) {
+        TimeOfDayDialog(
+            title = "Dark until",
+            initialMinute = state.autoDarkEndMinute,
+            onConfirm = { minute ->
+                viewModel.setAutoDarkWindow(state.autoDarkStartMinute, minute)
+                showDarkEndPicker = false
+            },
+            onDismiss = { showDarkEndPicker = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeOfDayDialog(title: String, initialMinute: Int, onConfirm: (Int) -> Unit, onDismiss: () -> Unit) {
+    val timeState = rememberTimePickerState(
+        initialHour = (initialMinute / 60).coerceIn(0, 23),
+        initialMinute = (initialMinute % 60).coerceIn(0, 59),
+        is24Hour = false,
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                TimePicker(state = timeState)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(timeState.hour * 60 + timeState.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -360,6 +415,20 @@ private fun ThemeMode.label(): String = when (this) {
     ThemeMode.SYSTEM -> "System"
     ThemeMode.LIGHT -> "Light"
     ThemeMode.DARK -> "Dark"
+    ThemeMode.AUTO -> "Auto"
+}
+
+/** "20:00" → "8:00 PM" for the auto-theme window rows. */
+private fun formatMinuteOfDay(minute: Int): String {
+    val h24 = (minute / 60).coerceIn(0, 23)
+    val m = (minute % 60).coerceIn(0, 59)
+    val period = if (h24 < 12) "AM" else "PM"
+    val h12 = when {
+        h24 == 0 -> 12
+        h24 > 12 -> h24 - 12
+        else -> h24
+    }
+    return "%d:%02d %s".format(h12, m, period)
 }
 
 private fun DefaultLanding.label(): String = when (this) {

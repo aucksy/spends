@@ -6,14 +6,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.theme.SpendsTheme
 import com.spends.app.receiver.CaptureActionReceiver
 import com.spends.app.ui.navigation.SpendsNavHost
+import com.spends.app.ui.onboarding.SplashScreenContent
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -35,12 +41,17 @@ class MainActivity : ComponentActivity() {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val pendingEdit by viewModel.pendingEditId.collectAsStateWithLifecycle()
             val pendingQuickAdd by viewModel.pendingQuickAdd.collectAsStateWithLifecycle()
+            // Quiet brand splash on every cold start (#10), then hand off to the app.
+            var showSplash by rememberSaveable { mutableStateOf(true) }
+            LaunchedEffect(Unit) { delay(1200); showSplash = false }
             SpendsTheme(
                 themeMode = state.settings.themeMode,
-                dynamicColor = state.settings.dynamicColor,
+                autoDarkStartMinute = state.settings.autoDarkStartMinute,
+                autoDarkEndMinute = state.settings.autoDarkEndMinute,
             ) {
-                if (!state.loading) {
-                    SpendsNavHost(
+                when {
+                    showSplash || state.loading -> SplashScreenContent()
+                    else -> SpendsNavHost(
                         settings = state.settings,
                         pendingEditExpenseId = pendingEdit,
                         onPendingEditConsumed = viewModel::consumePendingEdit,

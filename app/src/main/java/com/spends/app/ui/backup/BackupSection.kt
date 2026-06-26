@@ -37,12 +37,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.backup.DriveFile
+import com.spends.app.ui.importer.ImportColumnsHelpDialog
 
 @Composable
-fun BackupSection(
-    onImportSpreadsheet: () -> Unit = {},
-    viewModel: BackupViewModel = hiltViewModel(),
-) {
+fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingRestore by remember { mutableStateOf<DriveFile?>(null) }
     var pendingFileRestore by remember { mutableStateOf<Uri?>(null) }
@@ -59,10 +57,6 @@ fun BackupSection(
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> if (uri != null) pendingFileRestore = uri }
-
-    val excelLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-    ) { uri -> uri?.let(viewModel::exportExcel) }
 
     LaunchedEffect(Unit) {
         viewModel.consentRequests.collect { intentSender ->
@@ -149,21 +143,6 @@ fun BackupSection(
             ) { Text("Restore file", maxLines = 1) }
         }
 
-        // Readable spreadsheet export (not a backup — opens in Excel/Sheets).
-        OutlinedButton(
-            onClick = { excelLauncher.launch(viewModel.excelFileName) },
-            enabled = !state.working,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        ) { Text("Export to Excel (.xlsx)") }
-
-        // Import a spreadsheet back in — the same .xlsx Spends exports, or any .xls/.csv. Adds new rows
-        // and skips duplicates (merge), unlike a full backup restore which replaces everything (#7).
-        OutlinedButton(
-            onClick = onImportSpreadsheet,
-            enabled = !state.working,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        ) { Text("Import from Excel/CSV") }
-
         state.message?.let { msg ->
             Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
         }
@@ -227,6 +206,42 @@ fun BackupSection(
             onCancel = viewModel::cancelPasswordRestore,
         )
     }
+}
+
+/**
+ * Spreadsheet export/import — kept visually separate from Backup (#3). Export writes a readable .xlsx;
+ * import goes through the merge-and-dedupe flow ([onImport] opens it). A help link explains the columns.
+ */
+@Composable
+fun SpreadsheetSection(
+    onImport: () -> Unit,
+    viewModel: BackupViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var showHelp by remember { mutableStateOf(false) }
+    val excelLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ) { uri -> uri?.let(viewModel::exportExcel) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "Export a readable spreadsheet, or import transactions from one. Importing adds new rows and skips duplicates.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            OutlinedButton(onClick = { excelLauncher.launch(viewModel.excelFileName) }, enabled = !state.working, modifier = Modifier.weight(1f)) {
+                Text("Export Excel", maxLines = 1)
+            }
+            OutlinedButton(onClick = onImport, enabled = !state.working, modifier = Modifier.weight(1f)) {
+                Text("Import Excel/CSV", maxLines = 1)
+            }
+        }
+        TextButton(onClick = { showHelp = true }) { Text("Which columns does import need?") }
+    }
+
+    if (showHelp) ImportColumnsHelpDialog(onDismiss = { showHelp = false })
 }
 
 @Composable

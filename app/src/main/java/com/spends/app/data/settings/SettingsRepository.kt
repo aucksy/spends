@@ -22,7 +22,13 @@ import javax.inject.Singleton
 data class SettingsState(
     val onboardingComplete: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val dynamicColor: Boolean = true,
+    // Dormant since v0.12.0 (Material You removed — we always use the design-system green). Kept so old
+    // backups still deserialize; the theme no longer reads it.
+    val dynamicColor: Boolean = false,
+    // Auto theme window in minutes-of-day: dark from [autoDarkStartMinute, autoDarkEndMinute). Default
+    // 20:00 → 06:00 (wraps past midnight). Only used when themeMode == AUTO.
+    val autoDarkStartMinute: Int = 20 * 60,
+    val autoDarkEndMinute: Int = 6 * 60,
     val salaryCycleStartDay: Int = 1,
     val defaultLanding: DefaultLanding = DefaultLanding.TRANSACTIONS,
     val carryForwardEnabled: Boolean = false,
@@ -49,7 +55,9 @@ class SettingsRepository @Inject constructor(
         SettingsState(
             onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
             themeMode = prefs[Keys.THEME_MODE]?.toThemeMode() ?: ThemeMode.SYSTEM,
-            dynamicColor = prefs[Keys.DYNAMIC_COLOR] ?: true,
+            dynamicColor = prefs[Keys.DYNAMIC_COLOR] ?: false,
+            autoDarkStartMinute = prefs[Keys.AUTO_DARK_START] ?: (20 * 60),
+            autoDarkEndMinute = prefs[Keys.AUTO_DARK_END] ?: (6 * 60),
             salaryCycleStartDay = prefs[Keys.SALARY_DAY] ?: 1,
             defaultLanding = prefs[Keys.DEFAULT_LANDING]?.toLanding() ?: DefaultLanding.TRANSACTIONS,
             carryForwardEnabled = prefs[Keys.CARRY_FORWARD] ?: false,
@@ -65,7 +73,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setOnboardingComplete(value: Boolean) = edit { it[Keys.ONBOARDING_COMPLETE] = value }
     suspend fun setThemeMode(mode: ThemeMode) = edit { it[Keys.THEME_MODE] = mode.name }
-    suspend fun setDynamicColor(value: Boolean) = edit { it[Keys.DYNAMIC_COLOR] = value }
+    suspend fun setAutoDarkWindow(startMinute: Int, endMinute: Int) = edit {
+        it[Keys.AUTO_DARK_START] = startMinute.coerceIn(0, 1439)
+        it[Keys.AUTO_DARK_END] = endMinute.coerceIn(0, 1439)
+    }
     suspend fun setSalaryCycleStartDay(day: Int) = edit { it[Keys.SALARY_DAY] = day.coerceIn(1, 31) }
     suspend fun setDefaultLanding(landing: DefaultLanding) = edit { it[Keys.DEFAULT_LANDING] = landing.name }
     suspend fun setCarryForwardEnabled(value: Boolean) = edit { it[Keys.CARRY_FORWARD] = value }
@@ -83,6 +94,8 @@ class SettingsRepository @Inject constructor(
             prefs[Keys.ONBOARDING_COMPLETE] = state.onboardingComplete
             prefs[Keys.THEME_MODE] = state.themeMode.name
             prefs[Keys.DYNAMIC_COLOR] = state.dynamicColor
+            prefs[Keys.AUTO_DARK_START] = state.autoDarkStartMinute
+            prefs[Keys.AUTO_DARK_END] = state.autoDarkEndMinute
             prefs[Keys.SALARY_DAY] = state.salaryCycleStartDay
             prefs[Keys.DEFAULT_LANDING] = state.defaultLanding.name
             prefs[Keys.CARRY_FORWARD] = state.carryForwardEnabled
@@ -111,6 +124,8 @@ class SettingsRepository @Inject constructor(
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val AUTO_DARK_START = intPreferencesKey("auto_dark_start_minute")
+        val AUTO_DARK_END = intPreferencesKey("auto_dark_end_minute")
         val SALARY_DAY = intPreferencesKey("salary_cycle_start_day")
         val DEFAULT_LANDING = stringPreferencesKey("default_landing")
         val CARRY_FORWARD = booleanPreferencesKey("carry_forward_enabled")

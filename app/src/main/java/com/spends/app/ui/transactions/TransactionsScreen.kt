@@ -53,9 +53,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import android.view.HapticFeedbackConstants
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -79,6 +81,7 @@ import kotlinx.coroutines.launch
 fun TransactionsScreen(
     snackbarHostState: SnackbarHostState,
     onEditTransaction: (Long) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
@@ -86,6 +89,7 @@ fun TransactionsScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
     // Search text is owned locally (synchronous snapshot state) so the cursor never jumps; the
     // ViewModel is fed for filtering only.
     var searchText by rememberSaveable { mutableStateOf("") }
@@ -109,7 +113,15 @@ fun TransactionsScreen(
     val selectionMode = selectedIds.isNotEmpty()
     var showBulkDelete by remember { mutableStateOf(false) }
     var showBulkCategory by remember { mutableStateOf(false) }
-    fun toggle(id: Long) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
+    // #13: haptic feedback on every multi-select toggle.
+    fun toggle(id: Long) {
+        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    }
+    fun startSelection(id: Long) {
+        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        selectedIds = setOf(id)
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         if (selectionMode) {
@@ -120,12 +132,14 @@ fun TransactionsScreen(
                 onDelete = { showBulkDelete = true },
             )
         } else {
-            // Period selector — always visible so the cycle/range can be changed any time.
+            // Period selector — always visible so the cycle/range can be changed any time. Hosts the
+            // Settings gear now that the title bar is gone (#7).
             PeriodSelectorBar(
                 selection = selection,
                 label = state.periodLabel,
                 onSelect = viewModel::applySelection,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                onOpenSettings = onOpenSettings,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
         TextField(
@@ -167,7 +181,7 @@ fun TransactionsScreen(
                             selectionMode = selectionMode,
                             selected = row.id in selectedIds,
                             onClick = { if (selectionMode) toggle(row.id) else onEditTransaction(row.id) },
-                            onLongClick = { if (selectionMode) toggle(row.id) else selectedIds = setOf(row.id) },
+                            onLongClick = { if (selectionMode) toggle(row.id) else startSelection(row.id) },
                             onRequestDelete = { pendingDelete = row },
                             onRequestChangeCategory = { changeCategoryFor = row },
                         )
@@ -332,9 +346,9 @@ private fun SwipeableRow(
                 else -> false
             }
         },
-        // Require a deliberate, near-full swipe (70% of the row) before the action triggers. A stray
-        // horizontal nudge while the user is trying to scroll vertically falls short and snaps back.
-        positionalThreshold = { totalDistance -> totalDistance * 0.7f },
+        // Require an almost-full, deliberate swipe (92% of the row) before delete/recategorize triggers.
+        // The user kept hitting accidental deletes while scrolling, so the bar is set very high (#6).
+        positionalThreshold = { totalDistance -> totalDistance * 0.92f },
     )
     val semantic = LocalSemanticColors.current
     SwipeToDismissBox(

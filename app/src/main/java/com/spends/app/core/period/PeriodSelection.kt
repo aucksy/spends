@@ -9,4 +9,24 @@ data class PeriodSelection(
     val range: PeriodRange = PeriodRange.CURRENT,
     val customStartMillis: Long? = null,
     val customEndExclusiveMillis: Long? = null,
-)
+) {
+    /**
+     * Human words for the current selection, e.g. "Current Salary Cycle", "Last 3 Months",
+     * "This Month's Smart Cycle", "Custom Range", "All Time" (#5). The concrete date range is shown
+     * separately as a secondary line.
+     */
+    fun describe(): String {
+        val noun = when (type) {
+            PeriodType.MONTH -> "Month"
+            PeriodType.SALARY_CYCLE -> "Salary Cycle"
+            PeriodType.SMART_CYCLE -> "Smart Cycle"
+        }
+        return when (range) {
+            PeriodRange.ALL -> "All Time"
+            PeriodRange.CUSTOM -> "Custom Range"
+            PeriodRange.CURRENT -> if (type == PeriodType.SMART_CYCLE) "This Month's Smart Cycle" else "Current $noun"
+            PeriodRange.LAST_3 -> "Last 3 ${noun}s"
+            PeriodRange.LAST_6 -> "Last 6 ${noun}s"
+        }
+    }
+}

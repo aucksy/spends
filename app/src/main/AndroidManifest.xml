@@ -23,6 +23,10 @@
          runtime grant). No full-screen intent — Play-compliant. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Onboarding battery step (#10): ask to exempt Spends from battery optimization so background SMS/
+         notification capture isn't killed on aggressive OEMs. Optional; the user can decline. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:name=".core.SpendsApp"
         android:allowBackup="true"

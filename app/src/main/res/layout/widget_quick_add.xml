@@ -1,18 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Small quick-add widget: a teal tile with a centred "+". The whole tile is the click target. -->
+<!--
+  Quick-add widget rendered to look like a normal app icon (#2): the cell itself is transparent and the
+  whole cell is the tap target (widget_root), while the visible element is a fixed icon-sized teal tile
+  centred in the cell — so it doesn't fill the cell and dwarf neighbouring icons.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_background"
-    android:padding="10dp"
+    android:padding="4dp"
     android:contentDescription="@string/widget_add_description">
 
     <ImageView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_gravity="center"
-        android:adjustViewBounds="true"
+        android:background="@drawable/widget_background"
+        android:padding="15dp"
         android:scaleType="fitCenter"
         android:src="@drawable/ic_widget_add"
         android:contentDescription="@string/widget_add_description" />
