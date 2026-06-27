@@ -27,6 +27,12 @@ class WidgetMaskStore @Inject constructor(
         prefs.edit().putStringSet(KEY_SHOWN, set).apply()
     }
 
+    /** Force this widget back to masked (privacy) — used by the 5s auto-hide (#5). No-op if already masked. */
+    fun mask(appWidgetId: Int) {
+        val key = appWidgetId.toString()
+        if (key in shown()) prefs.edit().putStringSet(KEY_SHOWN, shown() - key).apply()
+    }
+
     /** Drop a removed widget's state so a recycled id doesn't inherit it. */
     fun clear(appWidgetId: Int) {
         val key = appWidgetId.toString()

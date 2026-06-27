@@ -40,10 +40,12 @@ data class TransactionRowUi(
     val isSplit: Boolean get() = categories.size > 1
 }
 
-/** A day's worth of transactions with a net subtotal (income − expense). */
+/** A day's worth of transactions with per-day Expense + Income subtotals (#1) and a net subtotal. */
 data class DayGroupUi(
     val date: LocalDate,
     val headerLabel: String,
+    val expenseSubtotal: Long,
+    val incomeSubtotal: Long,
     val netSubtotal: Long,
     val rows: List<TransactionRowUi>,
 )

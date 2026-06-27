@@ -33,6 +33,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -67,6 +70,7 @@ fun ReviewScreen(
     val items by viewModel.items.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
+    val filter by viewModel.filter.collectAsStateWithLifecycle()
     var smsFor by remember { mutableStateOf<ReviewRowUi?>(null) }
     var rejectFor by remember { mutableStateOf<ReviewRowUi?>(null) }
     var showConfirmAll by remember { mutableStateOf(false) }
@@ -113,12 +117,29 @@ fun ReviewScreen(
                     },
                     singleLine = true,
                 )
-                if (items.isEmpty() && query.isNotBlank()) {
+                // #7: filter the queue to only Income or only Expense (independent of the search box).
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    val opts = listOf(ReviewFilter.ALL to "All", ReviewFilter.EXPENSE to "Expense", ReviewFilter.INCOME to "Income")
+                    opts.forEachIndexed { i, (f, label) ->
+                        SegmentedButton(
+                            selected = filter == f,
+                            onClick = { viewModel.setFilter(f) },
+                            shape = SegmentedButtonDefaults.itemShape(i, opts.size),
+                        ) { Text(label) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (items.isEmpty() && (query.isNotBlank() || filter != ReviewFilter.ALL)) {
                     EmptyState(
                         modifier = Modifier.fillMaxSize(),
                         icon = { Icon(Icons.Filled.SearchOff, contentDescription = null, modifier = Modifier.size(44.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                         title = "No matches",
-                        body = "Nothing in the review queue matches “${query.trim()}”.",
+                        body = when {
+                            query.isNotBlank() -> "Nothing in the review queue matches “${query.trim()}”."
+                            filter == ReviewFilter.EXPENSE -> "No expenses in the review queue right now."
+                            filter == ReviewFilter.INCOME -> "No income in the review queue right now."
+                            else -> "Nothing here."
+                        },
                     )
                 } else {
                     LazyColumn(

@@ -18,9 +18,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Posts the "Add / Edit / Ignore" heads-up notification for REVIEW_PROMPT capture mode. Add and Ignore
- * fire silent broadcasts ([CaptureActionReceiver]); Edit opens the app prefilled (a getActivity intent
- * into [MainActivity]). No full-screen intent is used (Play-compliant).
+ * Posts the "Review & Add / Ignore" heads-up notification for REVIEW_PROMPT capture mode (#8). "Review &
+ * Add" opens the app prefilled (a getActivity intent into [MainActivity]) so the spend is reviewed before
+ * it's added; "Ignore" fires a silent broadcast ([CaptureActionReceiver]). No full-screen intent (Play-compliant).
  */
 @Singleton
 class CaptureNotifier @Inject constructor(
@@ -54,8 +54,10 @@ class CaptureNotifier @Inject constructor(
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setAutoCancel(true)
             .setContentIntent(editIntent(sender, body, receivedAt, notifId, 0))
-            .addAction(0, "Add", broadcast(CaptureActionReceiver.ACTION_ADD, sender, body, receivedAt, notifId, 1))
-            .addAction(0, "Edit", editIntent(sender, body, receivedAt, notifId, 3))
+            // Two actions only (#8): "Review & Add" opens the editor prefilled (review-then-add, never a
+            // silent add — matches the user's review-only stance), "Ignore" dismisses. The old silent "Add"
+            // broadcast action is gone.
+            .addAction(0, "Review & Add", editIntent(sender, body, receivedAt, notifId, 3))
             .addAction(0, "Ignore", broadcast(CaptureActionReceiver.ACTION_IGNORE, sender, body, receivedAt, notifId, 2))
             .build()
 

@@ -24,9 +24,9 @@ import javax.inject.Singleton
 class ExcelExporter @Inject constructor(
     private val db: SpendsDatabase,
 ) {
-    private val dateFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH)
+    // Date + Created are written as real Excel date / date-time cells (numeric serials) so they sort &
+    // filter properly; only the short Time label stays text (#6).
     private val timeFmt = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
-    private val createdFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ENGLISH)
 
     private val header = listOf(
         "Date", "Time", "Type", "Category", "Amount (₹)", "Balance impact (₹)",
@@ -50,7 +50,7 @@ class ExcelExporter @Inject constructor(
                 TxnKind.TRANSFER -> BigDecimal.ZERO
             }
             listOf(
-                Cell.Str(dateFmt.format(zoned(e.occurredAt))),
+                Cell.DateNum(excelDateSerial(e.occurredAt).toString()),
                 Cell.Str(timeFmt.format(zoned(e.occurredAt))),
                 Cell.Str(prettyKind(e.kind)),
                 Cell.Str(primaryCategory),
@@ -60,13 +60,23 @@ class ExcelExporter @Inject constructor(
                 Cell.Str(e.note.orEmpty()),
                 Cell.Str(prettySource(e.source)),
                 Cell.Str(splitDetails(allocs, categoryNames)),
-                Cell.Str(createdFmt.format(zoned(e.createdAt))),
+                Cell.DateTimeNum(excelDateTimeSerial(e.createdAt).toString()),
             )
         }
         XlsxWriter.build(sheetName = "Spends", header = header, rows = rows)
     }
 
     private fun zoned(millis: Long) = Instant.ofEpochMilli(millis).atZone(DateUtils.ZONE)
+
+    // Excel's date epoch is 1899-12-30 (serial 0): a date's serial = its epoch-day + 25569; a date-time
+    // adds the fraction of the day. Emitted as numbers so Excel/Sheets sort & filter them as real dates (#6).
+    private fun excelDateSerial(millis: Long): Long =
+        zoned(millis).toLocalDate().toEpochDay() + 25569
+
+    private fun excelDateTimeSerial(millis: Long): Double {
+        val z = zoned(millis)
+        return (z.toLocalDate().toEpochDay() + 25569).toDouble() + z.toLocalTime().toSecondOfDay() / 86400.0
+    }
 
     private fun prettyKind(kind: TxnKind): String =
         kind.name.lowercase(Locale.ENGLISH).replaceFirstChar { it.uppercase() }

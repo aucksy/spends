@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Review-queue kind filter (#7): show all rows, only expenses, or only income. */
+enum class ReviewFilter { ALL, EXPENSE, INCOME }
+
 data class ReviewRowUi(
     val id: Long,
     val amountMinor: Long,
@@ -47,12 +50,22 @@ class ReviewViewModel @Inject constructor(
     val query: StateFlow<String> = _query
     fun setQuery(q: String) { _query.value = q }
 
+    // #7: show only Income or only Expense in the review queue (or all). Independent of the search query.
+    private val _filter = MutableStateFlow(ReviewFilter.ALL)
+    val filter: StateFlow<ReviewFilter> = _filter
+    fun setFilter(f: ReviewFilter) { _filter.value = f }
+
     val items: StateFlow<List<ReviewRowUi>> =
-        combine(captureRepository.observePending(), categories, _query) { pending, cats, q ->
+        combine(captureRepository.observePending(), categories, _query, _filter) { pending, cats, q, f ->
             val byId = cats.associateBy { it.id }
             val rows = pending.map { it.toRow(byId) }
+            val kindFiltered = when (f) {
+                ReviewFilter.ALL -> rows
+                ReviewFilter.EXPENSE -> rows.filter { it.kind == TxnKind.EXPENSE }
+                ReviewFilter.INCOME -> rows.filter { it.kind == TxnKind.INCOME }
+            }
             val needle = q.trim().lowercase()
-            if (needle.isEmpty()) rows else rows.filter { it.searchText.contains(needle) }
+            if (needle.isEmpty()) kindFiltered else kindFiltered.filter { it.searchText.contains(needle) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** The FULL queue size (independent of the search filter) — distinguishes "empty queue" from "no matches". */

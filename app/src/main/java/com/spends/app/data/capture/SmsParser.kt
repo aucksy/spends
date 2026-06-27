@@ -180,11 +180,14 @@ object SmsParser {
         if (firstConvertCue != null && firstConvertCue < firstAmount) return true
 
         // 3) Remaining EMI-offer phrasings — rejected ONLY when there is no fresh point-of-sale spend, so a
-        //    genuine purchase that merely carries a "Convert into EMI / split into easy EMIs" footer is
-        //    still captured (#5 — the missed SBI/HDFC/ICICI purchases).
+        //    genuine purchase that merely carries a "Convert to/into EMI / split your transaction into easy
+        //    EMIs" footer is still captured (#5 — the missed SBI/HDFC/ICICI purchases). The "convert to emi"
+        //    and "split your transaction" phrasings were added this round (#9) for bank EMI offers about an
+        //    already-made purchase; the fresh-spend guard keeps real spends safe.
         return low.containsAny(
-            "convert into emi", "into emis", "into easy emis", "no cost emi", "no-cost emi",
+            "convert into emi", "convert to emi", "into emis", "into easy emis", "no cost emi", "no-cost emi",
             "emi offer", "emi facility", "emi plan", "emi option",
+            "split your transaction", "split your txn", "split this transaction",
         ) && !hasFreshPointOfSaleSpend(low, text)
     }
 

@@ -382,13 +382,31 @@ private fun DayHeader(group: DayGroupUi) {
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        val color = if (group.netSubtotal < 0) semantic.expense else if (group.netSubtotal > 0) semantic.income else MaterialTheme.colorScheme.onSurfaceVariant
-        val sign = if (group.netSubtotal > 0) "+" else if (group.netSubtotal < 0) "-" else ""
-        Text(
-            text = sign + Money.formatRupees(kotlin.math.abs(group.netSubtotal)),
-            style = Numerals.amountSmall,
-            color = color,
-        )
+        // Per-day Expense + Income shown separately (#1) instead of a single net figure. Only non-zero
+        // sides appear; a transfers-only / empty day shows a muted ₹0.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (group.expenseSubtotal > 0) {
+                Text(
+                    text = "−" + Money.formatRupees(group.expenseSubtotal),
+                    style = Numerals.amountSmall,
+                    color = semantic.expense,
+                )
+            }
+            if (group.incomeSubtotal > 0) {
+                Text(
+                    text = "+" + Money.formatRupees(group.incomeSubtotal),
+                    style = Numerals.amountSmall,
+                    color = semantic.income,
+                )
+            }
+            if (group.expenseSubtotal == 0L && group.incomeSubtotal == 0L) {
+                Text(
+                    text = Money.formatRupees(0),
+                    style = Numerals.amountSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

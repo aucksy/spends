@@ -168,6 +168,8 @@ class TransactionsViewModel @Inject constructor(
                 DayGroupUi(
                     date = date,
                     headerLabel = DateUtils.formatDayHeader(date),
+                    expenseSubtotal = dayItems.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
+                    incomeSubtotal = dayItems.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor },
                     netSubtotal = dayItems.sumOf { it.signedBalanceContribution() },
                     rows = rows,
                 )

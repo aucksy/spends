@@ -81,6 +81,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showSalaryDialog by remember { mutableStateOf(false) }
     var showAnchorPicker by remember { mutableStateOf(false) }
     var showOpeningDialog by remember { mutableStateOf(false) }
@@ -217,6 +218,18 @@ fun SettingsScreen(
                     value = "Review & add bank transactions from your texts",
                     onClick = onOpenCapture,
                     leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
+                )
+            }
+
+            SettingsSection("Widget") {
+                SwitchRow(
+                    title = "Hide the widget's reveal button",
+                    subtitle = "The eye on the home-screen summary widget becomes invisible (but still tappable), so someone holding your phone can't tell there's a way to reveal the figures.",
+                    checked = state.widgetEyeHidden,
+                    onChange = {
+                        viewModel.setWidgetEyeHidden(it)
+                        com.spends.app.widget.SummaryWidget.refresh(context)
+                    },
                 )
             }
 

@@ -17,6 +17,11 @@ object XlsxWriter {
         data class Str(val value: String) : Cell
         /** [literal] must be a valid number token (e.g. from BigDecimal.toPlainString()). */
         data class Num(val literal: String) : Cell
+        /** An Excel date serial (whole-day number) — formatted yyyy-mm-dd, so Excel/Sheets sort & filter it
+         *  as a real date instead of text (#6). */
+        data class DateNum(val literal: String) : Cell
+        /** An Excel date-time serial (day + fraction-of-day) — formatted yyyy-mm-dd hh:mm. */
+        data class DateTimeNum(val literal: String) : Cell
     }
 
     fun build(sheetName: String, header: List<String>, rows: List<List<Cell>>): ByteArray {
@@ -58,6 +63,8 @@ object XlsxWriter {
                 when (cell) {
                     is Cell.Str -> sb.append("<c r=\"$ref\" t=\"inlineStr\"><is><t xml:space=\"preserve\">").append(escape(cell.value)).append("</t></is></c>")
                     is Cell.Num -> sb.append("<c r=\"$ref\"><v>").append(cell.literal).append("</v></c>")
+                    is Cell.DateNum -> sb.append("<c r=\"$ref\" s=\"2\"><v>").append(cell.literal).append("</v></c>")
+                    is Cell.DateTimeNum -> sb.append("<c r=\"$ref\" s=\"3\"><v>").append(cell.literal).append("</v></c>")
                 }
             }
             sb.append("</row>")
@@ -121,15 +128,23 @@ object XlsxWriter {
             "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>" +
             "</Relationships>"
 
+    // Style indices used by [sheetXml]: 0 = default, 1 = bold header, 2 = date (numFmt 164),
+    // 3 = date-time (numFmt 165). numFmts MUST precede fonts per the OOXML styleSheet element order.
     private const val STYLES =
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
             "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+            "<numFmts count=\"2\">" +
+            "<numFmt numFmtId=\"164\" formatCode=\"yyyy-mm-dd\"/>" +
+            "<numFmt numFmtId=\"165\" formatCode=\"yyyy-mm-dd hh:mm\"/>" +
+            "</numFmts>" +
             "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
             "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>" +
             "<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>" +
             "<fill><patternFill patternType=\"gray125\"/></fill></fills>" +
             "<borders count=\"1\"><border/></borders>" +
             "<cellStyleXfs count=\"1\"><xf/></cellStyleXfs>" +
-            "<cellXfs count=\"2\"><xf/><xf fontId=\"1\" applyFont=\"1\"/></cellXfs>" +
+            "<cellXfs count=\"4\"><xf/><xf fontId=\"1\" applyFont=\"1\"/>" +
+            "<xf numFmtId=\"164\" applyNumberFormat=\"1\"/>" +
+            "<xf numFmtId=\"165\" applyNumberFormat=\"1\"/></cellXfs>" +
             "</styleSheet>"
 }

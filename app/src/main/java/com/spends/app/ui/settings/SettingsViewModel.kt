@@ -44,4 +44,5 @@ class SettingsViewModel @Inject constructor(
     fun setCarryForwardAnchor(epochDay: Long) = viewModelScope.launch { settingsRepository.setCarryForwardAnchor(epochDay) }
     fun setCarryForwardOpening(minor: Long) = viewModelScope.launch { settingsRepository.setCarryForwardOpening(minor) }
     fun setTrashRetentionDays(days: Int) = viewModelScope.launch { settingsRepository.setTrashRetentionDays(days) }
+    fun setWidgetEyeHidden(value: Boolean) = viewModelScope.launch { settingsRepository.setWidgetEyeHidden(value) }
 }

@@ -355,4 +355,26 @@ class SmsParserTest {
         val r = SmsParser.parse("VM-SBICRD", "Rs.640.00 spent on your SBI Credit Card ending 1234 at SHOP on 24/06/26.", received)
         assertThat(r.occurredAt).isEqualTo(DateUtils.epochMillisFor(LocalDate.of(2026, 6, 24), 9, 41))
     }
+
+    // ---- #9: bank EMI OFFERS using the phrases the user named ("convert to EMI", "EMI conversion",
+    // "split your transaction") must be IGNORED; a genuine purchase that merely carries such a FOOTER is
+    // still captured. ----
+    @Test fun convert_to_emi_offer_ignored() {
+        val r = p("VM-SBICRD", "Convert to EMI your recent spends! Get up to Rs.50,000.00 as EMI on your SBI Card. Avail now at sbicard.com.")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    @Test fun split_your_transaction_offer_ignored() {
+        val r = p("AD-HDFCBK", "Split your transaction into easy EMIs! Convert your spend of Rs.10,000.00 on HDFC Bank Card at low interest. T&C apply.")
+        assertThat(r.result).isEqualTo(Result.IGNORED)
+    }
+
+    /** Boundary guard for the new phrase: a GENUINE point-of-sale spend that carries a "split your
+     *  transaction" footer must STILL be captured (the fresh-spend rule wins over the EMI footer). */
+    @Test fun spend_with_split_your_transaction_footer_txn() {
+        val r = p("AD-HDFCBK", "Rs.2,500.00 spent on HDFC Bank Card XX1234 at AMAZON on 21/06/26. You can split your transaction into easy EMIs at hdfcbank.com. -HDFC Bank")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(250000)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+    }
 }

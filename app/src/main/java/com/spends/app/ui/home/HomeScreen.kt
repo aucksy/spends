@@ -65,6 +65,14 @@ fun HomeScreen(
     // Balances are hidden by default (privacy); the eye in the bottom-left reveals them. Saveable so a
     // reveal survives tab switches/rotation, but a fresh launch starts hidden again.
     var amountsHidden by rememberSaveable { mutableStateOf(true) }
+    // #5: auto-hide revealed balances after 5s so figures don't linger. Keyed on amountsHidden — revealing
+    // starts the timer; hiding manually (or this auto-hide firing) cancels it by re-keying the effect.
+    androidx.compose.runtime.LaunchedEffect(amountsHidden) {
+        if (!amountsHidden) {
+            kotlinx.coroutines.delay(5_000)
+            amountsHidden = true
+        }
+    }
     // The + opens the fast half-screen quick-add sheet (calculator keypad). Editing still uses the full screen.
     var showQuickAdd by remember { mutableStateOf(false) }
     // Search is driven from the bottom bar now (#5) — lifted here so the "Search" tab can toggle it and

@@ -28,6 +28,25 @@ object Haptics {
         }
     }
 
+    /**
+     * A firmer, clearly-felt "click" — used for the calculator keypad keys (#4, the old KEYBOARD_TAP was
+     * too soft, GPay-like crispness wanted) and the home-screen widget buttons (#2, the faint TICK on the
+     * eye read as no feedback at all). Stronger than [tick]; still wrapped so it can never crash a caller.
+     */
+    fun click(context: Context) {
+        runCatching {
+            val vibrator = vibrator(context) ?: return
+            if (!vibrator.hasVibrator()) return
+            val effect = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                else ->
+                    VibrationEffect.createOneShot(28L, VibrationEffect.DEFAULT_AMPLITUDE)
+            }
+            vibrator.vibrate(effect)
+        }
+    }
+
     private fun vibrator(context: Context): Vibrator? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator

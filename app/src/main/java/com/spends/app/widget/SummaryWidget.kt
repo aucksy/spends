@@ -1,5 +1,6 @@
 package com.spends.app.widget
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -53,16 +54,23 @@ class SummaryWidget : AppWidgetProvider() {
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         val store = entryPoint(context).widgetMaskStore()
-        appWidgetIds.forEach { store.clear(it) }
+        appWidgetIds.forEach { store.clear(it); cancelAutoHide(context, it) }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent) // dispatches APPWIDGET_UPDATE -> onUpdate
-        if (intent.action == ACTION_TOGGLE_MASK) {
-            val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-            if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                com.spends.app.core.Haptics.tick(context) // confirm the eye tap (no View in a widget)
-                entryPoint(context).widgetMaskStore().toggle(id)
+        val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+        when (intent.action) {
+            ACTION_TOGGLE_MASK -> if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                com.spends.app.core.Haptics.click(context) // a clearly-felt tap (no View in a widget) (#2)
+                val store = entryPoint(context).widgetMaskStore()
+                store.toggle(id)
+                // Revealed → auto-hide after 5s (#5); hidden again manually → cancel the pending auto-hide.
+                if (!store.isMasked(id)) scheduleAutoHide(context, id) else cancelAutoHide(context, id)
+                renderAsync(context, AppWidgetManager.getInstance(context), intArrayOf(id))
+            }
+            ACTION_AUTO_HIDE -> if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                entryPoint(context).widgetMaskStore().mask(id)
                 renderAsync(context, AppWidgetManager.getInstance(context), intArrayOf(id))
             }
         }
@@ -92,10 +100,11 @@ class SummaryWidget : AppWidgetProvider() {
                 // Cycle NAME + dates (#11), e.g. "Current Salary Cycle · 1 Aug – 31 Aug".
                 val cycleName = PeriodSelection(PeriodType.SALARY_CYCLE, PeriodRange.CURRENT).describe()
                 val store = ep.widgetMaskStore()
+                val eyeHidden = settings.widgetEyeHidden
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        buildViews(context, id, cycleName, resolved.label, income, expense, balance, store.isMasked(id)),
+                        buildViews(context, id, cycleName, resolved.label, income, expense, balance, store.isMasked(id), eyeHidden),
                     )
                 }
             } catch (e: Exception) {
@@ -115,6 +124,7 @@ class SummaryWidget : AppWidgetProvider() {
         expense: Long,
         balance: Long,
         masked: Boolean,
+        eyeHidden: Boolean,
     ): RemoteViews {
         fun money(v: Long) = if (masked) MASK else Money.formatRupees(v, alwaysTwoDecimals = false)
         return RemoteViews(context.packageName, R.layout.widget_summary).apply {
@@ -122,13 +132,45 @@ class SummaryWidget : AppWidgetProvider() {
             setTextViewText(R.id.widget_summary_balance, money(balance))
             setTextViewText(R.id.widget_summary_expense, money(expense))
             setTextViewText(R.id.widget_summary_income, money(income))
-            setImageViewResource(R.id.widget_summary_eye, if (masked) R.drawable.ic_widget_eye else R.drawable.ic_widget_eye_off)
+            // Invisible-but-tappable eye (#3): when hidden, blank BOTH the circle background and the icon so
+            // the button reads as empty space — yet it stays clickable (the tap target/PendingIntent remain),
+            // so the owner can still reveal but a bystander can't tell there's a control there.
+            if (eyeHidden) {
+                setInt(R.id.widget_summary_eye, "setBackgroundResource", android.R.color.transparent)
+                setImageViewResource(R.id.widget_summary_eye, android.R.color.transparent)
+            } else {
+                setInt(R.id.widget_summary_eye, "setBackgroundResource", R.drawable.widget_circle_button)
+                setImageViewResource(R.id.widget_summary_eye, if (masked) R.drawable.ic_widget_eye else R.drawable.ic_widget_eye_off)
+            }
             setContentDescription(R.id.widget_summary_eye, if (masked) "Show amounts" else "Hide amounts")
             setOnClickPendingIntent(R.id.widget_summary_root, openAppIntent(context))
             setOnClickPendingIntent(R.id.widget_summary_eye, toggleIntent(context, id))
-            // The "+" opens the standalone quick-add overlay directly (no app/list behind it) (#1).
+            // The "+" opens the standalone quick-add overlay directly (no app/list behind it).
             setOnClickPendingIntent(R.id.widget_summary_add, openQuickAddIntent(context))
         }
+    }
+
+    private fun autoHideIntent(context: Context, id: Int): PendingIntent {
+        val intent = Intent(context, SummaryWidget::class.java).apply {
+            action = ACTION_AUTO_HIDE
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+        }
+        return PendingIntent.getBroadcast(context, AUTO_HIDE_REQ_BASE + id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /** Re-mask this widget ~5s after it was revealed (#5). Uses ELAPSED_REALTIME (a relative timeout that's
+     *  immune to wall-clock jumps), inexact — the screen is on (the user just tapped) so it fires promptly;
+     *  an exact alarm would need a runtime permission on Android 12+. */
+    private fun scheduleAutoHide(context: Context, id: Int) {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        runCatching {
+            am.set(AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + AUTO_HIDE_MS, autoHideIntent(context, id))
+        }
+    }
+
+    private fun cancelAutoHide(context: Context, id: Int) {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        runCatching { am.cancel(autoHideIntent(context, id)) }
     }
 
     private fun openAppIntent(context: Context): PendingIntent {
@@ -153,7 +195,10 @@ class SummaryWidget : AppWidgetProvider() {
 
     companion object {
         private const val ACTION_TOGGLE_MASK = "com.spends.app.widget.TOGGLE_MASK"
+        private const val ACTION_AUTO_HIDE = "com.spends.app.widget.AUTO_HIDE"
         private const val MASK = "••••"
+        private const val AUTO_HIDE_MS = 5_000L
+        private const val AUTO_HIDE_REQ_BASE = 90_000 // distinct PendingIntent request-code space per widget id
 
         /** Refresh every summary-widget instance — call when app data may have changed (e.g. app resume). */
         fun refresh(context: Context) {
