@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Circular, slightly-raised "3D" button for the summary widget's eye + "+" (#2). A top-to-bottom
-     gradient (lighter top, darker bottom) over the teal card reads as a raised disc; the thin rim adds
-     definition. RemoteViews can't do real elevation/ripple, so this static gradient is the 3D cue. -->
+<!-- Circular "domed" 3D button for the summary widget's eye + add (design: a teal dome, lighter top →
+     darker bottom). RemoteViews can't draw the design's drop/inset shadows, so a 3-stop vertical gradient
+     (highlight top, mid, deep base) + a light rim stroke approximate the raised dome as closely as a
+     widget allows. Colours match the design's button gradient #23938a → #137a70 → #0c6259. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
     <gradient
         android:type="linear"
         android:angle="270"
-        android:startColor="#1A8E82"
-        android:endColor="#0A544D" />
+        android:startColor="#23938A"
+        android:centerColor="#137A70"
+        android:endColor="#0C6259" />
     <stroke
         android:width="1dp"
-        android:color="#2FA496" />
+        android:color="#36A99B" />
 </shape>

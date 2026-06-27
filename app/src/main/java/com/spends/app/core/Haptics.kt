@@ -1,6 +1,7 @@
 package com.spends.app.core
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -37,13 +38,18 @@ object Haptics {
         runCatching {
             val vibrator = vibrator(context) ?: return
             if (!vibrator.hasVibrator()) return
-            val effect = when {
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
-                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
-                else ->
-                    VibrationEffect.createOneShot(28L, VibrationEffect.DEFAULT_AMPLITUDE)
-            }
-            vibrator.vibrate(effect)
+            // A short, firm one-shot at full amplitude. We deliberately do NOT use
+            // createPredefined(EFFECT_CLICK): some devices don't implement that primitive and it SILENTLY
+            // does nothing — that's why the keypad + widget buttons lost their haptic. createOneShot is the
+            // most universally-supported effect, so it actually fires; amplitude 255 gives the stronger,
+            // GPay-like intensity that was asked for. AudioAttributes tag it as sonification/touch feedback
+            // so the system is less likely to suppress it (notably from the widget's background broadcast).
+            val effect = VibrationEffect.createOneShot(30L, 255)
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            vibrator.vibrate(effect, attrs)
         }
     }
 

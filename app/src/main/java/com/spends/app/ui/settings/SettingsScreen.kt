@@ -226,9 +226,10 @@ fun SettingsScreen(
                     title = "Hide the widget's reveal button",
                     subtitle = "The eye on the home-screen summary widget becomes invisible (but still tappable), so someone holding your phone can't tell there's a way to reveal the figures.",
                     checked = state.widgetEyeHidden,
-                    onChange = {
-                        viewModel.setWidgetEyeHidden(it)
-                        com.spends.app.widget.SummaryWidget.refresh(context)
+                    onChange = { hidden ->
+                        // Refresh the widget only AFTER the value is persisted, so it re-renders with the
+                        // new state immediately instead of needing a tap to force a fresh read (#2).
+                        viewModel.setWidgetEyeHidden(hidden) { com.spends.app.widget.SummaryWidget.refresh(context) }
                     },
                 )
             }
