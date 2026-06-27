@@ -62,7 +62,8 @@ class SummaryWidget : AppWidgetProvider() {
         val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
         when (intent.action) {
             ACTION_TOGGLE_MASK -> if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                com.spends.app.core.Haptics.click(context) // a clearly-felt tap (no View in a widget) (#2)
+                // The haptic fires from WidgetEyeToggleActivity (a foreground context) — this broadcast runs
+                // in the background, where many OEMs suppress vibration (#1). Here we just toggle + render.
                 val store = entryPoint(context).widgetMaskStore()
                 store.toggle(id)
                 // Revealed → auto-hide after 5s (#5); hidden again manually → cancel the pending auto-hide.
@@ -185,12 +186,14 @@ class SummaryWidget : AppWidgetProvider() {
     }
 
     private fun toggleIntent(context: Context, id: Int): PendingIntent {
-        val intent = Intent(context, SummaryWidget::class.java).apply {
-            action = ACTION_TOGGLE_MASK
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+        // The eye launches an invisible FOREGROUND trampoline so it can actually vibrate (#1 — a background
+        // broadcast can't on many OEMs); the trampoline fires the haptic, then sends the toggle broadcast.
+        val intent = Intent(context, WidgetEyeToggleActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            putExtra(WidgetEyeToggleActivity.EXTRA_WIDGET_ID, id)
         }
         // Distinct requestCode per id so each widget's eye PendingIntent stays separate.
-        return PendingIntent.getBroadcast(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     companion object {
@@ -199,6 +202,17 @@ class SummaryWidget : AppWidgetProvider() {
         private const val MASK = "••••"
         private const val AUTO_HIDE_MS = 5_000L
         private const val AUTO_HIDE_REQ_BASE = 90_000 // distinct PendingIntent request-code space per widget id
+
+        /** Send the eye's mask-toggle broadcast — called by [WidgetEyeToggleActivity] after it fires the
+         *  haptic from the foreground (the broadcast itself can't vibrate from the background, #1). The
+         *  ACTION + extra stay private to this class. */
+        fun sendToggle(context: Context, id: Int) {
+            val intent = Intent(context, SummaryWidget::class.java).apply {
+                action = ACTION_TOGGLE_MASK
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            }
+            context.sendBroadcast(intent)
+        }
 
         /** Refresh every summary-widget instance — call when app data may have changed (e.g. app resume). */
         fun refresh(context: Context) {

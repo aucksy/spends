@@ -70,6 +70,18 @@
             android:theme="@style/Theme.Spends.Transparent"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Invisible foreground trampoline for the summary widget's eye (#1): a background broadcast can't
+             vibrate on many OEMs, so the eye launches this transparent, no-UI activity to fire the haptic
+             from the foreground, hands the mask-toggle back to SummaryWidget, and finishes immediately. -->
+        <activity
+            android:name=".widget.WidgetEyeToggleActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:taskAffinity="${applicationId}.eyetoggle"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Spends.Transparent" />
+
         <!-- Live SMS capture receiver. BROADCAST_SMS permission ensures only the system delivers it. -->
         <receiver
             android:name=".receiver.SmsReceiver"

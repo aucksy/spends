@@ -30,11 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.spends.app.core.Haptics
 import com.spends.app.core.calc.CalculatorEngine
 import com.spends.app.core.money.Money
 import com.spends.app.core.theme.Numerals
@@ -53,7 +51,12 @@ fun CalculatorKeypad(
     onSave: () -> Unit,
     saveLabel: String = "Save",
 ) {
-    val context = LocalContext.current
+    val view = LocalView.current
+    // Keypad keys use performHapticFeedback (NOT the raw Vibrator): it's routed through the input system
+    // so it fires on the same touch frame — instant, no lag (#2) — and LONG_PRESS is the system's firm
+    // haptic, stronger than the old KEYBOARD_TAP (#3). The raw Vibrator path was both delayed and, on
+    // amplitude-control-less devices, not actually stronger.
+    fun keyTap() = view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     val rows = listOf(
         listOf("C", "/", "*", "<"),
         listOf("7", "8", "9", "-"),
@@ -65,7 +68,7 @@ fun CalculatorKeypad(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 row.forEach { key ->
                     KeypadKey(key = key, modifier = Modifier.weight(1f), onClick = {
-                        Haptics.click(context)
+                        keyTap()
                         onKey(key)
                     })
                 }
@@ -73,10 +76,10 @@ fun CalculatorKeypad(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             KeypadKey(key = "0", modifier = Modifier.weight(1f), onClick = {
-                Haptics.click(context); onKey("0")
+                keyTap(); onKey("0")
             })
             KeypadKey(key = ".", modifier = Modifier.weight(1f), onClick = {
-                Haptics.click(context); onKey(".")
+                keyTap(); onKey(".")
             })
             SaveKey(modifier = Modifier.weight(2f), enabled = canSave, saving = saving, label = saveLabel, onClick = onSave)
         }
