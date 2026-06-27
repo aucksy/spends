@@ -52,6 +52,7 @@ import com.spends.app.core.time.DateUtils
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CalculatorKeypad
+import com.spends.app.ui.components.CategoryEditorSheet
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
 import kotlinx.coroutines.launch
@@ -81,6 +82,7 @@ fun QuickAddSheet(
     var occurredAt by rememberSaveable { mutableStateOf(viewModel.nowMillis()) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+    var showAddCategory by remember { mutableStateOf(false) }
     // #6: the "pick a category" warning + a gentle shake only fire when the user actually tries to save
     // without one — never reactively while typing the amount (which used to shove the keypad).
     var categoryError by remember { mutableStateOf(false) }
@@ -216,7 +218,25 @@ fun QuickAddSheet(
                 categoryError = false // clears the warning the moment a category is chosen
                 showCategoryPicker = false
             },
+            onAddNew = { showCategoryPicker = false; showAddCategory = true },
             onDismiss = { showCategoryPicker = false },
+        )
+    }
+
+    if (showAddCategory) {
+        // Create a category WITH an icon directly from the quick-add keypad (#5). The type is fixed to the
+        // current Expense/Income kind, so the new category always shows up in this picker.
+        CategoryEditorSheet(
+            initial = null,
+            fixedUsage = usageFilter,
+            onSave = { name, usage, iconKey, customized ->
+                viewModel.addCategory(name, usage, if (customized) iconKey else null) { id ->
+                    selectedCategoryId = id
+                    categoryError = false
+                }
+                showAddCategory = false
+            },
+            onDismiss = { showAddCategory = false },
         )
     }
 }

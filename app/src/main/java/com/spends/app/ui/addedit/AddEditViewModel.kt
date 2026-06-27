@@ -142,10 +142,10 @@ class AddEditViewModel @Inject constructor(
         occurredAt = DateUtils.nowMillis(),
     )
 
-    fun addCategory(name: String, usage: CategoryUsage, onCreated: (Long) -> Unit) {
+    fun addCategory(name: String, usage: CategoryUsage, iconKey: String?, onCreated: (Long) -> Unit) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            val id = categoryRepository.addCustom(name, usage)
+            val id = categoryRepository.addCustom(name, usage, iconKey = iconKey)
             onCreated(id)
         }
     }

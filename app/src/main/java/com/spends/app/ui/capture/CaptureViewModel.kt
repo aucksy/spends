@@ -61,7 +61,7 @@ class CaptureViewModel @Inject constructor(
     fun disable() {
         viewModelScope.launch {
             settingsRepository.setSmsCaptureEnabled(false)
-            _local.update { it.copy(message = "SMS capture turned off") }
+            _local.update { it.copy(message = "SMS detection turned off") }
         }
     }
 

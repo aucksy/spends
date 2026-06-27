@@ -211,9 +211,9 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsSection("Capture") {
+            SettingsSection("Detection") {
                 ClickableRow(
-                    title = "Capture from SMS",
+                    title = "Detect from SMS",
                     value = "Review & add bank transactions from your texts",
                     onClick = onOpenCapture,
                     leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
@@ -248,7 +248,7 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(20.dp))
             Text(
-                "Notification capture and app lock arrive in upcoming updates.",
+                "Notification detection and app lock arrive in upcoming updates.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

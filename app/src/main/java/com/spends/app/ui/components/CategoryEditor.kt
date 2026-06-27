@@ -61,12 +61,17 @@ fun CategoryEditorSheet(
     initial: CategoryEntity?,
     onSave: (name: String, usage: CategoryUsage, iconKey: String, iconCustomized: Boolean) -> Unit,
     onDismiss: () -> Unit,
+    // When set (creating a category from the transaction flow, #5), the usage is fixed to the
+    // transaction's kind and the Spending/Income selector is hidden — you can't make a mismatched one.
+    fixedUsage: CategoryUsage? = null,
 ) {
     val creating = initial == null
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var income by remember { mutableStateOf(initial?.usage == CategoryUsage.INCOME) }
+    var income by remember {
+        mutableStateOf(fixedUsage?.let { it == CategoryUsage.INCOME } ?: (initial?.usage == CategoryUsage.INCOME))
+    }
     var iconKey by remember { mutableStateOf(initial?.iconKey ?: IconAssigner.FALLBACK) }
     var customized by remember { mutableStateOf(initial?.iconCustomized ?: false) }
     var picking by remember { mutableStateOf(false) }
@@ -126,7 +131,7 @@ fun CategoryEditorSheet(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                if (creating) {
+                if (creating && fixedUsage == null) {
                     Spacer(Modifier.size(12.dp))
                     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                         SegmentedButton(
@@ -150,7 +155,7 @@ fun CategoryEditorSheet(
                         onClick = {
                             onSave(
                                 name.trim(),
-                                if (income) CategoryUsage.INCOME else CategoryUsage.EXPENSE,
+                                fixedUsage ?: (if (income) CategoryUsage.INCOME else CategoryUsage.EXPENSE),
                                 iconKey,
                                 customized,
                             )

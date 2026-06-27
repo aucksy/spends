@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Summary widget (#2): a teal card showing Balance + Expense/Income for the current cycle. The eye
-     (top-right, hide/show) and a "+" (bottom-right, opens the standalone quick-add overlay) are a
-     matched pair on the right edge — same size, diagonally aligned. The whole card opens the app.
-     NOTE: every view here MUST be a RemoteViews-allowed class (LinearLayout / TextView / ImageView);
-     a bare <View> spacer is NOT allowed and makes the launcher fail with "couldn't load widget". -->
+<!-- Summary widget (#2): the compact teal card the user liked. Eye top-right (hide/show); the "+"
+     (opens the quick-add overlay) sits at the bottom-right, on the Expense/Income row just to the right
+     of Income — so it lines up directly under the eye. Both are a matched pair, ~32dp. The whole card
+     opens the app. NOTE: only RemoteViews-allowed classes here (LinearLayout/TextView/ImageView) — a bare
+     <View>/Space crashes the launcher with "couldn't load widget". -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_summary_root"
     android:layout_width="match_parent"
@@ -12,7 +12,7 @@
     android:background="@drawable/widget_summary_bg"
     android:padding="14dp">
 
-    <!-- Top row: cycle name (fills) + eye (top-right). Original layout the user liked, eye 10% larger. -->
+    <!-- Top row: cycle name (fills) + eye (top-right). -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -33,9 +33,9 @@
 
         <ImageView
             android:id="@+id/widget_summary_eye"
-            android:layout_width="29dp"
-            android:layout_height="29dp"
-            android:padding="3dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="4dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_widget_eye"
             android:contentDescription="Show amounts" />
@@ -53,10 +53,13 @@
         android:textStyle="bold"
         android:text="••••" />
 
+    <!-- Bottom row: Expense | Income | "+". The "+" sits to the right of Income (which shifts left),
+         vertically centred, lining up under the eye on the card's right edge. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:layout_marginTop="10dp">
 
         <LinearLayout
@@ -108,24 +111,13 @@
                 android:textSize="15sp"
                 android:text="••••" />
         </LinearLayout>
-    </LinearLayout>
-
-    <!-- This expanding row pushes the "+" to the card's bottom-right corner, mirroring the eye top-right
-         (no <View> spacer — that crashes RemoteViews). wrap_content (not 0dp) reserves the icon's own
-         height as the row's floor, so even if the sp text above grows at a large font scale the weighted
-         leftover can't squeeze the "+" to nothing; minResizeHeight also blocks shrinking past the content. -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="horizontal"
-        android:gravity="bottom|end">
 
         <ImageView
             android:id="@+id/widget_summary_add"
-            android:layout_width="29dp"
-            android:layout_height="29dp"
-            android:padding="3dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="4dp"
+            android:layout_marginStart="6dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_widget_plus"
             android:contentDescription="Add transaction" />

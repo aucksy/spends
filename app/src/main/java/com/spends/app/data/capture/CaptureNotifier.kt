@@ -28,7 +28,7 @@ class CaptureNotifier @Inject constructor(
 ) {
     fun ensureChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Transaction capture", NotificationManager.IMPORTANCE_HIGH).apply {
+            val channel = NotificationChannel(CHANNEL_ID, "Transaction detection", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Prompts you to add a transaction when a bank SMS arrives."
             }
             context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)

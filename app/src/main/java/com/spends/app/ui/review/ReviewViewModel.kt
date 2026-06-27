@@ -71,7 +71,7 @@ class ReviewViewModel @Inject constructor(
 
     private fun PendingCaptureEntity.toRow(byId: Map<Long, CategoryEntity>): ReviewRowUi {
         val cat = byId[categoryId]
-        val title = merchant?.takeIf { it.isNotBlank() } ?: cat?.name ?: "Captured transaction"
+        val title = merchant?.takeIf { it.isNotBlank() } ?: cat?.name ?: "Detected transaction"
         val instrument = institution?.let { inst -> last4?.let { "$inst ••$it" } ?: inst }
         val subtitle = listOfNotNull(instrument, DateUtils.formatDay(occurredAt)).joinToString(" · ")
         val searchText = listOfNotNull(

@@ -65,6 +65,7 @@ import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CategoryAvatar
+import com.spends.app.ui.components.CategoryEditorSheet
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
 
@@ -113,7 +114,7 @@ fun AddEditScreen(
                 categories = categories,
                 saving = saving,
                 saveLabel = viewModel.saveLabel,
-                onAddCategory = { name, usage, onCreated -> viewModel.addCategory(name, usage, onCreated) },
+                onAddCategory = { name, usage, iconKey, onCreated -> viewModel.addCategory(name, usage, iconKey, onCreated) },
                 onSave = { amount, kind, categoryId, merchant, note, occurredAt ->
                     viewModel.save(amount, kind, categoryId, merchant, note, occurredAt)
                 },
@@ -142,7 +143,7 @@ private fun AddEditForm(
     categories: List<CategoryEntity>,
     saving: Boolean,
     saveLabel: String,
-    onAddCategory: (String, CategoryUsage, (Long) -> Unit) -> Unit,
+    onAddCategory: (String, CategoryUsage, String?, (Long) -> Unit) -> Unit,
     onSave: (Long, TxnKind, Long, String, String, Long) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(initial.amountText) }
@@ -311,10 +312,13 @@ private fun AddEditForm(
 
     if (showAddCategory) {
         val usage = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
-        AddCategoryDialog(
-            isIncome = kind == TxnKind.INCOME,
-            onConfirm = { name ->
-                onAddCategory(name, usage) { newId -> selectedCategoryId = newId }
+        // Create a category WITH an icon, inline from the transaction flow (#5) — the same editor as
+        // Settings. The type is fixed to the current Expense/Income kind (no Spending/Income selector).
+        CategoryEditorSheet(
+            initial = null,
+            fixedUsage = usage,
+            onSave = { name, u, iconKey, customized ->
+                onAddCategory(name, u, if (customized) iconKey else null) { newId -> selectedCategoryId = newId }
                 showAddCategory = false
             },
             onDismiss = { showAddCategory = false },
@@ -322,23 +326,4 @@ private fun AddEditForm(
     }
 }
 
-@Composable
-private fun AddCategoryDialog(isIncome: Boolean, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (isIncome) "New income category" else "New category") },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Name") },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
+// Category creation (with icon) now goes through CategoryEditorSheet (com.spends.app.ui.components), #5.

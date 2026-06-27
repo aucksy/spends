@@ -85,7 +85,7 @@ fun CaptureSection(
             Icon(Icons.Filled.Sms, contentDescription = null)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Capture from bank SMS", style = MaterialTheme.typography.bodyLarge)
+                Text("Detect from bank SMS", style = MaterialTheme.typography.bodyLarge)
                 Text(
                     "Never added automatically — you review and confirm each one. New texts ask you; " +
                         "use \"Scan past SMS\" for older ones. Parsed locally, nothing is uploaded.",

@@ -100,11 +100,11 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    // 0 Welcome · 1 SMS · 2 Battery · 3 Salary · 4 Setup. Saveable so a side-trip returns to the same step.
+    // 0 Welcome · 1 SMS · 2 Battery · 3 Setup (data choice) · 4 Salary. Data setup comes BEFORE salary so a
+    // returning user who restores gets their salary day from the backup and never has to re-pick it (#4).
     var step by rememberSaveable { mutableIntStateOf(0) }
     var dataChoice by rememberSaveable { mutableIntStateOf(0) } // 0 fresh · 1 import · 2 restore
     var autoCapture by rememberSaveable { mutableStateOf(true) }
-    var scanPast by rememberSaveable { mutableStateOf(false) }
     val salaryDay by viewModel.salaryDay.collectAsStateWithLifecycle()
     val lastStep = 4
 
@@ -125,10 +125,10 @@ fun OnboardingScreen(
     val smsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         val granted = result[Manifest.permission.READ_SMS] == true && result[Manifest.permission.RECEIVE_SMS] == true
         if (granted) {
-            viewModel.enableCaptureAndScan(scanPast)
+            viewModel.enableCaptureAndScan(false) // scan-past lives in Settings now (#2)
             requestNotifThenAdvance()
         } else {
-            step = 2 // continue regardless — capture just won't run if denied
+            step = 2 // continue regardless — detection just won't run if denied
         }
     }
     fun hasSmsPermission(): Boolean =
@@ -136,9 +136,9 @@ fun OnboardingScreen(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
 
     fun enableCaptureAndAdvance() {
-        if (autoCapture || scanPast) {
+        if (autoCapture) {
             if (hasSmsPermission()) {
-                viewModel.enableCaptureAndScan(scanPast); requestNotifThenAdvance()
+                viewModel.enableCaptureAndScan(false); requestNotifThenAdvance()
             } else {
                 smsLauncher.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
             }
@@ -168,13 +168,24 @@ fun OnboardingScreen(
             primaryLabel = "Allow"; primaryAction = { requestBattery() }
             secondaryLabel = "Skip"; secondaryAction = { step = 3 }
         }
-        3 -> { primaryLabel = "Confirm salary day"; primaryAction = { viewModel.persistSalaryDay(); step = 4 } }
-        else -> {
+        3 -> {
+            // Setup (data choice) now comes before Salary (#4). Restore brings the salary day from the
+            // backup, so it skips the salary step entirely; fresh/import go on to pick a salary day.
             primaryLabel = "Continue"
             primaryAction = {
                 when (dataChoice) {
-                    1 -> onImport()
                     2 -> onRestore()
+                    else -> step = 4
+                }
+            }
+        }
+        else -> {
+            // Salary is now the last step (reached by fresh + import). Import persists the day before
+            // handing off to the import flow; a fresh start finishes onboarding here.
+            primaryLabel = "Confirm salary day"
+            primaryAction = {
+                when (dataChoice) {
+                    1 -> { viewModel.persistSalaryDay(); onImport() }
                     else -> viewModel.finish(onFinished)
                 }
             }
@@ -197,7 +208,7 @@ fun OnboardingScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top header (steps 1..4): back arrow + the design's 3 dots on the left, a "Skip" link on the
-            // right (no Skip on the final Setup step). The extra Battery step shares the first dot with SMS.
+            // right (no Skip on the final Salary step). The extra Battery step shares the first dot with SMS.
             if (step in 1..lastStep) {
                 val dotIndex = when (step) { 1, 2 -> 0; 3 -> 1; else -> 2 }
                 Row(
@@ -215,15 +226,18 @@ fun OnboardingScreen(
                         Spacer(Modifier.width(12.dp))
                         StepDots(count = 3, current = dotIndex)
                     }
-                    if (step != lastStep) {
+                    // Skip only on the two OPTIONAL permission steps (SMS, Battery). The data-setup step (3)
+                    // must NOT have a Skip: a generic step++ there would bypass the "Continue" button's
+                    // dataChoice branch and silently drop a Restore/Import selection (lands on Salary +
+                    // finishes fresh). Setup's own "Continue" already defaults to a fresh start; Salary (4)
+                    // is the last step and has no Skip either.
+                    if (step in 1..2) {
                         Text(
                             "Skip",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            // Skipping the Salary step must still persist the picked day (mirrors "Confirm
-                            // salary day") — otherwise an importer silently loses it back to the default.
-                            modifier = Modifier.clickable { if (step == 3) viewModel.persistSalaryDay(); step += 1 },
+                            modifier = Modifier.clickable { step += 1 },
                         )
                     } else {
                         Spacer(Modifier.size(1.dp)) // keep the dots left-aligned via SpaceBetween
@@ -240,13 +254,11 @@ fun OnboardingScreen(
                     0 -> WelcomeStep()
                     1 -> SmsPermissionStep(
                         autoCapture = autoCapture,
-                        scanPast = scanPast,
                         onToggleAuto = { autoCapture = it },
-                        onToggleScan = { scanPast = it },
                     )
                     2 -> BatteryStep()
-                    3 -> SalaryStep(salaryDay = salaryDay, onSelect = viewModel::setSalaryDay)
-                    else -> SetupStep(selectedIndex = dataChoice, onSelect = { dataChoice = it })
+                    3 -> SetupStep(selectedIndex = dataChoice, onSelect = { dataChoice = it })
+                    else -> SalaryStep(salaryDay = salaryDay, onSelect = viewModel::setSalaryDay)
                 }
             }
 
@@ -376,15 +388,13 @@ private fun AccountChip(dotColor: Color, label: String) {
 @Composable
 private fun SmsPermissionStep(
     autoCapture: Boolean,
-    scanPast: Boolean,
     onToggleAuto: (Boolean) -> Unit,
-    onToggleScan: (Boolean) -> Unit,
 ) {
     var showRcsInfo by rememberSaveable { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StepBadge(Icons.Filled.Sms)
         Spacer(Modifier.height(14.dp))
-        Text("Capture spends from SMS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+        Text("Detect spends from SMS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(8.dp))
         // Restored (#1): this is the copy that actually explains WHY SMS + notification access is asked —
         // the moment a bank SMS lands you get a one-tap notification. Decluttered via the smaller badge +
@@ -405,7 +415,7 @@ private fun SmsPermissionStep(
             ) {
                 Icon(
                     Icons.Filled.Info,
-                    contentDescription = "Why some bank alerts aren't captured",
+                    contentDescription = "Why some bank alerts aren't detected",
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.fillMaxSize().clickable { showRcsInfo = true },
                 )
@@ -423,23 +433,23 @@ private fun SmsPermissionStep(
             icon = Icons.Filled.NotificationsActive,
             badgeBg = MaterialTheme.colorScheme.primaryContainer,
             badgeTint = MaterialTheme.colorScheme.primary, // design glyph is primary teal #0F766E on #CFEEE9
-            title = "Auto-capture new SMS",
+            title = "Auto-detect new SMS",
             subtitle = "When a bank SMS arrives, get a notification to add the spend in one tap.",
             checked = autoCapture,
             onCheckedChange = onToggleAuto,
         )
-        Spacer(Modifier.height(12.dp))
-        ToggleCard(
-            selected = scanPast,
-            icon = Icons.Filled.History,
-            badgeBg = MaterialTheme.colorScheme.surfaceVariant,
-            badgeTint = Color(0xFF3F6212),
-            title = "Scan past SMS",
-            subtitle = "One-time read of older bank texts to fill in spends you've already made.",
-            checked = scanPast,
-            onCheckedChange = onToggleScan,
-        )
         Spacer(Modifier.height(16.dp))
+        // Scan-past was removed from onboarding (#2) — it lives in Settings now. Mentioned as verbiage
+        // (not a heading) so a returning user knows where to backfill older spends.
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Icon(Icons.Filled.History, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+            Text(
+                "Already spent before installing? You can scan older SMS anytime from Settings → Detect from SMS.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Icon(Icons.Filled.FilterAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
             Text(
@@ -459,7 +469,7 @@ private fun SmsPermissionStep(
             text = {
                 Text(
                     "Some banks send alerts as RCS or TrueCaller “Business Chat” rather than a normal SMS. " +
-                        "No app — including Spends — can read those, so those transactions won't be captured.\n\n" +
+                        "No app — including Spends — can read those, so those transactions won't be detected.\n\n" +
                         "TrueCaller's Business Chat is turned on by the bank, so you can't switch it off.\n\n" +
                         "RCS you can switch off: in your Messages app, turn off RCS chats. Your bank's alerts then " +
                         "arrive as a normal SMS, which Spends can detect.",
@@ -516,11 +526,11 @@ private fun BatteryStep() {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StepBadge(Icons.Filled.BatteryChargingFull)
         Spacer(Modifier.height(14.dp))
-        Text("Keep capture running", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+        Text("Keep detection running", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(8.dp))
         Text(
             "Some phones stop background apps and make Spends miss bank SMS. Letting it ignore battery " +
-                "optimisation keeps capture reliable — change it anytime in Settings.",
+                "optimisation keeps detection reliable — change it anytime in Settings.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -530,7 +540,7 @@ private fun BatteryStep() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         ) {
             Text(
-                "Optional — skip it if you'll add transactions manually. It only affects background capture.",
+                "Optional — skip it if you'll add transactions manually. It only affects background detection.",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -666,7 +676,7 @@ private fun SetupStep(selectedIndex: Int, onSelect: (Int) -> Unit) {
             badgeTint = MaterialTheme.colorScheme.onPrimaryContainer,
             badgeBg = MaterialTheme.colorScheme.primaryContainer,
             title = "Start fresh",
-            subtitle = "Auto-capture begins now. Recommended.",
+            subtitle = "Auto-detect begins now. Recommended.",
             onClick = { onSelect(0) },
         )
         Spacer(Modifier.height(12.dp))

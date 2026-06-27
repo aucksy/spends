@@ -74,7 +74,7 @@ fun ReviewScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Review captured") },
+                title = { Text("Review detected") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -94,7 +94,7 @@ fun ReviewScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 icon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = LocalSemanticColors.current.income) },
                 title = "All caught up",
-                body = "Captured transactions that need a category or a second look appear here.",
+                body = "Detected transactions that need a category or a second look appear here.",
             )
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -147,7 +147,7 @@ fun ReviewScreen(
         AlertDialog(
             onDismissRequest = { rejectFor = null },
             title = { Text("Remove this from review?") },
-            text = { Text("It won't be added — this just discards the captured SMS from the review queue.") },
+            text = { Text("It won't be added — this just discards the detected SMS from the review queue.") },
             confirmButton = {
                 TextButton(onClick = { viewModel.reject(row.id); rejectFor = null }) {
                     Text("Remove", color = MaterialTheme.colorScheme.error)
@@ -161,7 +161,7 @@ fun ReviewScreen(
         AlertDialog(
             onDismissRequest = { showConfirmAll = false },
             title = { Text("Add all $pendingCount?") },
-            text = { Text("Adds every captured transaction with its guessed category. You can edit any of them afterwards in the timeline.") },
+            text = { Text("Adds every detected transaction with its guessed category. You can edit any of them afterwards in the timeline.") },
             confirmButton = {
                 TextButton(onClick = { showConfirmAll = false; viewModel.confirmAll() }) { Text("Add all") }
             },
@@ -200,7 +200,7 @@ private fun ReviewCard(
     SpendsCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("CAPTURED FROM SMS", style = MaterialTheme.typography.labelMedium, color = semantic.review, modifier = Modifier.weight(1f))
+                Text("DETECTED FROM SMS", style = MaterialTheme.typography.labelMedium, color = semantic.review, modifier = Modifier.weight(1f))
                 // #10: only when we actually kept the source text (rows scanned before DB v8 have none).
                 if (!row.rawBody.isNullOrBlank()) {
                     Text(

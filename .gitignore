@@ -35,3 +35,10 @@ sms-export*.xml
 /private/
 /raw-data/
 fixtures/raw/
+
+# ---- OpenWolf (local Claude Code context layer — pilot; regenerable via `openwolf init`) ----
+# Kept local-only: session memory/token-ledger/bug-log are dev data, not source.
+# To make the setup travel with the repo later, un-ignore .claude/ and CLAUDE.md.
+.wolf/
+.claude/
+CLAUDE.md

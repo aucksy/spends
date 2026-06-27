@@ -27,7 +27,7 @@ fun CaptureSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Capture from SMS") },
+                title = { Text("Detect from SMS") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
