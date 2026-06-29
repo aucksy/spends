@@ -66,6 +66,9 @@ import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryEditorSheet
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
+import com.spends.app.ui.cards.PaidWithField
+import com.spends.app.ui.cards.PaidWithPickerSheet
+import com.spends.app.ui.cards.PaymentState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,6 +80,7 @@ fun AddEditScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val saving by viewModel.saving.collectAsStateWithLifecycle()
     val finished by viewModel.finished.collectAsStateWithLifecycle()
+    val paymentState by viewModel.paymentState.collectAsStateWithLifecycle()
     var showDelete by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(finished) { if (finished) onDone() }
@@ -112,9 +116,11 @@ fun AddEditScreen(
                 categories = categories,
                 saving = saving,
                 saveLabel = viewModel.saveLabel,
+                paymentState = paymentState,
+                showPaidWith = viewModel.showPaidWith,
                 onAddCategory = { name, usage, iconKey, onCreated -> viewModel.addCategory(name, usage, iconKey, onCreated) },
-                onSave = { amount, kind, categoryId, merchant, note, occurredAt ->
-                    viewModel.save(amount, kind, categoryId, merchant, note, occurredAt)
+                onSave = { amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId ->
+                    viewModel.save(amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId)
                 },
             )
         }
@@ -141,8 +147,10 @@ private fun AddEditForm(
     categories: List<CategoryEntity>,
     saving: Boolean,
     saveLabel: String,
+    paymentState: PaymentState,
+    showPaidWith: Boolean,
     onAddCategory: (String, CategoryUsage, String?, (Long) -> Unit) -> Unit,
-    onSave: (Long, TxnKind, Long, String, String, Long) -> Unit,
+    onSave: (Long, TxnKind, Long, String, String, Long, Long?) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(initial.amountText) }
     var kind by rememberSaveable { mutableStateOf(initial.kind) }
@@ -154,6 +162,8 @@ private fun AddEditForm(
     var showAddCategory by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showAmountKeypad by remember { mutableStateOf(false) }
+    var selectedPaymentMethodId by rememberSaveable { mutableStateOf(initial.paymentMethodId) }
+    var showPaidWithPicker by remember { mutableStateOf(false) }
 
     val usageFilter = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
@@ -246,6 +256,16 @@ private fun AddEditForm(
             singleLine = true,
         )
 
+        // "Paid with" — only when Smart Cycle is on and this isn't a capture review (those auto-tag from the
+        // SMS last4 on save), and only for expenses.
+        if (paymentState.enabled && showPaidWith && kind == TxnKind.EXPENSE) {
+            Spacer(Modifier.height(4.dp))
+            PaidWithField(
+                selected = paymentState.cards.firstOrNull { it.id == selectedPaymentMethodId },
+                onClick = { showPaidWithPicker = true },
+            )
+        }
+
         Spacer(Modifier.height(12.dp))
 
         Row(
@@ -267,7 +287,8 @@ private fun AddEditForm(
             onClick = {
                 val a = amountMinor ?: return@Button
                 val c = selectedCategoryId ?: return@Button
-                onSave(a, kind, c, merchant, note, occurredAt)
+                val pmId = if (kind == TxnKind.EXPENSE) selectedPaymentMethodId else null
+                onSave(a, kind, c, merchant, note, occurredAt, pmId)
             },
             enabled = canSave,
             modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -331,6 +352,15 @@ private fun AddEditForm(
             title = "Amount",
             onConfirm = { minor -> amountText = Money.toEditString(minor) },
             onDismiss = { showAmountKeypad = false },
+        )
+    }
+
+    if (showPaidWithPicker) {
+        PaidWithPickerSheet(
+            cards = paymentState.cards,
+            selectedId = selectedPaymentMethodId,
+            onSelect = { selectedPaymentMethodId = it; showPaidWithPicker = false },
+            onDismiss = { showPaidWithPicker = false },
         )
     }
 }

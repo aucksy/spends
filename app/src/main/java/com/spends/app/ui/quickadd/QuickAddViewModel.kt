@@ -7,13 +7,18 @@ import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.repo.AllocationInput
 import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.ExpenseRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.repo.TransactionInput
+import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.cards.CardOption
+import com.spends.app.ui.cards.PaymentState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -23,10 +28,21 @@ import javax.inject.Inject
 class QuickAddViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val categoryRepository: CategoryRepository,
+    private val paymentMethodRepository: PaymentMethodRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Whether "Paid with" should show (Smart Cycle on) and the available cards. */
+    val paymentState: StateFlow<PaymentState> =
+        combine(settingsRepository.settings, paymentMethodRepository.observeConfirmed()) { s, cards ->
+            PaymentState(
+                enabled = s.smartCycleEnabled,
+                cards = cards.map { CardOption(it.id, it.label, it.last4, it.colorHex) },
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentState())
 
     private val _saving = MutableStateFlow(false)
     val saving: StateFlow<Boolean> = _saving
@@ -46,6 +62,7 @@ class QuickAddViewModel @Inject constructor(
         categoryId: Long,
         note: String,
         occurredAt: Long,
+        paymentMethodId: Long? = null,
         onSaved: () -> Unit,
     ) {
         if (_saving.value) return
@@ -59,6 +76,7 @@ class QuickAddViewModel @Inject constructor(
                     merchantRaw = null,
                     note = note.ifBlank { null },
                     allocations = listOf(AllocationInput(categoryId, amountMinor)),
+                    paymentMethodId = paymentMethodId,
                 ),
             )
             _saving.value = false

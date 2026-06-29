@@ -64,6 +64,9 @@ class ExpenseRepository @Inject constructor(
     /** Income timestamps — to auto-detect the Smart cycle's salary day. */
     fun observeIncomeOccurredAt(): Flow<List<Long>> = dao.observeIncomeOccurredAt()
 
+    /** Active, card-tagged EXPENSE rows since [since] — the Cards screen slices each into its card's cycle. */
+    fun observeCardExpensesSince(since: Long): Flow<List<ExpenseEntity>> = dao.observeCardExpensesSince(since)
+
     fun observeSearch(query: String): Flow<List<ExpenseWithAllocations>> =
         dao.observeActiveSearch(query.trim())
 

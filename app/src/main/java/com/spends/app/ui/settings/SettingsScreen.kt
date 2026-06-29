@@ -186,6 +186,23 @@ fun SettingsScreen(
                 }
             }
 
+            SettingsSection("Cards & Smart Cycle") {
+                SwitchRow(
+                    title = "Smart Cycle",
+                    subtitle = "Group each credit card's spending by its own billing date, and your bank/UPI by your salary date — so \"this period\" is what you're actually about to pay, not a calendar month.",
+                    checked = state.smartCycleEnabled,
+                    onChange = viewModel::setSmartCycle,
+                )
+                if (state.smartCycleEnabled) {
+                    Text(
+                        "A Cards tab appears at the bottom. Add your cards there (or scan your SMS to find them) and set each card's billing day. Tag spending with \"Paid with\" when you add it. Turn this off any time to return to the simple salary / month view.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+            }
+
             SettingsSection("Startup screen") {
                 Text("Open on", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {

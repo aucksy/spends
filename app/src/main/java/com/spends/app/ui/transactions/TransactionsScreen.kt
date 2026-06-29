@@ -101,6 +101,7 @@ fun TransactionsScreen(
     onOpenSettings: () -> Unit,
     searchActive: Boolean,
     onSearchActiveChange: (Boolean) -> Unit,
+    searchInTopBar: Boolean = false,
     modifier: Modifier = Modifier,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
@@ -190,8 +191,10 @@ fun TransactionsScreen(
                 label = state.periodLabel,
                 onSelect = viewModel::applySelection,
                 onOpenSettings = onOpenSettings,
-                // Search moved to the bottom bar (#5) — no search icon here, so the cycle pill gets the
-                // full width and the whole cycle name shows.
+                // With Smart Cycle ON, the bottom "Search" tab is replaced by a Cards tab, so search returns
+                // to a compact icon here (the cycle pill keeps full width when it's off, as before — #5).
+                onToggleSearch = if (searchInTopBar) ({ onSearchActiveChange(!searchActive) }) else null,
+                searchActive = searchActive,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
         }

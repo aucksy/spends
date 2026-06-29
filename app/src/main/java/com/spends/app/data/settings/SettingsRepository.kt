@@ -48,6 +48,9 @@ data class SettingsState(
     // Hide the summary widget's eye button so it's invisible-but-tappable (#3): others can't tell there's a
     // reveal control. Device-local widget pref — not part of the backup snapshot.
     val widgetEyeHidden: Boolean = false,
+    // Smart Cycle / Cards feature master switch (PRD §4.7/§4.8). OFF by default → the app behaves exactly
+    // as before (no cards, no "Paid with", no Cards tab). ON reveals the cards machinery. Travels in backup.
+    val smartCycleEnabled: Boolean = false,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -77,6 +80,7 @@ class SettingsRepository @Inject constructor(
             smsCaptureMode = prefs[Keys.SMS_CAPTURE_MODE]?.toCaptureMode() ?: SmsCaptureMode.AUTO_ADD,
             hideCapturedInLists = prefs[Keys.HIDE_CAPTURED] ?: false,
             widgetEyeHidden = prefs[Keys.WIDGET_EYE_HIDDEN] ?: false,
+            smartCycleEnabled = prefs[Keys.SMART_CYCLE_ENABLED] ?: false,
         )
     }
 
@@ -98,6 +102,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setSmsCaptureMode(mode: SmsCaptureMode) = edit { it[Keys.SMS_CAPTURE_MODE] = mode.name }
     suspend fun setHideCapturedInLists(value: Boolean) = edit { it[Keys.HIDE_CAPTURED] = value }
     suspend fun setWidgetEyeHidden(value: Boolean) = edit { it[Keys.WIDGET_EYE_HIDDEN] = value }
+    suspend fun setSmartCycleEnabled(value: Boolean) = edit { it[Keys.SMART_CYCLE_ENABLED] = value }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -116,6 +121,7 @@ class SettingsRepository @Inject constructor(
             prefs[Keys.AUTO_BACKUP] = state.autoBackupEnabled
             prefs[Keys.AUTO_BACKUP_MINUTE] = state.autoBackupMinuteOfDay
             prefs[Keys.HIDE_CAPTURED] = state.hideCapturedInLists
+            prefs[Keys.SMART_CYCLE_ENABLED] = state.smartCycleEnabled
         }
     }
 
@@ -150,5 +156,6 @@ class SettingsRepository @Inject constructor(
         val SMS_CAPTURE_MODE = stringPreferencesKey("sms_capture_mode")
         val HIDE_CAPTURED = booleanPreferencesKey("hide_captured_in_lists")
         val WIDGET_EYE_HIDDEN = booleanPreferencesKey("widget_eye_hidden")
+        val SMART_CYCLE_ENABLED = booleanPreferencesKey("smart_cycle_enabled")
     }
 }

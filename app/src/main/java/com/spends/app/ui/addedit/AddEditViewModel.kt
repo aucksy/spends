@@ -12,14 +12,19 @@ import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.repo.AllocationInput
 import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.ExpenseRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.repo.TransactionInput
+import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.cards.CardOption
+import com.spends.app.ui.cards.PaymentState
 import com.spends.app.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -32,6 +37,7 @@ data class AddEditInitial(
     val merchant: String,
     val note: String,
     val occurredAt: Long,
+    val paymentMethodId: Long? = null,
 )
 
 @HiltViewModel
@@ -40,6 +46,8 @@ class AddEditViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val categoryRepository: CategoryRepository,
     private val captureRepository: SmsCaptureRepository,
+    private val paymentMethodRepository: PaymentMethodRepository,
+    settingsRepository: SettingsRepository,
     captureDraftStore: CaptureDraftStore,
 ) : ViewModel() {
 
@@ -74,6 +82,15 @@ class AddEditViewModel @Inject constructor(
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Whether "Paid with" should show (Smart Cycle on) and the available cards. */
+    val paymentState: StateFlow<PaymentState> =
+        combine(settingsRepository.settings, paymentMethodRepository.observeConfirmed()) { s, cards ->
+            PaymentState(s.smartCycleEnabled, cards.map { CardOption(it.id, it.label, it.last4, it.colorHex) })
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentState())
+
+    /** The editor offers "Paid with" for a normal add/edit; capture reviews auto-tag from the SMS last4. */
+    val showPaidWith: Boolean = !isCapture
+
     /** Null until the initial form is ready (immediately for new, after load for edit). */
     private val _initial = MutableStateFlow<AddEditInitial?>(null)
     val initial: StateFlow<AddEditInitial?> = _initial
@@ -96,6 +113,7 @@ class AddEditViewModel @Inject constructor(
                         merchant = e.expense.merchantRaw.orEmpty(),
                         note = e.expense.note.orEmpty(),
                         occurredAt = e.expense.occurredAt,
+                        paymentMethodId = e.expense.paymentMethodId,
                     )
                 } else {
                     newInitial()
@@ -157,6 +175,7 @@ class AddEditViewModel @Inject constructor(
         merchant: String,
         note: String,
         occurredAt: Long,
+        paymentMethodId: Long? = null,
     ) {
         if (_saving.value) return
         _saving.value = true
@@ -179,6 +198,7 @@ class AddEditViewModel @Inject constructor(
                         merchantRaw = merchant.ifBlank { null },
                         note = note.ifBlank { null },
                         allocations = listOf(AllocationInput(categoryId, amountMinor)),
+                        paymentMethodId = paymentMethodId,
                     )
                     if (isEdit) expenseRepository.update(expenseId, input) else expenseRepository.create(input)
                 }

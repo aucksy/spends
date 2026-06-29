@@ -6,6 +6,7 @@ import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
 import com.spends.app.data.db.dao.MerchantCategoryDao
+import com.spends.app.data.db.dao.PaymentMethodDao
 import com.spends.app.data.db.dao.PendingCaptureDao
 import com.spends.app.data.db.dao.RecurringDao
 import dagger.Module
@@ -33,6 +34,7 @@ object DatabaseModule {
                 SpendsDatabase.MIGRATION_6_7,
                 SpendsDatabase.MIGRATION_7_8,
                 SpendsDatabase.MIGRATION_8_9,
+                SpendsDatabase.MIGRATION_9_10,
             )
             .build()
 
@@ -50,4 +52,7 @@ object DatabaseModule {
 
     @Provides
     fun provideMerchantCategoryDao(db: SpendsDatabase): MerchantCategoryDao = db.merchantCategoryDao()
+
+    @Provides
+    fun providePaymentMethodDao(db: SpendsDatabase): PaymentMethodDao = db.paymentMethodDao()
 }

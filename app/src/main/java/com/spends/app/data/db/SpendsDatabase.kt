@@ -8,12 +8,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
 import com.spends.app.data.db.dao.MerchantCategoryDao
+import com.spends.app.data.db.dao.PaymentMethodDao
 import com.spends.app.data.db.dao.PendingCaptureDao
 import com.spends.app.data.db.dao.RecurringDao
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.MerchantCategoryEntity
+import com.spends.app.data.db.entity.PaymentMethodEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.seed.CategorySeed
@@ -26,8 +28,9 @@ import com.spends.app.data.seed.CategorySeed
         RecurringRuleEntity::class,
         PendingCaptureEntity::class,
         MerchantCategoryEntity::class,
+        PaymentMethodEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -38,6 +41,7 @@ abstract class SpendsDatabase : RoomDatabase() {
     abstract fun recurringDao(): RecurringDao
     abstract fun pendingCaptureDao(): PendingCaptureDao
     abstract fun merchantCategoryDao(): MerchantCategoryDao
+    abstract fun paymentMethodDao(): PaymentMethodDao
 
     companion object {
         const val NAME = "spends.db"
@@ -196,6 +200,32 @@ abstract class SpendsDatabase : RoomDatabase() {
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE categories ADD COLUMN iconCustomized INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** v9 -> v10: add the `payment_methods` table for the Smart Cycle / Cards feature (PRD §4.7).
+         *  DDL must mirror Room's generated schema for [PaymentMethodEntity] exactly (column order =
+         *  declaration order; autoGenerate Long PK → `PRIMARY KEY(id)`, no AUTOINCREMENT; nullable fields
+         *  omit NOT NULL) so validation passes. `expenses.paymentMethodId` already exists (added with the
+         *  table from the start), so no change is needed on the expenses side. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `payment_methods` (" +
+                        "`id` INTEGER NOT NULL, " +
+                        "`type` TEXT NOT NULL, " +
+                        "`label` TEXT NOT NULL, " +
+                        "`institution` TEXT, " +
+                        "`last4` TEXT, " +
+                        "`colorHex` TEXT NOT NULL, " +
+                        "`billingDay` INTEGER, " +
+                        "`dueDay` INTEGER, " +
+                        "`reviewed` INTEGER NOT NULL, " +
+                        "`dismissed` INTEGER NOT NULL, " +
+                        "`firstSeenAt` INTEGER NOT NULL, " +
+                        "`lastActivityAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
             }
         }
     }

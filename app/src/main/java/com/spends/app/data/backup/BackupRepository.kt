@@ -12,12 +12,14 @@ import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
+import com.spends.app.data.db.entity.PaymentMethodEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.Direction
+import com.spends.app.domain.model.PaymentMethodType
 import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.domain.model.TxnKind
@@ -61,6 +63,7 @@ class BackupRepository @Inject constructor(
     private val categoryDao = db.categoryDao()
     private val expenseDao = db.expenseDao()
     private val recurringDao = db.recurringDao()
+    private val paymentMethodDao = db.paymentMethodDao()
 
     // Serialises Drive operations so the daily worker and a user-tapped "Back up now" can't race
     // (e.g. both create the "Spends Backup" folder at once).
@@ -80,6 +83,7 @@ class BackupRepository @Inject constructor(
                 expenses = expenseDao.getAllExpensesOnce().map { it.toSnapshot() },
                 allocations = expenseDao.getAllAllocationsOnce().map { it.toSnapshot() },
                 recurring = recurringDao.getAllOnce().map { it.toSnapshot() },
+                paymentMethods = paymentMethodDao.getAllOnce().map { it.toSnapshot() },
             ),
         )
     }
@@ -94,6 +98,8 @@ class BackupRepository @Inject constructor(
             expenseDao.insertExpenses(snapshot.data.expenses.map { it.toEntity() })
             expenseDao.insertAllocations(snapshot.data.allocations.map { it.toEntity() })
             recurringDao.insertAll(snapshot.data.recurring.map { it.toEntity() })
+            paymentMethodDao.deleteAll()
+            paymentMethodDao.insertAll(snapshot.data.paymentMethods.map { it.toEntity() })
         }
         settingsRepository.restore(snapshot.data.settings.toState())
     }
@@ -272,11 +278,25 @@ private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
     lastRunAt = lastRunAt, active = active, createdAt = createdAt, updatedAt = updatedAt,
 )
 
+private fun PaymentMethodEntity.toSnapshot() = SnapshotPaymentMethod(
+    id = id, type = type.name, label = label, institution = institution, last4 = last4,
+    colorHex = colorHex, billingDay = billingDay, dueDay = dueDay, reviewed = reviewed,
+    dismissed = dismissed, firstSeenAt = firstSeenAt, lastActivityAt = lastActivityAt,
+)
+
+private fun SnapshotPaymentMethod.toEntity() = PaymentMethodEntity(
+    id = id,
+    type = runCatching { PaymentMethodType.valueOf(type) }.getOrDefault(PaymentMethodType.CREDIT_CARD),
+    label = label, institution = institution, last4 = last4, colorHex = colorHex,
+    billingDay = billingDay, dueDay = dueDay, reviewed = reviewed, dismissed = dismissed,
+    firstSeenAt = firstSeenAt, lastActivityAt = lastActivityAt,
+)
+
 private fun SettingsState.toSnapshot() = SnapshotSettings(
     onboardingComplete, themeMode.name, dynamicColor, salaryCycleStartDay, defaultLanding.name,
     carryForwardEnabled, trashRetentionDays, autoBackupEnabled,
     carryForwardAnchorEpochDay, carryForwardOpeningMinor, hideCapturedInLists,
-    autoDarkStartMinute, autoDarkEndMinute, autoBackupMinuteOfDay,
+    autoDarkStartMinute, autoDarkEndMinute, autoBackupMinuteOfDay, smartCycleEnabled,
 )
 
 private fun SnapshotSettings.toState() = SettingsState(
@@ -294,4 +314,5 @@ private fun SnapshotSettings.toState() = SettingsState(
     autoDarkStartMinute = autoDarkStartMinute,
     autoDarkEndMinute = autoDarkEndMinute,
     autoBackupMinuteOfDay = autoBackupMinuteOfDay,
+    smartCycleEnabled = smartCycleEnabled,
 )

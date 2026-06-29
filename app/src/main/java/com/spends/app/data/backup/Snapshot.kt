@@ -15,9 +15,10 @@ data class Snapshot(
     val data: SnapshotData,
 ) {
     companion object {
-        // v2 adds `recurring`; v3 adds category `iconCustomized`. Decoders use ignoreUnknownKeys + field
-        // defaults, so older backups (no recurring / no iconCustomized) still restore cleanly.
-        const val CURRENT_SCHEMA = 3
+        // v2 adds `recurring`; v3 adds category `iconCustomized`; v4 adds `paymentMethods` + the
+        // `smartCycleEnabled` setting. Decoders use ignoreUnknownKeys + field defaults, so older backups
+        // (no recurring / iconCustomized / paymentMethods) still restore cleanly.
+        const val CURRENT_SCHEMA = 4
     }
 }
 
@@ -28,6 +29,8 @@ data class SnapshotData(
     val expenses: List<SnapshotExpense>,
     val allocations: List<SnapshotAllocation>,
     val recurring: List<SnapshotRecurring> = emptyList(),
+    // Added in v4 (Cards feature). Default keeps older backups deserialising.
+    val paymentMethods: List<SnapshotPaymentMethod> = emptyList(),
 )
 
 @Serializable
@@ -49,6 +52,8 @@ data class SnapshotSettings(
     val autoDarkEndMinute: Int = 6 * 60,
     // Added in v0.23.0 (user-chosen daily backup time). Default 02:00; additive default keeps older backups valid.
     val autoBackupMinuteOfDay: Int = 2 * 60,
+    // Added in v4 (Cards feature). Default off keeps older backups valid.
+    val smartCycleEnabled: Boolean = false,
 )
 
 @Serializable
@@ -110,4 +115,20 @@ data class SnapshotRecurring(
     val active: Boolean,
     val createdAt: Long,
     val updatedAt: Long,
+)
+
+@Serializable
+data class SnapshotPaymentMethod(
+    val id: Long,
+    val type: String,
+    val label: String,
+    val institution: String? = null,
+    val last4: String? = null,
+    val colorHex: String,
+    val billingDay: Int? = null,
+    val dueDay: Int? = null,
+    val reviewed: Boolean = true,
+    val dismissed: Boolean = false,
+    val firstSeenAt: Long,
+    val lastActivityAt: Long,
 )

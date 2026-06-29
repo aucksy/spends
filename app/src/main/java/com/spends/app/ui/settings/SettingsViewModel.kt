@@ -49,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     fun setCarryForwardAnchor(epochDay: Long) = viewModelScope.launch { settingsRepository.setCarryForwardAnchor(epochDay) }
     fun setCarryForwardOpening(minor: Long) = viewModelScope.launch { settingsRepository.setCarryForwardOpening(minor) }
     fun setTrashRetentionDays(days: Int) = viewModelScope.launch { settingsRepository.setTrashRetentionDays(days) }
+    fun setSmartCycle(value: Boolean) = viewModelScope.launch { settingsRepository.setSmartCycleEnabled(value) }
     /** Persist the widget-eye setting, THEN run [onSaved] (the widget refresh) — so the refresh reads the
      *  just-committed value instead of racing the async DataStore write (#2: it wasn't updating instantly). */
     fun setWidgetEyeHidden(value: Boolean, onSaved: () -> Unit) = viewModelScope.launch {

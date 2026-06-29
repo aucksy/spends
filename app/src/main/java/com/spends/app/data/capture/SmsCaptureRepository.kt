@@ -11,6 +11,7 @@ import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
 import com.spends.app.data.repo.AllocationInput
 import com.spends.app.data.repo.ExpenseRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.repo.TransactionInput
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
@@ -40,6 +41,7 @@ class SmsCaptureRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val db: SpendsDatabase,
     private val expenseRepository: ExpenseRepository,
+    private val paymentMethodRepository: PaymentMethodRepository,
 ) {
     private val categoryDao = db.categoryDao()
     private val expenseDao = db.expenseDao()
@@ -76,9 +78,11 @@ class SmsCaptureRepository @Inject constructor(
         val hash = hashFor(parsed, occurredAt, amount, kind)
         if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null // already in the ledger
         val categoryId = resolveCategory(parsed, kind)
+        // Tag the instrument when this card's last4 matches a confirmed card (null = Bank otherwise).
+        val pmId = paymentMethodRepository.matchConfirmedByLast4(parsed.last4)
         // Live, user-confirmed captures are tagged NOTIFICATION (a deliberate add) — distinct from the
         // bulk historical scan (SMS) so the hide/delete-bulk controls never touch these (#11).
-        createLedgerTxn(amount, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION)
+        createLedgerTxn(amount, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION, pmId)
     }
 
     /**
@@ -211,13 +215,50 @@ class SmsCaptureRepository @Inject constructor(
             }
         }
 
+    /**
+     * Scan the SMS inbox for [startMillis, endExclusiveMillis) and PROPOSE the credit cards it finds
+     * (a credit-card sender + a parseable last4) as review candidates — the Cards tab "Scan for cards".
+     * Never silent: each lands in "Cards to review" for the user to Confirm / Edit / dismiss. Writes
+     * NOTHING to the ledger. Returns the count of NEW candidates (existing/dismissed cards are skipped).
+     */
+    suspend fun scanInboxForCards(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): Int =
+        withContext(Dispatchers.IO) {
+            // Serialise with the rest of capture (matching scanHistory) so two scans — or a scan racing
+            // another card-discovery — can't both pass discoverCard's read-then-insert check and double-add.
+            captureMutex.withLock {
+                var added = 0
+                val cols = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
+                val uri: Uri = Telephony.Sms.Inbox.CONTENT_URI
+                val selection = "${Telephony.Sms.DATE} >= ? AND ${Telephony.Sms.DATE} < ?"
+                val args = arrayOf(startMillis.toString(), endExclusiveMillis.toString())
+                context.contentResolver.query(uri, cols, selection, args, "${Telephony.Sms.DATE} DESC")?.use { c ->
+                    val iAddr = c.getColumnIndex(Telephony.Sms.ADDRESS)
+                    val iBody = c.getColumnIndex(Telephony.Sms.BODY)
+                    val iDate = c.getColumnIndex(Telephony.Sms.DATE)
+                    var scanned = 0
+                    while (c.moveToNext() && scanned < maxMessages) {
+                        scanned++
+                        val sender = if (iAddr >= 0) c.getString(iAddr) else null
+                        val inst = SenderAllowlist.lookup(sender) ?: continue
+                        if (inst.type != InstitutionType.CREDIT_CARD) continue // cards only in Round A
+                        val body = if (iBody >= 0) c.getString(iBody) else null
+                        val date = if (iDate >= 0) c.getLong(iDate) else DateUtils.nowMillis()
+                        val last4 = SmsParser.parse(sender, body, date).last4 ?: continue
+                        if (paymentMethodRepository.discoverCard(last4, inst.name)) added++
+                    }
+                }
+                added
+            }
+        }
+
     /** Confirm one pending capture into the ledger (optionally overriding the guessed category). */
     suspend fun confirmPending(id: Long, categoryId: Long? = null): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
         val finalCategory = categoryId ?: p.categoryId
+        val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
         // Bulk-scanned confirmations stay TxnSource.SMS so the "hide / delete bulk-captured" controls
         // target exactly these (and not the live NOTIFICATION ones).
-        val newId = createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, finalCategory, p.dedupeHash, TxnSource.SMS)
+        val newId = createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, finalCategory, p.dedupeHash, TxnSource.SMS, pmId)
         // Remember the user's category choice for this merchant so future captures pre-fill it (#14).
         learnMerchantCategory(p.merchant, finalCategory)
         pendingDao.deleteById(id)
@@ -246,6 +287,7 @@ class SmsCaptureRepository @Inject constructor(
         occurredAt: Long,
     ): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
+        val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
         val newId = expenseRepository.create(
             TransactionInput(
                 amountMinor = amountMinor,
@@ -254,6 +296,7 @@ class SmsCaptureRepository @Inject constructor(
                 merchantRaw = merchant?.ifBlank { null },
                 note = note?.ifBlank { null },
                 allocations = listOf(AllocationInput(categoryId, amountMinor)),
+                paymentMethodId = pmId,
                 source = TxnSource.SMS,
                 dedupeHash = p.dedupeHash,
                 parseConfidence = 100,
@@ -268,7 +311,8 @@ class SmsCaptureRepository @Inject constructor(
     suspend fun confirmAllPending(): Int = captureMutex.withLock {
         val all = pendingDao.getAllOnce()
         for (p in all) {
-            createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS)
+            val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
+            createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS, pmId)
             learnMerchantCategory(p.merchant, p.categoryId)
         }
         pendingDao.deleteAll()
@@ -298,6 +342,7 @@ class SmsCaptureRepository @Inject constructor(
         categoryId: Long,
         hash: String,
         source: TxnSource,
+        paymentMethodId: Long? = null,
     ): Long = expenseRepository.create(
         TransactionInput(
             amountMinor = amount,
@@ -306,6 +351,7 @@ class SmsCaptureRepository @Inject constructor(
             merchantRaw = merchant?.ifBlank { null },
             note = null,
             allocations = listOf(AllocationInput(categoryId, amount)),
+            paymentMethodId = paymentMethodId,
             source = source,
             dedupeHash = hash,
             parseConfidence = 100, // user-reviewed

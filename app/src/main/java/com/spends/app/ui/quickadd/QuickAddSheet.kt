@@ -55,6 +55,8 @@ import com.spends.app.ui.components.CalculatorKeypad
 import com.spends.app.ui.components.CategoryEditorSheet
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
+import com.spends.app.ui.cards.PaidWithChip
+import com.spends.app.ui.cards.PaidWithPickerSheet
 import kotlinx.coroutines.launch
 
 /**
@@ -74,6 +76,7 @@ fun QuickAddSheet(
     val view = LocalView.current
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val saving by viewModel.saving.collectAsStateWithLifecycle()
+    val paymentState by viewModel.paymentState.collectAsStateWithLifecycle()
 
     var expr by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable { mutableStateOf(TxnKind.EXPENSE) }
@@ -83,6 +86,8 @@ fun QuickAddSheet(
     var showDatePicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showAddCategory by remember { mutableStateOf(false) }
+    var selectedPaymentMethodId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showPaidWith by remember { mutableStateOf(false) }
     // #6: the "pick a category" warning + a gentle shake only fire when the user actually tries to save
     // without one — never reactively while typing the amount (which used to shove the keypad).
     var categoryError by remember { mutableStateOf(false) }
@@ -157,6 +162,18 @@ fun QuickAddSheet(
                 )
             }
 
+            // "Paid with" — only when Smart Cycle is on, and only for expenses (income isn't paid with a card).
+            if (paymentState.enabled && kind == TxnKind.EXPENSE) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Paid with", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PaidWithChip(
+                        selected = paymentState.cards.firstOrNull { it.id == selectedPaymentMethodId },
+                        onClick = { showPaidWith = true },
+                    )
+                }
+            }
+
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = note,
@@ -178,7 +195,8 @@ fun QuickAddSheet(
                     when {
                         a != null && c != null -> {
                             view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                            viewModel.save(a, kind, c, note, occurredAt) {
+                            val pmId = if (kind == TxnKind.EXPENSE) selectedPaymentMethodId else null
+                            viewModel.save(a, kind, c, note, occurredAt, paymentMethodId = pmId) {
                                 onSaved()
                                 dismiss()
                             }
@@ -220,6 +238,15 @@ fun QuickAddSheet(
             },
             onAddNew = { showCategoryPicker = false; showAddCategory = true },
             onDismiss = { showCategoryPicker = false },
+        )
+    }
+
+    if (showPaidWith) {
+        PaidWithPickerSheet(
+            cards = paymentState.cards,
+            selectedId = selectedPaymentMethodId,
+            onSelect = { selectedPaymentMethodId = it; showPaidWith = false },
+            onDismiss = { showPaidWith = false },
         )
     }
 

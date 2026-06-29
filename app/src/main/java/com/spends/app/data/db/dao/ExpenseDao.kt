@@ -61,6 +61,14 @@ interface ExpenseDao {
     @Query("UPDATE expenses SET parseConfidence = :value, updatedAt = :ts WHERE id = :id")
     suspend fun setParseConfidence(id: Long, value: Int, ts: Long)
 
+    /** Untag every expense paid with [id] (→ Bank bucket) — used when a card is deleted. */
+    @Query("UPDATE expenses SET paymentMethodId = NULL, updatedAt = :ts WHERE paymentMethodId = :id")
+    suspend fun clearPaymentMethod(id: Long, ts: Long)
+
+    /** Re-point every expense from card [from] to card [to] — used when two cards are merged. */
+    @Query("UPDATE expenses SET paymentMethodId = :to, updatedAt = :ts WHERE paymentMethodId = :from")
+    suspend fun reassignPaymentMethod(from: Long, to: Long, ts: Long)
+
     // ---- Trash ----
 
     @Transaction
@@ -116,6 +124,17 @@ interface ExpenseDao {
     /** Income timestamps — used to auto-detect the salary day for the Smart cycle. */
     @Query("SELECT occurredAt FROM expenses WHERE deletedAt IS NULL AND kind = 'INCOME'")
     fun observeIncomeOccurredAt(): Flow<List<Long>>
+
+    /**
+     * Active, card-tagged EXPENSE rows since [since] (the Cards feature). Each card has its OWN billing
+     * cycle (different window per card), so the ViewModel slices these into each card's window in memory
+     * rather than one GROUP-BY query. [since] should cover the longest possible cycle (~2 months back).
+     */
+    @Query(
+        "SELECT * FROM expenses WHERE deletedAt IS NULL AND kind = 'EXPENSE' " +
+            "AND paymentMethodId IS NOT NULL AND occurredAt >= :since",
+    )
+    fun observeCardExpensesSince(since: Long): Flow<List<ExpenseEntity>>
 
     // ---- Mutations ----
 
