@@ -38,6 +38,10 @@ data class SettingsState(
     val carryForwardOpeningMinor: Long = 0,
     val trashRetentionDays: Int = 30,
     val autoBackupEnabled: Boolean = false,
+    // Minutes-of-day the daily Drive backup aims for (default 02:00 — a quiet overnight hour). WorkManager
+    // runs it about once a day near this time, deferring while the device is offline (a backup needs a
+    // connection) or dozing, then catching up. User-chosen via Settings; travels in the backup snapshot.
+    val autoBackupMinuteOfDay: Int = 2 * 60,
     val smsCaptureEnabled: Boolean = false,
     val smsCaptureMode: SmsCaptureMode = SmsCaptureMode.AUTO_ADD,
     val hideCapturedInLists: Boolean = false,
@@ -68,6 +72,7 @@ class SettingsRepository @Inject constructor(
             carryForwardOpeningMinor = prefs[Keys.CARRY_FORWARD_OPENING] ?: 0,
             trashRetentionDays = prefs[Keys.TRASH_RETENTION_DAYS] ?: 30,
             autoBackupEnabled = prefs[Keys.AUTO_BACKUP] ?: false,
+            autoBackupMinuteOfDay = prefs[Keys.AUTO_BACKUP_MINUTE] ?: (2 * 60),
             smsCaptureEnabled = prefs[Keys.SMS_CAPTURE] ?: false,
             smsCaptureMode = prefs[Keys.SMS_CAPTURE_MODE]?.toCaptureMode() ?: SmsCaptureMode.AUTO_ADD,
             hideCapturedInLists = prefs[Keys.HIDE_CAPTURED] ?: false,
@@ -88,6 +93,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setCarryForwardOpening(minor: Long) = edit { it[Keys.CARRY_FORWARD_OPENING] = minor }
     suspend fun setTrashRetentionDays(days: Int) = edit { it[Keys.TRASH_RETENTION_DAYS] = days.coerceIn(1, 365) }
     suspend fun setAutoBackupEnabled(value: Boolean) = edit { it[Keys.AUTO_BACKUP] = value }
+    suspend fun setAutoBackupTime(minuteOfDay: Int) = edit { it[Keys.AUTO_BACKUP_MINUTE] = minuteOfDay.coerceIn(0, 1439) }
     suspend fun setSmsCaptureEnabled(value: Boolean) = edit { it[Keys.SMS_CAPTURE] = value }
     suspend fun setSmsCaptureMode(mode: SmsCaptureMode) = edit { it[Keys.SMS_CAPTURE_MODE] = mode.name }
     suspend fun setHideCapturedInLists(value: Boolean) = edit { it[Keys.HIDE_CAPTURED] = value }
@@ -108,6 +114,7 @@ class SettingsRepository @Inject constructor(
             prefs[Keys.CARRY_FORWARD_OPENING] = state.carryForwardOpeningMinor
             prefs[Keys.TRASH_RETENTION_DAYS] = state.trashRetentionDays
             prefs[Keys.AUTO_BACKUP] = state.autoBackupEnabled
+            prefs[Keys.AUTO_BACKUP_MINUTE] = state.autoBackupMinuteOfDay
             prefs[Keys.HIDE_CAPTURED] = state.hideCapturedInLists
         }
     }
@@ -138,6 +145,7 @@ class SettingsRepository @Inject constructor(
         val CARRY_FORWARD_OPENING = longPreferencesKey("carry_forward_opening_minor")
         val TRASH_RETENTION_DAYS = intPreferencesKey("trash_retention_days")
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
+        val AUTO_BACKUP_MINUTE = intPreferencesKey("auto_backup_minute_of_day")
         val SMS_CAPTURE = booleanPreferencesKey("sms_capture_enabled")
         val SMS_CAPTURE_MODE = stringPreferencesKey("sms_capture_mode")
         val HIDE_CAPTURED = booleanPreferencesKey("hide_captured_in_lists")

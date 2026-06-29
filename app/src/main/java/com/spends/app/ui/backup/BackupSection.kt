@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,12 +21,15 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +52,7 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     var pendingFileRestore by remember { mutableStateOf<Uri?>(null) }
     var showSetPassword by remember { mutableStateOf(false) }
     var showRemovePassword by remember { mutableStateOf(false) }
+    var showBackupTimePicker by remember { mutableStateOf(false) }
 
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
@@ -138,6 +143,33 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
             )
         }
 
+        // Time picker for the daily backup (#11) — only when it's on. Explains the offline behaviour: a
+        // backup needs a connection, so an offline phone simply runs it later, once it's back online.
+        if (state.autoBackupEnabled) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showBackupTimePicker = true }
+                    .padding(vertical = 8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Backup time", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Runs around this time each day. If you're offline, it backs up later once you're back online.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    formatBackupTime(state.autoBackupMinuteOfDay),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
         // Local file backup (no account needed).
         Text(
             "On this device",
@@ -212,6 +244,14 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
             changing = state.hasBackupPassword,
             onConfirm = { pw -> viewModel.setBackupPassword(pw); showSetPassword = false },
             onDismiss = { showSetPassword = false },
+        )
+    }
+
+    if (showBackupTimePicker) {
+        BackupTimePickerDialog(
+            initialMinute = state.autoBackupMinuteOfDay,
+            onConfirm = { minute -> viewModel.setAutoBackupTime(minute); showBackupTimePicker = false },
+            onDismiss = { showBackupTimePicker = false },
         )
     }
 
@@ -366,4 +406,39 @@ private fun RestorePasswordDialog(
         confirmButton = { TextButton(onClick = { onConfirm(password) }, enabled = password.isNotEmpty()) { Text("Restore") } },
         dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
     )
+}
+
+/** Pick the time-of-day the daily Drive backup aims for (#11). Mirrors the auto-dark time picker. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackupTimePickerDialog(initialMinute: Int, onConfirm: (Int) -> Unit, onDismiss: () -> Unit) {
+    val timeState = rememberTimePickerState(
+        initialHour = (initialMinute / 60).coerceIn(0, 23),
+        initialMinute = (initialMinute % 60).coerceIn(0, 59),
+        is24Hour = false,
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Daily backup time") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                TimePicker(state = timeState)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(timeState.hour * 60 + timeState.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Minutes-of-day → a friendly "h:mm AM/PM" label. */
+private fun formatBackupTime(minute: Int): String {
+    val h = minute / 60
+    val m = minute % 60
+    val period = if (h < 12) "AM" else "PM"
+    val h12 = when {
+        h == 0 -> 12
+        h > 12 -> h - 12
+        else -> h
+    }
+    return "%d:%02d %s".format(h12, m, period)
 }

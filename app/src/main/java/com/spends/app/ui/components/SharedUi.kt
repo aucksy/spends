@@ -187,3 +187,43 @@ fun AutoSizeRupee(
         AutoSizeText(text = text, style = style, color = color, modifier = modifier, minScale = minScale)
     }
 }
+
+/** The displayed amount string for a tile — masked when the privacy eye is on, else formatted (+/- sign). */
+@Composable
+fun rupeeText(minor: Long, withSign: Boolean = false): String = when {
+    LocalAmountsHidden.current -> AMOUNT_MASK
+    withSign -> (if (minor > 0) "+" else if (minor < 0) "-" else "") + Money.formatRupees(abs(minor))
+    else -> Money.formatRupees(minor)
+}
+
+/**
+ * ONE font style that fits EVERY [texts] entry within [maxWidthPx], so a row of amount tiles all render
+ * at the SAME size (the widest figure sets the scale) instead of each shrinking independently and looking
+ * mismatched (#12). Returns [baseStyle] unchanged when every figure already fits.
+ */
+@Composable
+fun rememberSharedAmountStyle(
+    texts: List<String>,
+    baseStyle: TextStyle,
+    maxWidthPx: Int,
+    minScale: Float = 0.35f,
+): TextStyle {
+    val measurer = rememberTextMeasurer()
+    return remember(texts, baseStyle, maxWidthPx, minScale) {
+        if (maxWidthPx <= 0 || !baseStyle.fontSize.isSp) return@remember baseStyle
+        var scale = 1f
+        for (t in texts) {
+            val w = measurer.measure(text = t, style = baseStyle, maxLines = 1, softWrap = false).size.width
+            if (w > maxWidthPx) scale = minOf(scale, maxWidthPx.toFloat() / w)
+        }
+        scale = scale.coerceIn(minScale, 1f)
+        if (scale >= 1f) {
+            baseStyle
+        } else {
+            baseStyle.copy(
+                fontSize = (baseStyle.fontSize.value * scale).sp,
+                lineHeight = if (baseStyle.lineHeight.isSp) (baseStyle.lineHeight.value * scale).sp else baseStyle.lineHeight,
+            )
+        }
+    }
+}

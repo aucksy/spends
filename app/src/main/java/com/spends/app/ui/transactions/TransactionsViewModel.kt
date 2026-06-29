@@ -151,6 +151,16 @@ class TransactionsViewModel @Inject constructor(
         // #4: optionally keep SMS-captured transactions out of the timeline list (still in the totals/balance).
         val filtered = if (settings.hideCapturedInLists) searched.filter { it.expense.source != TxnSource.SMS } else searched
 
+        // Per-category total for the WHOLE selected period (#2) — "<Category> Total: X" under each row.
+        // Computed from the full period set (items), not the search/hide-filtered subset, so it's the real
+        // cycle total regardless of any active search or the hide-captured filter. Keyed by (category, KIND)
+        // so a BOTH-usage category never blends inflow and outflow into one figure: an expense row shows its
+        // category's EXPENSE total, an income row its INCOME total.
+        val categoryTotals: Map<Pair<Long, TxnKind>, Long> = items
+            .flatMap { ewa -> ewa.allocations.map { alloc -> Pair(alloc.category.id, ewa.expense.kind) to alloc.allocation.amountMinor } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, amounts) -> amounts.sum() }
+
         val groups = filtered
             .groupBy { DateUtils.toLocalDate(it.expense.occurredAt) }
             .toSortedMap(compareByDescending { it })
@@ -164,7 +174,7 @@ class TransactionsViewModel @Inject constructor(
                         compareByDescending<ExpenseWithAllocations> { it.expense.createdAt }
                             .thenByDescending { it.expense.id },
                     )
-                    .map { it.toRowUi() }
+                    .map { it.toRowUi(categoryTotals) }
                 DayGroupUi(
                     date = date,
                     headerLabel = DateUtils.formatDayHeader(date),
@@ -210,7 +220,7 @@ class TransactionsViewModel @Inject constructor(
         TxnKind.TRANSFER -> 0
     }
 
-    private fun ExpenseWithAllocations.toRowUi(): TransactionRowUi {
+    private fun ExpenseWithAllocations.toRowUi(categoryTotals: Map<Pair<Long, TxnKind>, Long>): TransactionRowUi {
         val chips = allocations.map {
             CategoryChipUi(
                 categoryId = it.category.id,
@@ -220,16 +230,17 @@ class TransactionsViewModel @Inject constructor(
                 amountMinor = it.allocation.amountMinor,
             )
         }
-        val title = expense.merchantRaw?.takeIf { it.isNotBlank() }
-            ?: chips.firstOrNull()?.name
-            ?: expense.note?.takeIf { it.isNotBlank() }
-            ?: "Transaction"
+        val primary = chips.firstOrNull()
+        // Title is ALWAYS the (primary) category name now (#2). Merchant is searchable (see matches) and
+        // visible in the editor, but no longer the row title.
+        val title = primary?.name ?: "Uncategorized"
         return TransactionRowUi(
             id = expense.id,
             amountMinor = expense.amountMinor,
             kind = expense.kind,
             title = title,
             note = expense.note,
+            categoryTotalMinor = primary?.let { categoryTotals[it.categoryId to expense.kind] } ?: expense.amountMinor,
             // Recurring items carry a synthetic start-of-day time — suppress it (would read "12:00 AM").
             timeLabel = if (expense.source == TxnSource.RECURRING) null else DateUtils.formatTime(expense.occurredAt),
             source = expense.source,

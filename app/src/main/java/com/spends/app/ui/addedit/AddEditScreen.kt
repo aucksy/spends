@@ -1,5 +1,6 @@
 package com.spends.app.ui.addedit
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,8 +40,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
@@ -52,18 +50,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.money.Money
+import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.components.AmountKeypadSheet
 import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryEditorSheet
 import com.spends.app.ui.components.CategoryPickerField
@@ -155,6 +153,7 @@ private fun AddEditForm(
     var showDatePicker by remember { mutableStateOf(false) }
     var showAddCategory by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+    var showAmountKeypad by remember { mutableStateOf(false) }
 
     val usageFilter = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
@@ -195,30 +194,27 @@ private fun AddEditForm(
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )
-        TextField(
-            value = amountText,
-            onValueChange = { input -> amountText = input.filter { it.isDigit() || it == '.' } },
-            modifier = Modifier.fillMaxWidth(),
-            textStyle = Numerals.balanceHero.copy(textAlign = TextAlign.Center),
-            placeholder = {
-                Text(
-                    "0",
-                    style = Numerals.balanceHero,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                )
-            },
-            prefix = { Text("₹", style = Numerals.balanceHero, color = MaterialTheme.colorScheme.onSurface) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-            ),
-        )
+        // Tap the amount to enter it on the calculator KEYPAD (#4) — the same keypad as quick-add, instead
+        // of the system keyboard. This now applies to new, edit, and the notification "Review & Add" flows.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showAmountKeypad = true }
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "₹" + amountText.ifBlank { "0" },
+                style = Numerals.balanceHero,
+                color = if (amountText.isBlank()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+        }
 
         Spacer(Modifier.height(8.dp))
 
@@ -322,6 +318,19 @@ private fun AddEditForm(
                 showAddCategory = false
             },
             onDismiss = { showAddCategory = false },
+        )
+    }
+
+    if (showAmountKeypad) {
+        // The SAME calculator keypad used by quick-add — now also for the full editor, so editing an
+        // existing amount and the notification "Review & Add" flow both get the keypad, not the system
+        // keyboard (#4). Seeded with the current amount; commits back as a formatted edit string.
+        AmountKeypadSheet(
+            initialMinor = Money.parseRupeesToMinor(amountText) ?: 0L,
+            accent = if (kind == TxnKind.INCOME) LocalSemanticColors.current.income else LocalSemanticColors.current.expense,
+            title = "Amount",
+            onConfirm = { minor -> amountText = Money.toEditString(minor) },
+            onDismiss = { showAmountKeypad = false },
         )
     }
 }

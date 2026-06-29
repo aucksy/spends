@@ -127,9 +127,17 @@ fun TransactionsScreen(
     // viewport height mid-scroll and shoved a row back down on every drag (the #15 glitch). It's only
     // hidden while searching so results start at the very top.
     val searching = state.search.isNotBlank()
-    // Whenever the (debounced) result set changes, snap back to the top so the freshly filtered list
-    // starts fully visible instead of stranded at a stale scroll offset.
-    LaunchedEffect(state.search) { listState.scrollToItem(0) }
+    // Snap to top ONLY when the search query actually CHANGES — not on every composition entry. A plain
+    // LaunchedEffect(state.search) also re-runs when the screen re-enters composition (e.g. returning from
+    // the editor), which was resetting the scroll position to the top (#3). Guarding on the previous value
+    // keeps the scroll where it was on return, while still jumping to the top on a real new search.
+    var lastSearch by remember { mutableStateOf(state.search) }
+    LaunchedEffect(state.search) {
+        if (state.search != lastSearch) {
+            lastSearch = state.search
+            listState.scrollToItem(0)
+        }
+    }
 
     var pendingDelete by remember { mutableStateOf<TransactionRowUi?>(null) }
     var changeCategoryFor by remember { mutableStateOf<TransactionRowUi?>(null) }
@@ -523,25 +531,26 @@ private fun TransactionRow(row: TransactionRowUi, selected: Boolean, onClick: ()
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            // Merchant + note share one line (note muted); only wraps to a 2nd line when too long —
-            // no dedicated note row, so the card stays compact.
+            // Line 1 (#2): the CATEGORY name (title) + an optional note (muted). Merchant is no longer shown
+            // here — it lives in the editor; tap the row to see/edit it.
             val note = row.note?.takeIf { it.isNotBlank() && it != row.title }
             val muted = MaterialTheme.colorScheme.onSurfaceVariant
             Text(
                 text = buildAnnotatedString {
                     append(row.title)
-                    if (note != null) withStyle(SpanStyle(color = muted)) { append("  ·  $note") }
+                    if (note != null) withStyle(SpanStyle(color = muted)) { append("  $note") }
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            // Line 2 (#2): "<Category> Total: <category's total for the cycle>  <time>".
             val subtitle = buildString {
-                append(row.primary?.name ?: "Uncategorized")
-                if (row.isSplit) append(" +${row.categories.size - 1}")
-                // Time is omitted for rows with a synthetic timestamp (e.g. recurring).
-                row.timeLabel?.let { append(" · "); append(it) }
+                append(row.title)
+                append(" Total: ")
+                append(Money.formatRupees(row.categoryTotalMinor))
+                row.timeLabel?.let { append("  "); append(it) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 sourceIcon(row.source)?.let { glyph ->

@@ -276,7 +276,7 @@ private fun SettingsState.toSnapshot() = SnapshotSettings(
     onboardingComplete, themeMode.name, dynamicColor, salaryCycleStartDay, defaultLanding.name,
     carryForwardEnabled, trashRetentionDays, autoBackupEnabled,
     carryForwardAnchorEpochDay, carryForwardOpeningMinor, hideCapturedInLists,
-    autoDarkStartMinute, autoDarkEndMinute,
+    autoDarkStartMinute, autoDarkEndMinute, autoBackupMinuteOfDay,
 )
 
 private fun SnapshotSettings.toState() = SettingsState(
@@ -293,4 +293,5 @@ private fun SnapshotSettings.toState() = SettingsState(
     hideCapturedInLists = hideCapturedInLists,
     autoDarkStartMinute = autoDarkStartMinute,
     autoDarkEndMinute = autoDarkEndMinute,
+    autoBackupMinuteOfDay = autoBackupMinuteOfDay,
 )

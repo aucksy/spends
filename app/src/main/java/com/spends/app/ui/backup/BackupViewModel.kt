@@ -15,6 +15,7 @@ import com.spends.app.data.backup.DriveFile
 import com.spends.app.data.backup.WrongBackupPasswordException
 import com.spends.app.data.export.ExcelExporter
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.work.BackupScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -43,6 +45,7 @@ data class BackupUiState(
     val message: String? = null, // calm info/success (e.g. "Backed up just now")
     val blockingError: String? = null, // a LOUD failure the user must acknowledge (e.g. a backup that didn't write)
     val autoBackupEnabled: Boolean = false,
+    val autoBackupMinuteOfDay: Int = com.spends.app.work.BackupScheduler.DEFAULT_MINUTE,
     val hasBackupPassword: Boolean = false,
     val backups: List<DriveFile>? = null, // non-null => show the restore picker
     val passwordRestore: PendingPasswordRestore? = null, // non-null => prompt for the recovery password
@@ -61,7 +64,11 @@ class BackupViewModel @Inject constructor(
     private val _state = MutableStateFlow(BackupUiState(hasBackupPassword = backupRepository.hasBackupPassword()))
     val state: StateFlow<BackupUiState> =
         combine(_state, backupRepository.lastBackupAt, settingsRepository.settings) { s, last, settings ->
-            s.copy(lastBackupAt = last, autoBackupEnabled = settings.autoBackupEnabled)
+            s.copy(
+                lastBackupAt = last,
+                autoBackupEnabled = settings.autoBackupEnabled,
+                autoBackupMinuteOfDay = settings.autoBackupMinuteOfDay,
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BackupUiState())
 
     /** Suggested filename for a local export, stamped with the local date + time so each file is unique
@@ -93,8 +100,22 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun setAutoBackup(enabled: Boolean) =
-        viewModelScope.launch { settingsRepository.setAutoBackupEnabled(enabled) }
+    fun setAutoBackup(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setAutoBackupEnabled(enabled)
+        // Turning it on (re)schedules at the chosen time with the network constraint, so it doesn't have to
+        // wait for the next launch. The worker still self-gates on the toggle, so leaving it scheduled when
+        // off is harmless — we don't cancel, which keeps the time/anchor stable if it's toggled back on.
+        if (enabled) {
+            val minute = settingsRepository.settings.first().autoBackupMinuteOfDay
+            BackupScheduler.schedule(context, minute, replace = true)
+        }
+    }
+
+    /** Change the daily backup time (#11) and reschedule the worker to the next occurrence of it. */
+    fun setAutoBackupTime(minuteOfDay: Int) = viewModelScope.launch {
+        settingsRepository.setAutoBackupTime(minuteOfDay)
+        BackupScheduler.schedule(context, minuteOfDay, replace = true)
+    }
 
     /** Set/replace the OPTIONAL recovery password that encrypts every backup (#8). */
     fun setBackupPassword(password: String) {

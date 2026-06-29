@@ -1,5 +1,6 @@
 package com.spends.app.core
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -51,5 +52,14 @@ class QuickAddActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    // singleInstance: tapping the widget "+" again while the keypad sheet is already open is delivered here
+    // (onNewIntent) rather than a fresh onCreate, so the confirming buzz must re-fire or the second tap would
+    // feel dead (#9). The sheet itself is already shown; we only re-acknowledge the tap.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Haptics.click(this)
     }
 }

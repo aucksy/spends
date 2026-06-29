@@ -1,5 +1,6 @@
 package com.spends.app.ui.home
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.rememberCoroutineScope
 import com.spends.app.data.settings.SettingsState
@@ -62,14 +64,16 @@ fun HomeScreen(
     var tab by rememberSaveable { mutableStateOf(initialTab) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
     // Balances are hidden by default (privacy); the eye in the bottom-left reveals them. Saveable so a
     // reveal survives tab switches/rotation, but a fresh launch starts hidden again.
     var amountsHidden by rememberSaveable { mutableStateOf(true) }
-    // #5: auto-hide revealed balances after 5s so figures don't linger. Keyed on amountsHidden — revealing
-    // starts the timer; hiding manually (or this auto-hide firing) cancels it by re-keying the effect.
+    // Auto-hide revealed balances after 15s IN-APP (the home-screen widget uses ~5s) so figures don't
+    // linger but you have time to read them. Keyed on amountsHidden — revealing starts the timer; hiding
+    // manually (or this auto-hide firing) cancels it by re-keying the effect.
     androidx.compose.runtime.LaunchedEffect(amountsHidden) {
         if (!amountsHidden) {
-            kotlinx.coroutines.delay(5_000)
+            kotlinx.coroutines.delay(15_000)
             amountsHidden = true
         }
     }
@@ -121,7 +125,7 @@ fun HomeScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showQuickAdd = true },
+                onClick = { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); showQuickAdd = true },
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "Add transaction")
@@ -148,7 +152,7 @@ fun HomeScreen(
                 // Privacy eye — bottom-left, balancing the + FAB on the right. Same tint as the + FAB
                 // (primaryContainer) so the two read as a matched pair (#1).
                 SmallFloatingActionButton(
-                    onClick = { amountsHidden = !amountsHidden },
+                    onClick = { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); amountsHidden = !amountsHidden },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     // 42dp + 12dp corners + flat so it sits cleanly over a transaction row's category avatar (#8).

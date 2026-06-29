@@ -27,7 +27,12 @@ class SettingsViewModel @Inject constructor(
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     fun setAutoDarkWindow(startMinute: Int, endMinute: Int) =
         viewModelScope.launch { settingsRepository.setAutoDarkWindow(startMinute, endMinute) }
-    fun setSalaryDay(day: Int) = viewModelScope.launch { settingsRepository.setSalaryCycleStartDay(day) }
+    // onSaved runs AFTER the new day is persisted, so a widget refresh re-reads the committed value and
+    // shows the new cycle name/dates immediately — refreshing before the write would re-read the old day (#14).
+    fun setSalaryDay(day: Int, onSaved: () -> Unit = {}) = viewModelScope.launch {
+        settingsRepository.setSalaryCycleStartDay(day)
+        onSaved()
+    }
     fun setDefaultLanding(landing: DefaultLanding) = viewModelScope.launch { settingsRepository.setDefaultLanding(landing) }
     fun setCarryForward(value: Boolean) = viewModelScope.launch {
         settingsRepository.setCarryForwardEnabled(value)

@@ -6,7 +6,7 @@ import androidx.work.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.spends.app.work.BackupWorker
+import com.spends.app.work.BackupScheduler
 import com.spends.app.work.RecurringWorker
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
@@ -36,8 +36,9 @@ class SpendsApp : Application(), Configuration.Provider {
         val daily = PeriodicWorkRequestBuilder<RecurringWorker>(1, TimeUnit.DAYS).build()
         wm.enqueueUniquePeriodicWork(RecurringWorker.UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, daily)
 
-        // Daily Drive auto-backup is always scheduled; the worker self-gates on the user's toggle.
-        val backup = PeriodicWorkRequestBuilder<BackupWorker>(1, TimeUnit.DAYS).build()
-        wm.enqueueUniquePeriodicWork(BackupWorker.UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, backup)
+        // Daily Drive auto-backup runs near a user-chosen time (#11); the worker self-gates on the toggle.
+        // KEEP so a process restart never disturbs the persisted schedule (which already holds the user's
+        // chosen time). The DEFAULT_MINUTE only applies on a first-ever creation; Settings UPDATEs the time.
+        BackupScheduler.schedule(this, BackupScheduler.DEFAULT_MINUTE, replace = false)
     }
 }

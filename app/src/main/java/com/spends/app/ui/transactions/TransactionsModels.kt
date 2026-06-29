@@ -28,8 +28,12 @@ data class TransactionRowUi(
     val id: Long,
     val amountMinor: Long,
     val kind: TxnKind,
+    // The title is the (primary) CATEGORY name now (#2) — merchant is shown only in the editor.
     val title: String,
     val note: String?,
+    // The primary category's total for the SELECTED CYCLE (#2): shown as "<Category> Total: X" under the
+    // title. The same value appears on every row of that category in the period.
+    val categoryTotalMinor: Long,
     // Null when the time is synthetic (e.g. an auto-generated recurring item is stamped at start-of-day,
     // so showing "12:00 AM" would be misleading). The row then shows just the category + source.
     val timeLabel: String?,

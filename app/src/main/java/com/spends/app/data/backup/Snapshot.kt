@@ -47,6 +47,8 @@ data class SnapshotSettings(
     // Added in v0.12.0 (auto theme window). Additive defaults keep older backups valid.
     val autoDarkStartMinute: Int = 20 * 60,
     val autoDarkEndMinute: Int = 6 * 60,
+    // Added in v0.23.0 (user-chosen daily backup time). Default 02:00; additive default keeps older backups valid.
+    val autoBackupMinuteOfDay: Int = 2 * 60,
 )
 
 @Serializable

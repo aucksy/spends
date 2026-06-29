@@ -273,7 +273,12 @@ fun SettingsScreen(
     if (showSalaryDialog) {
         SalaryDayDialog(
             current = state.salaryCycleStartDay,
-            onSelect = { viewModel.setSalaryDay(it); showSalaryDialog = false },
+            // Persist only on "Done" (the dialog closes itself). #14: refresh the widget AFTER the write
+            // commits so its cycle name + dates re-read the new salary day immediately (a synchronous refresh
+            // would race the async DataStore write and re-render the old cycle).
+            onSelect = {
+                viewModel.setSalaryDay(it) { com.spends.app.widget.SummaryWidget.refresh(context) }
+            },
             onDismiss = { showSalaryDialog = false },
         )
     }
@@ -454,27 +459,34 @@ private fun ClickableRow(
 
 @Composable
 private fun SalaryDayDialog(current: Int, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
+    // Spinning the wheel only updates this LOCAL day — it does NOT commit or close the dialog. The value is
+    // persisted (and the dialog closed) only on "Done", so scrolling past a day no longer auto-selects it
+    // and closes the dialog the instant a new number snaps to centre (#13).
+    var selected by remember { mutableStateOf(current) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Salary day") },
         text = {
             Column {
                 Text(
-                    "Spin to the day you usually get paid.",
+                    "Spin to the day you usually get paid, then tap Done.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
                 NumberWheelPicker(
-                    value = current,
+                    value = selected,
                     range = 1..31,
-                    onValueChange = onSelect,
+                    onValueChange = { selected = it },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
+            TextButton(onClick = { onSelect(selected); onDismiss() }) { Text("Done") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }

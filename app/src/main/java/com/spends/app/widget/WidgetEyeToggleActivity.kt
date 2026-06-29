@@ -1,5 +1,6 @@
 package com.spends.app.widget
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.spends.app.core.Haptics
@@ -14,6 +15,20 @@ import com.spends.app.core.Haptics
 class WidgetEyeToggleActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handle(intent)
+    }
+
+    // Because this is launchMode="singleInstance", a quick second eye-tap that arrives while the previous
+    // instance is still finishing is delivered to the SAME instance via onNewIntent — NOT a fresh onCreate.
+    // The haptic only fired in onCreate, so every such repeat tap was silent → the "irregular vibration"
+    // (#9). Routing onNewIntent through the same handle() makes every tap buzz.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handle(intent)
+    }
+
+    private fun handle(intent: Intent) {
         Haptics.click(this) // foreground → actually vibrates (unlike the background broadcast)
         val id = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
         if (id != -1) SummaryWidget.sendToggle(this, id)

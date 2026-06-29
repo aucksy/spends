@@ -26,11 +26,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.ui.components.AutoSizeRupee
+import com.spends.app.ui.components.rememberSharedAmountStyle
+import com.spends.app.ui.components.rupeeText
 
 @Composable
 fun SummaryHeader(
@@ -62,12 +66,22 @@ fun SummaryHeader(
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
             val gap = 10.dp
             val tileW = (maxWidth - gap) / 2
+            // All tiles share ONE font scale (#12): every figure is measured at the tile's inner width and
+            // the smallest fit is applied to all — so Expense/Income (and any extra tiles) are always the
+            // SAME size, never one shrunk and one full-size.
+            val density = LocalDensity.current
+            val innerWpx = with(density) { (tileW - 28.dp).toPx().toInt() } // 14dp horizontal padding each side
+            val sharedStyle = rememberSharedAmountStyle(
+                texts = tiles.map { rupeeText(it.minor, it.withSign) },
+                baseStyle = Numerals.amountLg,
+                maxWidthPx = innerWpx,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
                 tiles.forEach { tile ->
-                    StatTile(tile = tile, modifier = Modifier.width(tileW))
+                    StatTile(tile = tile, amountStyle = sharedStyle, modifier = Modifier.width(tileW))
                 }
             }
         }
@@ -117,7 +131,7 @@ private data class Tile(
 )
 
 @Composable
-private fun StatTile(tile: Tile, modifier: Modifier = Modifier) {
+private fun StatTile(tile: Tile, amountStyle: TextStyle, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
@@ -133,11 +147,13 @@ private fun StatTile(tile: Tile, modifier: Modifier = Modifier) {
                     maxLines = 1,
                 )
             }
-            AutoSizeRupee(
-                minor = tile.minor,
-                style = Numerals.amountLg,
+            // Plain Text with the SHARED style (#12) — not an independent AutoSizeRupee — so all tiles match.
+            Text(
+                text = rupeeText(tile.minor, tile.withSign),
+                style = amountStyle,
                 color = tile.accent,
-                withSign = tile.withSign,
+                maxLines = 1,
+                softWrap = false,
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
         }

@@ -3,6 +3,7 @@ package com.spends.app.ui.analytics
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,6 +55,8 @@ import com.spends.app.ui.components.SectionLabel
 import com.spends.app.ui.components.SpendsCard
 import com.spends.app.ui.components.WeeklyBars
 import com.spends.app.ui.components.parseHexColor
+import com.spends.app.ui.components.rememberSharedAmountStyle
+import com.spends.app.ui.components.rupeeText
 
 @Composable
 fun AnalyticsScreen(
@@ -103,18 +108,29 @@ fun AnalyticsScreen(
 @Composable
 private fun SummaryCard(state: AnalyticsUiState) {
     val semantic = LocalSemanticColors.current
+    val netColor = if (state.netMinor < 0) semantic.negative else semantic.income
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SummaryCell(Modifier.weight(1f), "Expense", Icons.Filled.ArrowUpward, semantic.expense, state.expenseMinor, false)
-            SummaryCell(Modifier.weight(1f), "Income", Icons.Filled.ArrowDownward, semantic.income, state.incomeMinor, false)
-            SummaryCell(
-                Modifier.weight(1f),
-                "Net",
-                Icons.AutoMirrored.Filled.ArrowForward,
-                if (state.netMinor < 0) semantic.negative else semantic.income,
-                state.netMinor,
-                true,
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            val gap = 8.dp
+            val cellW = (maxWidth - gap * 2) / 3
+            val density = LocalDensity.current
+            val cellWpx = with(density) { cellW.toPx().toInt() }
+            // The three figures share ONE font scale (#12) so Expense / Income / Net never mismatch.
+            val sharedStyle = rememberSharedAmountStyle(
+                texts = listOf(
+                    rupeeText(state.expenseMinor, false),
+                    rupeeText(state.incomeMinor, false),
+                    rupeeText(state.netMinor, true),
+                ),
+                baseStyle = Numerals.amountLg,
+                maxWidthPx = cellWpx,
+                minScale = 0.3f,
             )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                SummaryCell(Modifier.width(cellW), "Expense", Icons.Filled.ArrowUpward, semantic.expense, state.expenseMinor, false, sharedStyle)
+                SummaryCell(Modifier.width(cellW), "Income", Icons.Filled.ArrowDownward, semantic.income, state.incomeMinor, false, sharedStyle)
+                SummaryCell(Modifier.width(cellW), "Net", Icons.AutoMirrored.Filled.ArrowForward, netColor, state.netMinor, true, sharedStyle)
+            }
         }
     }
 }
@@ -127,20 +143,20 @@ private fun SummaryCell(
     accent: Color,
     minor: Long,
     withSign: Boolean,
+    amountStyle: TextStyle,
 ) {
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(14.dp))
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
-        AutoSizeRupee(
-            minor = minor,
-            style = Numerals.amountLg,
+        // Plain Text with the SHARED style (#12) — all three figures render at the same size.
+        Text(
+            text = rupeeText(minor, withSign),
+            style = amountStyle,
             color = accent,
-            withSign = withSign,
-            // Three big figures share one row, so allow a deeper shrink — the "Net" lakh amount with
-            // decimals was overflowing its cell and clipping the paise off-screen (#7).
-            minScale = 0.3f,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         )
     }
@@ -187,7 +203,7 @@ private fun CategoryDonutCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                state.categories.take(8).forEachIndexed { index, c ->
+                state.categories.forEachIndexed { index, c ->
                     if (index > 0) Spacer(Modifier.height(8.dp))
                     Surface(
                         shape = RoundedCornerShape(12.dp),
