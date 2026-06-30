@@ -41,8 +41,10 @@ class PeriodDescribeTest {
             .isEqualTo("Current Salary Cycle")
         assertThat(PeriodSelection(PeriodType.MONTH, PeriodRange.CURRENT).describe())
             .isEqualTo("Current Month")
+        // Round B: the Smart Cycle is now a navigable composite (stepped by the prev/next arrows), so its
+        // current cycle reads "Current Smart Cycle" — not the old month-anchored "This Month's Smart Cycle".
         assertThat(PeriodSelection(PeriodType.SMART_CYCLE, PeriodRange.CURRENT).describe())
-            .isEqualTo("This Month's Smart Cycle")
+            .isEqualTo("Current Smart Cycle")
         assertThat(PeriodSelection(PeriodType.MONTH, PeriodRange.LAST_3).describe())
             .isEqualTo("Last 3 Months")
         assertThat(PeriodSelection(PeriodType.SALARY_CYCLE, PeriodRange.LAST_6).describe())
@@ -51,5 +53,15 @@ class PeriodDescribeTest {
             .isEqualTo("All Time")
         assertThat(PeriodSelection(PeriodType.SALARY_CYCLE, PeriodRange.CUSTOM).describe())
             .isEqualTo("Custom Range")
+    }
+
+    @Test fun smart_cycle_offset_and_single_card_describe() {
+        // Stepping the composite back/forward.
+        assertThat(PeriodSelection(PeriodType.SMART_CYCLE, PeriodRange.CURRENT, cycleOffset = -1).describe())
+            .isEqualTo("Previous Smart Cycle")
+        // Single-Card mode (selectedCardId set) reads "Single Card"; the concrete card name + dates are the
+        // secondary date line supplied by the ViewModel, not describe().
+        assertThat(PeriodSelection(PeriodType.SMART_CYCLE, PeriodRange.CURRENT, selectedCardId = 7L).describe())
+            .isEqualTo("Single Card")
     }
 }
