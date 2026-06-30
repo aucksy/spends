@@ -12,9 +12,13 @@ import com.spends.app.R
 import com.spends.app.core.MainActivity
 import com.spends.app.core.QuickAddActivity
 import com.spends.app.core.money.Money
+import com.spends.app.core.period.CardCycleInfo
+import com.spends.app.core.period.CompositeCycleResolver
 import com.spends.app.core.period.PeriodResolver
+import com.spends.app.core.period.PeriodType
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.repo.ExpenseRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.TxnKind
 import dagger.hilt.EntryPoint
@@ -44,6 +48,7 @@ class SummaryWidget : AppWidgetProvider() {
         fun settingsRepository(): SettingsRepository
         fun widgetMaskStore(): WidgetMaskStore
         fun periodSelectionStore(): com.spends.app.core.period.PeriodSelectionStore
+        fun paymentMethodRepository(): PaymentMethodRepository
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -83,32 +88,61 @@ class SummaryWidget : AppWidgetProvider() {
                 val ep = entryPoint(context)
                 val settings = ep.settingsRepository().settings.first()
                 // Mirror whatever the user last selected in the app (#6) — read one-shot from the persisted
-                // store. SMART_CYCLE is approximated with the salary day (rarely used on the widget); ALL
-                // falls back to PeriodResolver's 5-year floor since the widget doesn't fetch the earliest day.
+                // store. ALL falls back to PeriodResolver's 5-year floor since the widget doesn't fetch the
+                // earliest day.
                 val selection = ep.periodSelectionStore().current()
-                val resolved = PeriodResolver.resolve(
-                    type = selection.type,
-                    range = selection.range,
-                    salaryDay = settings.salaryCycleStartDay,
-                    smartDay = settings.salaryCycleStartDay,
-                    today = LocalDate.now(DateUtils.ZONE),
-                    earliestDataDay = null,
-                    customStartMillis = selection.customStartMillis,
-                    customEndExclusiveMillis = selection.customEndExclusiveMillis,
-                    cycleOffset = selection.cycleOffset,
-                )
-                val sums = ep.expenseRepository().kindSumsOnce(resolved.startMillis, resolved.endExclusiveMillis)
-                val income = sums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0L
-                val expense = sums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
+                val today = LocalDate.now(DateUtils.ZONE)
+
+                val income: Long
+                val expense: Long
+                val cycleName: String
+                val cycleLabel: String
+                if (settings.smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE) {
+                    // Smart Cycle composite (Round B): each instrument on its own cycle. Fetch the bounding
+                    // window once, then keep only rows inside their OWN instrument's window.
+                    val cards = ep.paymentMethodRepository().observeConfirmed().first()
+                    val infos = cards.map { CardCycleInfo(it.id, it.label, it.colorHex, it.last4, it.billingDay) }
+                    val card = selection.selectedCardId?.let { id -> infos.firstOrNull { it.id == id } }
+                    val composite = if (card != null) {
+                        CompositeCycleResolver.resolveSingleCard(card, settings.salaryCycleStartDay, today, selection.cycleOffset)
+                    } else {
+                        CompositeCycleResolver.resolveSmartCycle(infos, settings.salaryCycleStartDay, today, selection.cycleOffset)
+                    }
+                    val items = ep.expenseRepository()
+                        .expensesBetweenOnce(composite.boundingStartMillis, composite.boundingEndExclusiveMillis)
+                        .filter { composite.contains(it.occurredAt, it.paymentMethodId) }
+                    income = items.filter { it.kind == TxnKind.INCOME }.sumOf { it.amountMinor }
+                    expense = items.filter { it.kind == TxnKind.EXPENSE }.sumOf { it.amountMinor }
+                    cycleName = composite.label
+                    cycleLabel = if (card != null) "single card" else "${cards.size} card${if (cards.size == 1) "" else "s"} + bank"
+                } else {
+                    // A stale SMART_CYCLE selection while the feature is off falls back to the salary cycle.
+                    val effType = if (selection.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else selection.type
+                    val resolved = PeriodResolver.resolve(
+                        type = effType,
+                        range = selection.range,
+                        salaryDay = settings.salaryCycleStartDay,
+                        smartDay = settings.salaryCycleStartDay,
+                        today = today,
+                        earliestDataDay = null,
+                        customStartMillis = selection.customStartMillis,
+                        customEndExclusiveMillis = selection.customEndExclusiveMillis,
+                        cycleOffset = selection.cycleOffset,
+                    )
+                    val sums = ep.expenseRepository().kindSumsOnce(resolved.startMillis, resolved.endExclusiveMillis)
+                    income = sums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0L
+                    expense = sums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
+                    // Cycle NAME + dates (#11), reflecting the user's actual selection (#6).
+                    cycleName = selection.describe()
+                    cycleLabel = resolved.label
+                }
                 val balance = income - expense
-                // Cycle NAME + dates (#11), now reflecting the user's actual selection (#6).
-                val cycleName = selection.describe()
                 val store = ep.widgetMaskStore()
                 val eyeHidden = settings.widgetEyeHidden
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        buildViews(context, id, cycleName, resolved.label, income, expense, balance, store.isMasked(id), eyeHidden),
+                        buildViews(context, id, cycleName, cycleLabel, income, expense, balance, store.isMasked(id), eyeHidden),
                     )
                 }
             } catch (e: Exception) {

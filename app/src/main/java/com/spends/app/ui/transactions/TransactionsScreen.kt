@@ -102,12 +102,15 @@ fun TransactionsScreen(
     searchActive: Boolean,
     onSearchActiveChange: (Boolean) -> Unit,
     searchInTopBar: Boolean = false,
+    onOpenBreakdown: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
+    val smartCycleEnabled by viewModel.smartCycleEnabled.collectAsStateWithLifecycle()
+    val cardChoices by viewModel.cardChoices.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     // Search text is owned locally (synchronous snapshot state) so the cursor never jumps; the
@@ -195,6 +198,8 @@ fun TransactionsScreen(
                 // to a compact icon here (the cycle pill keeps full width when it's off, as before — #5).
                 onToggleSearch = if (searchInTopBar) ({ onSearchActiveChange(!searchActive) }) else null,
                 searchActive = searchActive,
+                smartCycleEnabled = smartCycleEnabled,
+                cards = cardChoices,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
         }
@@ -237,7 +242,7 @@ fun TransactionsScreen(
             ) {
                 if (!searching) {
                     item(key = "summary") {
-                        SummaryHeader(state = state, modifier = Modifier.padding(top = 2.dp))
+                        SummaryHeader(state = state, onOpenBreakdown = onOpenBreakdown, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
                 state.groups.forEach { group ->

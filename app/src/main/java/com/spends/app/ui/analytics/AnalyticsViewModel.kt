@@ -22,11 +22,13 @@ import com.spends.app.data.repo.RecurringRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import javax.inject.Inject
@@ -90,6 +92,15 @@ class AnalyticsViewModel @Inject constructor(
     // Shared with the Transactions screen (#8) so the cycle/range stays in sync across both.
     private val selection = periodSelectionStore.selection
     val periodSelection: StateFlow<PeriodSelection> = selection
+
+    // Drives the period selector's Smart pill + Single-Card picker (Round B), mirroring Transactions.
+    val smartCycleEnabled: StateFlow<Boolean> =
+        settingsRepository.settings.map { it.smartCycleEnabled }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val cardChoices: StateFlow<List<CardChoice>> =
+        paymentMethodRepository.observeConfirmed()
+            .map { cards -> cards.map { CardChoice(it.id, it.label, it.colorHex) } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val resolvedFlow: StateFlow<ResolvedB> =
         combine(

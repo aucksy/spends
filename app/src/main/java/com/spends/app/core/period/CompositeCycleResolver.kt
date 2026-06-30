@@ -52,6 +52,14 @@ data class CompositePeriod(
         val w = windowFor(paymentMethodId) ?: return false
         return occurredAt >= w.startMillis() && occurredAt < w.endExclusiveMillis()
     }
+
+    /**
+     * The id of the instrument a transaction maps to: its own card when that card is one of these
+     * instruments, otherwise the Bank/UPI bucket (null). Mirrors [windowFor]'s fallback so the breakdown
+     * groups a deleted-card txn under Bank exactly the way [contains] counts it.
+     */
+    fun instrumentIdFor(paymentMethodId: Long?): Long? =
+        if (instruments.any { it.paymentMethodId == paymentMethodId }) paymentMethodId else null
 }
 
 /**

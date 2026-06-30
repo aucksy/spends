@@ -59,6 +59,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+    onOpenBreakdown: () -> Unit = {},
     openQuickAddSignal: Boolean = false,
     onQuickAddConsumed: () -> Unit = {},
 ) {
@@ -167,6 +168,7 @@ fun HomeScreen(
                         onSearchActiveChange = { searchActive = it },
                         // With Smart Cycle on, the bottom Search tab becomes a top icon on this screen.
                         searchInTopBar = settings.smartCycleEnabled,
+                        onOpenBreakdown = onOpenBreakdown,
                     )
                     HomeTab.CARDS -> CardsScreen(onOpenSettings = onOpenSettings)
                     HomeTab.ANALYTICS -> AnalyticsScreen(

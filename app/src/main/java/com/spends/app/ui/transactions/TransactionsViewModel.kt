@@ -22,12 +22,14 @@ import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
+import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -64,6 +66,15 @@ class TransactionsViewModel @Inject constructor(
     // Cycle/range is shared with Analytics (#8) so changing it on one screen syncs the other.
     private val selection = periodSelectionStore.selection
     val periodSelection: StateFlow<PeriodSelection> = selection
+
+    // Drives the period selector's Smart pill + Single-Card picker (Round B). Confirmed cards only.
+    val smartCycleEnabled: StateFlow<Boolean> =
+        settingsRepository.settings.map { it.smartCycleEnabled }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val cardChoices: StateFlow<List<CardChoice>> =
+        paymentMethodRepository.observeConfirmed()
+            .map { cards -> cards.map { CardChoice(it.id, it.label, it.colorHex) } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val searchQuery = MutableStateFlow("")
 

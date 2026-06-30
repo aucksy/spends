@@ -68,6 +68,11 @@ class ExpenseRepository @Inject constructor(
     /** Active, card-tagged EXPENSE rows since [since] — the Cards screen slices each into its card's cycle. */
     fun observeCardExpensesSince(since: Long): Flow<List<ExpenseEntity>> = dao.observeCardExpensesSince(since)
 
+    /** One-shot active rows in [startMillis, endExclusiveMillis) (all kinds) — the widget's Smart Cycle
+     *  composite path filters these per-instrument (no single GROUP BY can span per-card windows). */
+    suspend fun expensesBetweenOnce(startMillis: Long, endExclusiveMillis: Long): List<ExpenseEntity> =
+        dao.expensesBetweenOnce(startMillis, endExclusiveMillis)
+
     fun observeSearch(query: String): Flow<List<ExpenseWithAllocations>> =
         dao.observeActiveSearch(query.trim())
 
