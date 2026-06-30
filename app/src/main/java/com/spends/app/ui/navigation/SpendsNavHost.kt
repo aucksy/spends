@@ -11,6 +11,7 @@ import androidx.navigation.navArgument
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.addedit.AddEditScreen
 import com.spends.app.ui.backup.OnboardingRestoreScreen
+import com.spends.app.ui.breakdown.CycleBreakdownScreen
 import com.spends.app.ui.capture.CaptureSettingsScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
@@ -86,6 +87,7 @@ fun SpendsNavHost(
                 onOpenCategory = { categoryId, name, start, end ->
                     navController.navigate(Routes.categoryTxns(categoryId, name, start, end))
                 },
+                onOpenBreakdown = { navController.navigate(Routes.CYCLE_BREAKDOWN) },
                 openQuickAddSignal = pendingQuickAdd,
                 onQuickAddConsumed = onQuickAddConsumed,
             )
@@ -151,6 +153,10 @@ fun SpendsNavHost(
 
         composable(Routes.RECURRING) {
             RecurringScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.CYCLE_BREAKDOWN) {
+            CycleBreakdownScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.REVIEW) {

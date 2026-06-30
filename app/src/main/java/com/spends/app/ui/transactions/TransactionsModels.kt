@@ -63,6 +63,8 @@ data class TransactionsUiState(
     val totals: SummaryTotals = SummaryTotals(),
     val carryForward: Long? = null,
     val groups: List<DayGroupUi> = emptyList(),
+    // True for the Smart Cycle composite (Round B) — the header offers a "per-instrument breakdown" link.
+    val isComposite: Boolean = false,
 ) {
     val isEmpty: Boolean get() = !loading && groups.isEmpty()
     val balanceWithCarry: Long? get() = carryForward?.let { it + totals.balance }

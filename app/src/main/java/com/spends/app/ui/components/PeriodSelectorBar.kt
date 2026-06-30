@@ -61,10 +61,20 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
+/** A card the Smart Cycle selector can narrow to (Single-Card mode). Only the bits the picker shows. */
+data class CardChoice(
+    val id: Long,
+    val label: String,
+    val colorHex: String,
+)
+
 /**
  * The period selector row: a full-width pill that names the selected cycle in words (e.g. "Current
  * Salary Cycle") with the concrete date range beneath it, plus an optional Settings gear ([onOpenSettings])
  * so the home screen can drop its title bar to save space (#5/#7). [label] is the resolved date range.
+ *
+ * When [smartCycleEnabled] is true the sheet offers the "Smart" cycle pill; selecting it swaps the Range
+ * list for a card picker (All cards = composite, or one card = Single-Card mode) built from [cards].
  */
 @Composable
 fun PeriodSelectorBar(
@@ -75,10 +85,21 @@ fun PeriodSelectorBar(
     onOpenSettings: (() -> Unit)? = null,
     onToggleSearch: (() -> Unit)? = null,
     searchActive: Boolean = false,
+    smartCycleEnabled: Boolean = false,
+    cards: List<CardChoice> = emptyList(),
 ) {
     var open by remember { mutableStateOf(false) }
+    // A persisted SMART_CYCLE selection can outlive the toggle (e.g. a backup restore writes the flag
+    // directly, bypassing setSmartCycle). The data paths already coerce it to the salary cycle, so coerce
+    // it HERE too — otherwise the pill would read "Smart Cycle" with phantom prev/next arrows over salary
+    // data. Acting on the coerced value also self-heals the persisted selection on the next interaction.
+    val effective = if (!smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE) {
+        selection.copy(type = PeriodType.SALARY_CYCLE, selectedCardId = null)
+    } else {
+        selection
+    }
     // Prev/next cycle stepping shows only for a single current cycle; future is capped at the present (#6).
-    val navigable = selection.isNavigable
+    val navigable = effective.isNavigable
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Surface(
             modifier = Modifier.weight(1f),
@@ -91,7 +112,7 @@ fun PeriodSelectorBar(
             ) {
                 if (navigable) {
                     CycleArrow(Icons.Filled.ChevronLeft, "Previous cycle", enabled = true) {
-                        onSelect(selection.copy(cycleOffset = selection.cycleOffset - 1))
+                        onSelect(effective.copy(cycleOffset = effective.cycleOffset - 1))
                     }
                 } else {
                     Spacer(Modifier.width(8.dp))
@@ -103,7 +124,7 @@ fun PeriodSelectorBar(
                     horizontalAlignment = if (navigable) Alignment.CenterHorizontally else Alignment.Start,
                 ) {
                     Text(
-                        selection.describe(),
+                        effective.describe(),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -119,8 +140,8 @@ fun PeriodSelectorBar(
                 }
                 if (navigable) {
                     // Can't step into the future — › is disabled once back at the current cycle.
-                    CycleArrow(Icons.Filled.ChevronRight, "Next cycle", enabled = selection.cycleOffset < 0) {
-                        onSelect(selection.copy(cycleOffset = selection.cycleOffset + 1))
+                    CycleArrow(Icons.Filled.ChevronRight, "Next cycle", enabled = effective.cycleOffset < 0) {
+                        onSelect(effective.copy(cycleOffset = effective.cycleOffset + 1))
                     }
                 } else {
                     Spacer(Modifier.width(4.dp))
@@ -151,9 +172,11 @@ fun PeriodSelectorBar(
     }
     if (open) {
         PeriodSelectorSheet(
-            selection = selection,
+            selection = effective,
             onSelect = onSelect,
             onDismiss = { open = false },
+            smartCycleEnabled = smartCycleEnabled,
+            cards = cards,
         )
     }
 }
@@ -187,43 +210,91 @@ private fun PeriodSelectorSheet(
     selection: PeriodSelection,
     onSelect: (PeriodSelection) -> Unit,
     onDismiss: () -> Unit,
+    smartCycleEnabled: Boolean,
+    cards: List<CardChoice>,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var current by remember { mutableStateOf(selection) }
     var showCustom by remember { mutableStateOf(false) }
+
+    // The Smart pill only exists while the feature is on (PRD §4.7). With it off, the control is exactly the
+    // old two/three-pill set, so a stray SMART_CYCLE selection (e.g. just-disabled) maps back to Salary.
+    val types = if (smartCycleEnabled) {
+        listOf(PeriodType.MONTH, PeriodType.SALARY_CYCLE, PeriodType.SMART_CYCLE)
+    } else {
+        listOf(PeriodType.MONTH, PeriodType.SALARY_CYCLE)
+    }
+    val typeLabels = types.map {
+        when (it) {
+            PeriodType.MONTH -> "Month"
+            PeriodType.SALARY_CYCLE -> "Salary"
+            PeriodType.SMART_CYCLE -> "Smart"
+        }
+    }
+    val selectedTypeIndex = types.indexOf(current.type).let { if (it < 0) types.indexOf(PeriodType.SALARY_CYCLE) else it }
+    val showCardPicker = smartCycleEnabled && current.type == PeriodType.SMART_CYCLE
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
             SectionLabel("Cycle")
             Spacer(Modifier.height(10.dp))
             PillSegmentedControl(
-                options = listOf("Month", "Salary", "Smart"),
-                selectedIndex = current.type.ordinal,
+                options = typeLabels,
+                selectedIndex = selectedTypeIndex,
                 onSelect = { idx ->
-                    val newType = PeriodType.entries[idx]
-                    // Reset any prev/next cycle stepping when the cycle type changes (#6).
-                    current = current.copy(type = newType, cycleOffset = 0)
-                    onSelect(current) // apply immediately, keeping the range
+                    val newType = types[idx]
+                    // Reset any prev/next stepping AND any single-card narrowing when the cycle type changes
+                    // (#6) — leaving Smart shouldn't silently keep a stale selectedCardId. Smart is ALWAYS the
+                    // current cycle (stepped by the arrows), so force CURRENT — a stale Last-N would otherwise
+                    // hide the prev/next arrows (they're gated on range == CURRENT).
+                    val newRange = if (newType == PeriodType.SMART_CYCLE) PeriodRange.CURRENT else current.range
+                    current = current.copy(type = newType, range = newRange, cycleOffset = 0, selectedCardId = null)
+                    onSelect(current) // apply immediately
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Spacer(Modifier.height(18.dp))
-            SectionLabel("Range")
-            Spacer(Modifier.height(4.dp))
-            RangeRow("All", current.range == PeriodRange.ALL) {
-                onSelect(current.copy(range = PeriodRange.ALL, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
+            if (showCardPicker) {
+                // Smart Cycle is the per-instrument composite — Range (All / Last-N / Custom) doesn't apply
+                // (it always resolves the CURRENT cycle, stepped by the prev/next arrows). Instead, let the
+                // user narrow to one card's billing cycle, or keep "All cards" for the union.
+                Spacer(Modifier.height(18.dp))
+                SectionLabel("Cards")
+                Spacer(Modifier.height(4.dp))
+                RangeRow("All cards · composite", current.selectedCardId == null) {
+                    onSelect(current.copy(selectedCardId = null, cycleOffset = 0)); onDismiss()
+                }
+                cards.forEach { card ->
+                    CardPickerRow(card, selected = current.selectedCardId == card.id) {
+                        onSelect(current.copy(selectedCardId = card.id, cycleOffset = 0)); onDismiss()
+                    }
+                }
+                if (cards.isEmpty()) {
+                    Text(
+                        "Add a card to see its own billing cycle here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+            } else {
+                Spacer(Modifier.height(18.dp))
+                SectionLabel("Range")
+                Spacer(Modifier.height(4.dp))
+                RangeRow("All", current.range == PeriodRange.ALL) {
+                    onSelect(current.copy(range = PeriodRange.ALL, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
+                }
+                RangeRow("Current", current.range == PeriodRange.CURRENT) {
+                    onSelect(current.copy(range = PeriodRange.CURRENT, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
+                }
+                RangeRow("Last 3", current.range == PeriodRange.LAST_3) {
+                    onSelect(current.copy(range = PeriodRange.LAST_3, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
+                }
+                RangeRow("Last 6", current.range == PeriodRange.LAST_6) {
+                    onSelect(current.copy(range = PeriodRange.LAST_6, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
+                }
+                RangeRow("Custom range…", current.range == PeriodRange.CUSTOM) { showCustom = true }
             }
-            RangeRow("Current", current.range == PeriodRange.CURRENT) {
-                onSelect(current.copy(range = PeriodRange.CURRENT, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
-            }
-            RangeRow("Last 3", current.range == PeriodRange.LAST_3) {
-                onSelect(current.copy(range = PeriodRange.LAST_3, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
-            }
-            RangeRow("Last 6", current.range == PeriodRange.LAST_6) {
-                onSelect(current.copy(range = PeriodRange.LAST_6, customStartMillis = null, customEndExclusiveMillis = null, cycleOffset = 0)); onDismiss()
-            }
-            RangeRow("Custom range…", current.range == PeriodRange.CUSTOM) { showCustom = true }
         }
     }
 
@@ -240,6 +311,33 @@ private fun PeriodSelectorSheet(
                 onDismiss()
             },
         )
+    }
+}
+
+/** A card row in the Smart Cycle picker: a coloured chip + the card name, ticked when it's the active one. */
+@Composable
+private fun CardPickerRow(card: CardChoice, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 26.dp, height = 17.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(parseHexColor(card.colorHex)),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            card.label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
     }
 }
 

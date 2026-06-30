@@ -17,6 +17,8 @@ object Routes {
     const val REVIEW = "review"
     const val CAPTURE = "capture"
     const val RESTORE = "restore"
+    // Smart Cycle per-instrument breakdown (Round B), reached from the composite summary header.
+    const val CYCLE_BREAKDOWN = "cycle_breakdown"
 
     const val IMPORT = "import"
     const val ARG_FROM_ONBOARDING = "fromOnboarding"

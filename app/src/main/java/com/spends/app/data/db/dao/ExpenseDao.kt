@@ -144,6 +144,13 @@ interface ExpenseDao {
     )
     fun observeCardExpensesSince(since: Long): Flow<List<ExpenseEntity>>
 
+    /** One-shot active rows in [start, end) (all kinds) — the widget filters these per-instrument for the
+     *  Smart Cycle composite (RemoteViews can't collect a Flow, and the composite isn't a single GROUP BY). */
+    @Query(
+        "SELECT * FROM expenses WHERE deletedAt IS NULL AND occurredAt >= :start AND occurredAt < :end",
+    )
+    suspend fun expensesBetweenOnce(start: Long, end: Long): List<ExpenseEntity>
+
     // ---- Mutations ----
 
     @Insert

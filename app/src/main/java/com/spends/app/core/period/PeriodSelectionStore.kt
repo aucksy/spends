@@ -65,6 +65,7 @@ class PeriodSelectionStore @Inject constructor(
             customStartMillis = p[Keys.CUSTOM_START]?.takeIf { it > 0 },
             customEndExclusiveMillis = p[Keys.CUSTOM_END]?.takeIf { it > 0 },
             cycleOffset = p[Keys.OFFSET] ?: 0,
+            selectedCardId = p[Keys.SELECTED_CARD]?.takeIf { it > 0 },
         )
     }
 
@@ -75,6 +76,7 @@ class PeriodSelectionStore @Inject constructor(
             e[Keys.CUSTOM_START] = s.customStartMillis ?: 0L
             e[Keys.CUSTOM_END] = s.customEndExclusiveMillis ?: 0L
             e[Keys.OFFSET] = s.cycleOffset
+            e[Keys.SELECTED_CARD] = s.selectedCardId ?: 0L
         }
     }
 
@@ -84,5 +86,6 @@ class PeriodSelectionStore @Inject constructor(
         val CUSTOM_START = longPreferencesKey("custom_start")
         val CUSTOM_END = longPreferencesKey("custom_end")
         val OFFSET = intPreferencesKey("cycle_offset")
+        val SELECTED_CARD = longPreferencesKey("selected_card_id")
     }
 }

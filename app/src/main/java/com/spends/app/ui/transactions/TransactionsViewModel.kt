@@ -2,29 +2,34 @@ package com.spends.app.ui.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.period.CardCycleInfo
+import com.spends.app.core.period.CompositeCycleResolver
+import com.spends.app.core.period.CompositePeriod
 import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.period.ResolvedPeriod
-import com.spends.app.core.period.SmartCycleDetector
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
 import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.ExpenseRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
+import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -37,8 +42,22 @@ class TransactionsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val periodSelectionStore: PeriodSelectionStore,
     private val captureRepository: com.spends.app.data.capture.SmsCaptureRepository,
+    private val paymentMethodRepository: PaymentMethodRepository,
     categoryRepository: CategoryRepository,
 ) : ViewModel() {
+
+    /**
+     * A resolved period for the timeline. [composite] is null for a normal contiguous window (Month /
+     * Salary / ranges); non-null for the Smart Cycle composite (Round B), where [startMillis,
+     * endExclusiveMillis) is the BOUNDING range to fetch, then [CompositePeriod.contains] filters per
+     * instrument. Totals/carry-forward are computed from the filtered items for a composite.
+     */
+    private data class ResolvedB(
+        val startMillis: Long,
+        val endExclusiveMillis: Long,
+        val label: String,
+        val composite: CompositePeriod? = null,
+    )
 
     /** Categories (most-used first) for the quick swipe-to-change-category picker. */
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
@@ -48,29 +67,45 @@ class TransactionsViewModel @Inject constructor(
     private val selection = periodSelectionStore.selection
     val periodSelection: StateFlow<PeriodSelection> = selection
 
+    // Drives the period selector's Smart pill + Single-Card picker (Round B). Confirmed cards only.
+    val smartCycleEnabled: StateFlow<Boolean> =
+        settingsRepository.settings.map { it.smartCycleEnabled }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val cardChoices: StateFlow<List<CardChoice>> =
+        paymentMethodRepository.observeConfirmed()
+            .map { cards -> cards.map { CardChoice(it.id, it.label, it.colorHex) } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val searchQuery = MutableStateFlow("")
 
-    // Resolve (type, range) into a concrete window, reacting to salary-day, the auto-detected smart day,
-    // and the earliest transaction (for "All").
-    private val resolvedFlow: StateFlow<ResolvedPeriod> =
+    // Resolve (type, range) into a concrete window — or the Smart Cycle composite (Round B) when the feature
+    // is on and SMART_CYCLE is picked — reacting to the salary day, the confirmed cards, and the earliest txn.
+    private val resolvedFlow: StateFlow<ResolvedB> =
         combine(
             selection,
             settingsRepository.settings,
-            expenseRepository.observeIncomeOccurredAt(),
             expenseRepository.observeEarliestDay(),
-        ) { sel, settings, income, earliest ->
-            val smartDay = SmartCycleDetector.detectSalaryDay(income, settings.salaryCycleStartDay)
-            PeriodResolver.resolve(
-                type = sel.type,
-                range = sel.range,
-                salaryDay = settings.salaryCycleStartDay,
-                smartDay = smartDay,
-                today = LocalDate.now(DateUtils.ZONE),
-                earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
-                customStartMillis = sel.customStartMillis,
-                customEndExclusiveMillis = sel.customEndExclusiveMillis,
-                cycleOffset = sel.cycleOffset,
-            )
+            paymentMethodRepository.observeConfirmed(),
+        ) { sel, settings, earliest, cards ->
+            val today = LocalDate.now(DateUtils.ZONE)
+            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
+                resolveComposite(sel, settings.salaryCycleStartDay, today, cards)
+            } else {
+                // A stale SMART_CYCLE selection while the feature is off falls back to the salary cycle.
+                val effType = if (sel.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else sel.type
+                val r = PeriodResolver.resolve(
+                    type = effType,
+                    range = sel.range,
+                    salaryDay = settings.salaryCycleStartDay,
+                    smartDay = settings.salaryCycleStartDay,
+                    today = today,
+                    earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
+                    customStartMillis = sel.customStartMillis,
+                    customEndExclusiveMillis = sel.customEndExclusiveMillis,
+                    cycleOffset = sel.cycleOffset,
+                )
+                ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
+            }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, currentSalaryCycle())
 
     val uiState: StateFlow<TransactionsUiState> =
@@ -88,9 +123,32 @@ class TransactionsViewModel @Inject constructor(
                 expenseRepository.observeBalanceBefore(resolved.startMillis),
                 expenseRepository.observeBalanceBefore(anchorMillis),
             ) { items, kindSums, carryBeforePeriod, carryBeforeAnchor ->
-                buildState(resolved, settings, query, items, kindSums, carryBeforePeriod, carryBeforeAnchor, anchorMillis)
+                if (resolved.composite != null) {
+                    // Composite: kindSums/balanceBefore (over the bounding range) don't apply — totals come
+                    // from the per-instrument-filtered items, and carry-forward is off for the composite.
+                    buildStateComposite(resolved, settings, query, items)
+                } else {
+                    buildState(resolved, settings, query, items, kindSums, carryBeforePeriod, carryBeforeAnchor, anchorMillis)
+                }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionsUiState())
+
+    /** Build the Smart Cycle composite (all instruments) or a single card from the selection + confirmed cards. */
+    private fun resolveComposite(
+        sel: PeriodSelection,
+        salaryDay: Int,
+        today: LocalDate,
+        cards: List<com.spends.app.data.db.entity.PaymentMethodEntity>,
+    ): ResolvedB {
+        val infos = cards.map { CardCycleInfo(it.id, it.label, it.colorHex, it.last4, it.billingDay) }
+        val card = sel.selectedCardId?.let { id -> infos.firstOrNull { it.id == id } }
+        val period = if (card != null) {
+            CompositeCycleResolver.resolveSingleCard(card, salaryDay, today, sel.cycleOffset)
+        } else {
+            CompositeCycleResolver.resolveSmartCycle(infos, salaryDay, today, sel.cycleOffset)
+        }
+        return ResolvedB(period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period)
+    }
 
     fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
 
@@ -119,19 +177,79 @@ class TransactionsViewModel @Inject constructor(
             }
         }
 
-    private fun currentSalaryCycle(): ResolvedPeriod = PeriodResolver.resolve(
-        type = PeriodType.SALARY_CYCLE,
-        range = PeriodRange.CURRENT,
-        salaryDay = 1,
-        smartDay = 1,
-        today = LocalDate.now(DateUtils.ZONE),
-        earliestDataDay = null,
-        customStartMillis = null,
-        customEndExclusiveMillis = null,
-    )
+    private fun currentSalaryCycle(): ResolvedB {
+        val r = PeriodResolver.resolve(
+            type = PeriodType.SALARY_CYCLE,
+            range = PeriodRange.CURRENT,
+            salaryDay = 1,
+            smartDay = 1,
+            today = LocalDate.now(DateUtils.ZONE),
+            earliestDataDay = null,
+            customStartMillis = null,
+            customEndExclusiveMillis = null,
+        )
+        return ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
+    }
+
+    /** Smart Cycle composite: filter the bounding items to each instrument's own cycle, then build the list. */
+    private fun buildStateComposite(
+        resolved: ResolvedB,
+        settings: SettingsState,
+        query: String,
+        boundingItems: List<ExpenseWithAllocations>,
+    ): TransactionsUiState {
+        val composite = resolved.composite!!
+        val items = boundingItems.filter { composite.contains(it.expense.occurredAt, it.expense.paymentMethodId) }
+        val totals = SummaryTotals(
+            income = items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor },
+            expense = items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
+            transfer = items.filter { it.expense.kind == TxnKind.TRANSFER }.sumOf { it.expense.amountMinor },
+        )
+        val trimmed = query.trim().lowercase()
+        val searched = if (trimmed.isEmpty()) items else items.filter { it.matches(trimmed) }
+        val filtered = if (settings.hideCapturedInLists) searched.filter { it.expense.source != TxnSource.SMS } else searched
+        return TransactionsUiState(
+            loading = false,
+            window = null,
+            periodLabel = resolved.label,
+            canStepForward = false,
+            search = query,
+            totals = totals,
+            carryForward = null, // carry-forward doesn't apply to a multi-instrument composite
+            groups = buildGroups(items, filtered),
+            isComposite = true,
+        )
+    }
+
+    /** Day-group the [filtered] rows, with per-(category,KIND) totals taken from the FULL [allItems] set. */
+    private fun buildGroups(allItems: List<ExpenseWithAllocations>, filtered: List<ExpenseWithAllocations>): List<DayGroupUi> {
+        val categoryTotals: Map<Pair<Long, TxnKind>, Long> = allItems
+            .flatMap { ewa -> ewa.allocations.map { alloc -> Pair(alloc.category.id, ewa.expense.kind) to alloc.allocation.amountMinor } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, amounts) -> amounts.sum() }
+        return filtered
+            .groupBy { DateUtils.toLocalDate(it.expense.occurredAt) }
+            .toSortedMap(compareByDescending { it })
+            .map { (date, dayItems) ->
+                val rows = dayItems
+                    .sortedWith(
+                        compareByDescending<ExpenseWithAllocations> { it.expense.createdAt }
+                            .thenByDescending { it.expense.id },
+                    )
+                    .map { it.toRowUi(categoryTotals) }
+                DayGroupUi(
+                    date = date,
+                    headerLabel = DateUtils.formatDayHeader(date),
+                    expenseSubtotal = dayItems.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
+                    incomeSubtotal = dayItems.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor },
+                    netSubtotal = dayItems.sumOf { it.signedBalanceContribution() },
+                    rows = rows,
+                )
+            }
+    }
 
     private fun buildState(
-        resolved: ResolvedPeriod,
+        resolved: ResolvedB,
         settings: SettingsState,
         query: String,
         items: List<ExpenseWithAllocations>,
@@ -151,39 +269,8 @@ class TransactionsViewModel @Inject constructor(
         // #4: optionally keep SMS-captured transactions out of the timeline list (still in the totals/balance).
         val filtered = if (settings.hideCapturedInLists) searched.filter { it.expense.source != TxnSource.SMS } else searched
 
-        // Per-category total for the WHOLE selected period (#2) — "<Category> Total: X" under each row.
-        // Computed from the full period set (items), not the search/hide-filtered subset, so it's the real
-        // cycle total regardless of any active search or the hide-captured filter. Keyed by (category, KIND)
-        // so a BOTH-usage category never blends inflow and outflow into one figure: an expense row shows its
-        // category's EXPENSE total, an income row its INCOME total.
-        val categoryTotals: Map<Pair<Long, TxnKind>, Long> = items
-            .flatMap { ewa -> ewa.allocations.map { alloc -> Pair(alloc.category.id, ewa.expense.kind) to alloc.allocation.amountMinor } }
-            .groupBy({ it.first }, { it.second })
-            .mapValues { (_, amounts) -> amounts.sum() }
-
-        val groups = filtered
-            .groupBy { DateUtils.toLocalDate(it.expense.occurredAt) }
-            .toSortedMap(compareByDescending { it })
-            .map { (date, dayItems) ->
-                // Within a day, order by ENTRY order (createdAt, then id) newest-first — "as and when
-                // added" (#5). This is independent of occurredAt's time-of-day, so an auto-generated
-                // recurring item (stamped at start-of-day) no longer pins itself above transactions you
-                // add manually later in the day.
-                val rows = dayItems
-                    .sortedWith(
-                        compareByDescending<ExpenseWithAllocations> { it.expense.createdAt }
-                            .thenByDescending { it.expense.id },
-                    )
-                    .map { it.toRowUi(categoryTotals) }
-                DayGroupUi(
-                    date = date,
-                    headerLabel = DateUtils.formatDayHeader(date),
-                    expenseSubtotal = dayItems.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
-                    incomeSubtotal = dayItems.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor },
-                    netSubtotal = dayItems.sumOf { it.signedBalanceContribution() },
-                    rows = rows,
-                )
-            }
+        // Per-(category,KIND) totals come from the FULL period set (items), groups from the filtered subset.
+        val groups = buildGroups(items, filtered)
 
         return TransactionsUiState(
             loading = false,
@@ -205,6 +292,7 @@ class TransactionsViewModel @Inject constructor(
                 else -> settings.carryForwardOpeningMinor + carryBeforePeriod - carryBeforeAnchor
             },
             groups = groups,
+            isComposite = false,
         )
     }
 

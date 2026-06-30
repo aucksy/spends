@@ -2,28 +2,33 @@ package com.spends.app.ui.analytics
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.period.CardCycleInfo
+import com.spends.app.core.period.CompositeCycleResolver
+import com.spends.app.core.period.CompositePeriod
 import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
-import com.spends.app.core.period.ResolvedPeriod
-import com.spends.app.core.period.SmartCycleDetector
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.CategorySpend
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
+import com.spends.app.data.db.entity.PaymentMethodEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.repo.ExpenseRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.repo.RecurringRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import javax.inject.Inject
@@ -67,37 +72,61 @@ data class AnalyticsUiState(
     val isEmpty: Boolean get() = !loading && expenseMinor == 0L && incomeMinor == 0L
 }
 
+/** A resolved Analytics period — [composite] is non-null for the Smart Cycle composite (Round B). */
+private data class ResolvedB(
+    val startMillis: Long,
+    val endExclusiveMillis: Long,
+    val label: String,
+    val composite: CompositePeriod? = null,
+)
+
 @HiltViewModel
 class AnalyticsViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val recurringRepository: RecurringRepository,
     private val settingsRepository: SettingsRepository,
     private val periodSelectionStore: PeriodSelectionStore,
+    private val paymentMethodRepository: PaymentMethodRepository,
 ) : ViewModel() {
 
     // Shared with the Transactions screen (#8) so the cycle/range stays in sync across both.
     private val selection = periodSelectionStore.selection
     val periodSelection: StateFlow<PeriodSelection> = selection
 
-    private val resolvedFlow: StateFlow<ResolvedPeriod> =
+    // Drives the period selector's Smart pill + Single-Card picker (Round B), mirroring Transactions.
+    val smartCycleEnabled: StateFlow<Boolean> =
+        settingsRepository.settings.map { it.smartCycleEnabled }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val cardChoices: StateFlow<List<CardChoice>> =
+        paymentMethodRepository.observeConfirmed()
+            .map { cards -> cards.map { CardChoice(it.id, it.label, it.colorHex) } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val resolvedFlow: StateFlow<ResolvedB> =
         combine(
             selection,
             settingsRepository.settings,
-            expenseRepository.observeIncomeOccurredAt(),
             expenseRepository.observeEarliestDay(),
-        ) { sel, settings, income, earliest ->
-            val smartDay = SmartCycleDetector.detectSalaryDay(income, settings.salaryCycleStartDay)
-            PeriodResolver.resolve(
-                type = sel.type,
-                range = sel.range,
-                salaryDay = settings.salaryCycleStartDay,
-                smartDay = smartDay,
-                today = LocalDate.now(DateUtils.ZONE),
-                earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
-                customStartMillis = sel.customStartMillis,
-                customEndExclusiveMillis = sel.customEndExclusiveMillis,
-                cycleOffset = sel.cycleOffset,
-            )
+            paymentMethodRepository.observeConfirmed(),
+        ) { sel, settings, earliest, cards ->
+            val today = LocalDate.now(DateUtils.ZONE)
+            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
+                resolveComposite(sel, settings.salaryCycleStartDay, today, cards)
+            } else {
+                val effType = if (sel.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else sel.type
+                val r = PeriodResolver.resolve(
+                    type = effType,
+                    range = sel.range,
+                    salaryDay = settings.salaryCycleStartDay,
+                    smartDay = settings.salaryCycleStartDay,
+                    today = today,
+                    earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
+                    customStartMillis = sel.customStartMillis,
+                    customEndExclusiveMillis = sel.customEndExclusiveMillis,
+                    cycleOffset = sel.cycleOffset,
+                )
+                ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
+            }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, currentCycle())
 
     val state: StateFlow<AnalyticsUiState> =
@@ -108,25 +137,67 @@ class AnalyticsViewModel @Inject constructor(
                 expenseRepository.observeBetween(resolved.startMillis, resolved.endExclusiveMillis),
                 recurringRepository.observeAll(),
             ) { catSpend, kindSums, items, rules ->
-                buildState(resolved, catSpend, kindSums, items, rules)
+                if (resolved.composite != null) {
+                    buildStateComposite(resolved, items, rules)
+                } else {
+                    buildState(resolved, catSpend, kindSums, items, rules)
+                }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
 
     fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
 
-    private fun currentCycle(): ResolvedPeriod = PeriodResolver.resolve(
-        type = PeriodType.SALARY_CYCLE,
-        range = PeriodRange.CURRENT,
-        salaryDay = 1,
-        smartDay = 1,
-        today = LocalDate.now(DateUtils.ZONE),
-        earliestDataDay = null,
-        customStartMillis = null,
-        customEndExclusiveMillis = null,
-    )
+    private fun resolveComposite(sel: PeriodSelection, salaryDay: Int, today: LocalDate, cards: List<PaymentMethodEntity>): ResolvedB {
+        val infos = cards.map { CardCycleInfo(it.id, it.label, it.colorHex, it.last4, it.billingDay) }
+        val card = sel.selectedCardId?.let { id -> infos.firstOrNull { it.id == id } }
+        val period = if (card != null) {
+            CompositeCycleResolver.resolveSingleCard(card, salaryDay, today, sel.cycleOffset)
+        } else {
+            CompositeCycleResolver.resolveSmartCycle(infos, salaryDay, today, sel.cycleOffset)
+        }
+        return ResolvedB(period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period)
+    }
+
+    private fun currentCycle(): ResolvedB {
+        val r = PeriodResolver.resolve(
+            type = PeriodType.SALARY_CYCLE,
+            range = PeriodRange.CURRENT,
+            salaryDay = 1,
+            smartDay = 1,
+            today = LocalDate.now(DateUtils.ZONE),
+            earliestDataDay = null,
+            customStartMillis = null,
+            customEndExclusiveMillis = null,
+        )
+        return ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
+    }
+
+    /** Smart Cycle composite analytics — totals, donut + weekly all from the per-instrument-filtered items. */
+    private fun buildStateComposite(
+        resolved: ResolvedB,
+        boundingItems: List<ExpenseWithAllocations>,
+        rules: List<RecurringRuleEntity>,
+    ): AnalyticsUiState {
+        val composite = resolved.composite!!
+        val items = boundingItems.filter { composite.contains(it.expense.occurredAt, it.expense.paymentMethodId) }
+        val catSpend = items.filter { it.expense.kind == TxnKind.EXPENSE }
+            .flatMap { it.allocations }
+            .groupBy { it.category.id }
+            .map { (id, allocs) ->
+                val c = allocs.first().category
+                CategorySpend(categoryId = id, name = c.name, colorHex = c.colorHex, iconKey = c.iconKey, total = allocs.sumOf { it.allocation.amountMinor })
+            }
+            .sortedByDescending { it.total }
+        val kindSums = listOf(
+            KindSum(TxnKind.INCOME, items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor }),
+            KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
+            KindSum(TxnKind.TRANSFER, items.filter { it.expense.kind == TxnKind.TRANSFER }.sumOf { it.expense.amountMinor }),
+        )
+        return buildState(resolved, catSpend, kindSums, items, rules)
+    }
 
     private fun buildState(
-        resolved: ResolvedPeriod,
+        resolved: ResolvedB,
         catSpend: List<CategorySpend>,
         kindSums: List<KindSum>,
         items: List<ExpenseWithAllocations>,

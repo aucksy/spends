@@ -67,6 +67,8 @@ fun AnalyticsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
+    val smartCycleEnabled by viewModel.smartCycleEnabled.collectAsStateWithLifecycle()
+    val cardChoices by viewModel.cardChoices.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
 
     Column(
@@ -84,6 +86,8 @@ fun AnalyticsScreen(
             label = state.periodLabel,
             onSelect = viewModel::applySelection,
             onOpenSettings = onOpenSettings,
+            smartCycleEnabled = smartCycleEnabled,
+            cards = cardChoices,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))

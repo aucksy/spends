@@ -2,6 +2,9 @@ package com.spends.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.period.PeriodSelection
+import com.spends.app.core.period.PeriodSelectionStore
+import com.spends.app.core.period.PeriodType
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
@@ -19,6 +22,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
+    private val periodSelectionStore: PeriodSelectionStore,
 ) : ViewModel() {
 
     val state: StateFlow<SettingsState> = settingsRepository.settings
@@ -49,7 +53,23 @@ class SettingsViewModel @Inject constructor(
     fun setCarryForwardAnchor(epochDay: Long) = viewModelScope.launch { settingsRepository.setCarryForwardAnchor(epochDay) }
     fun setCarryForwardOpening(minor: Long) = viewModelScope.launch { settingsRepository.setCarryForwardOpening(minor) }
     fun setTrashRetentionDays(days: Int) = viewModelScope.launch { settingsRepository.setTrashRetentionDays(days) }
-    fun setSmartCycle(value: Boolean) = viewModelScope.launch { settingsRepository.setSmartCycleEnabled(value) }
+    /**
+     * Turning Smart Cycle ON makes the composite the natural default — switch the period selection to it so
+     * the user lands on "one number across all instruments" without hunting for the pill. Turning it OFF
+     * leaves a SMART_CYCLE selection orphaned (the pill disappears), so fall back to the salary cycle.
+     * Any non-Smart selection is left untouched on enable (we don't override an explicit Month/Salary pick).
+     */
+    fun setSmartCycle(value: Boolean) = viewModelScope.launch {
+        settingsRepository.setSmartCycleEnabled(value)
+        val current = periodSelectionStore.selection.value
+        if (value) {
+            if (current.type != PeriodType.SMART_CYCLE) {
+                periodSelectionStore.set(PeriodSelection(type = PeriodType.SMART_CYCLE))
+            }
+        } else if (current.type == PeriodType.SMART_CYCLE) {
+            periodSelectionStore.set(PeriodSelection(type = PeriodType.SALARY_CYCLE))
+        }
+    }
     /** Persist the widget-eye setting, THEN run [onSaved] (the widget refresh) — so the refresh reads the
      *  just-committed value instead of racing the async DataStore write (#2: it wasn't updating instantly). */
     fun setWidgetEyeHidden(value: Boolean, onSaved: () -> Unit) = viewModelScope.launch {
