@@ -246,6 +246,7 @@ private fun SnapshotCategory.toEntity() = CategoryEntity(
 private fun ExpenseEntity.toSnapshot() = SnapshotExpense(
     id, amountMinor, occurredAt, merchantRaw, note, paymentMethodId, source.name, kind.name,
     direction.name, parseConfidence, dedupeHash, rawCaptureId, createdAt, updatedAt, deletedAt,
+    recurringRuleId,
 )
 
 private fun SnapshotExpense.toEntity() = ExpenseEntity(
@@ -255,7 +256,7 @@ private fun SnapshotExpense.toEntity() = ExpenseEntity(
     kind = runCatching { TxnKind.valueOf(kind) }.getOrDefault(TxnKind.EXPENSE),
     direction = runCatching { Direction.valueOf(direction) }.getOrDefault(Direction.DEBIT),
     parseConfidence = parseConfidence, dedupeHash = dedupeHash, rawCaptureId = rawCaptureId,
-    createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
+    createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt, recurringRuleId = recurringRuleId,
 )
 
 private fun AllocationEntity.toSnapshot() = SnapshotAllocation(id, expenseId, categoryId, amountMinor)
@@ -266,7 +267,7 @@ private fun RecurringRuleEntity.toSnapshot() = SnapshotRecurring(
     id = id, amountMinor = amountMinor, kind = kind.name, categoryId = categoryId, merchant = merchant,
     note = note, frequency = frequency.name, intervalCount = intervalCount, anchorDay = anchorDay,
     startDate = startDate, nextRunAt = nextRunAt, lastRunAt = lastRunAt, active = active,
-    createdAt = createdAt, updatedAt = updatedAt,
+    createdAt = createdAt, updatedAt = updatedAt, occurrenceLimit = occurrenceLimit,
 )
 
 private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
@@ -276,6 +277,7 @@ private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
     frequency = runCatching { RecurrenceFreq.valueOf(frequency) }.getOrDefault(RecurrenceFreq.MONTHLY),
     intervalCount = intervalCount, anchorDay = anchorDay, startDate = startDate, nextRunAt = nextRunAt,
     lastRunAt = lastRunAt, active = active, createdAt = createdAt, updatedAt = updatedAt,
+    occurrenceLimit = occurrenceLimit,
 )
 
 private fun PaymentMethodEntity.toSnapshot() = SnapshotPaymentMethod(

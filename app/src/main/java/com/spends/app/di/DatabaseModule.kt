@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
+import com.spends.app.data.db.dao.IgnoredPatternDao
 import com.spends.app.data.db.dao.MerchantCategoryDao
 import com.spends.app.data.db.dao.PaymentMethodDao
 import com.spends.app.data.db.dao.PendingCaptureDao
@@ -35,6 +36,7 @@ object DatabaseModule {
                 SpendsDatabase.MIGRATION_7_8,
                 SpendsDatabase.MIGRATION_8_9,
                 SpendsDatabase.MIGRATION_9_10,
+                SpendsDatabase.MIGRATION_10_11,
             )
             .build()
 
@@ -55,4 +57,7 @@ object DatabaseModule {
 
     @Provides
     fun providePaymentMethodDao(db: SpendsDatabase): PaymentMethodDao = db.paymentMethodDao()
+
+    @Provides
+    fun provideIgnoredPatternDao(db: SpendsDatabase): IgnoredPatternDao = db.ignoredPatternDao()
 }

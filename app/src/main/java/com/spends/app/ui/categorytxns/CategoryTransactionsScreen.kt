@@ -95,6 +95,12 @@ private fun CategoryHeader(state: CategoryTxnsUiState) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "Monthly average · ${Money.formatRupees(state.monthlyAverageMinor)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 }

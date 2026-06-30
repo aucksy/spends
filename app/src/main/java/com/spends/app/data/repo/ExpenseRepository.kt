@@ -31,6 +31,7 @@ data class TransactionInput(
     val source: TxnSource = TxnSource.MANUAL,
     val dedupeHash: String? = null,
     val parseConfidence: Int = 100,
+    val recurringRuleId: Long? = null,
 )
 
 @Singleton
@@ -125,6 +126,7 @@ class ExpenseRepository @Inject constructor(
                 direction = directionFor(input.kind),
                 parseConfidence = input.parseConfidence,
                 dedupeHash = input.dedupeHash,
+                recurringRuleId = input.recurringRuleId,
                 createdAt = now,
                 updatedAt = now,
             ),
@@ -151,6 +153,19 @@ class ExpenseRepository @Inject constructor(
         dao.deleteAllocationsFor(id)
         dao.insertAllocations(input.allocations.toEntities(id))
     }
+
+    /**
+     * Apply a recurring rule's new value fields to ALL its past, non-trashed occurrences (#5 — "edit all").
+     * Updates each row's amount/merchant/note and its single allocation's category + amount in one
+     * transaction. Dates are deliberately left untouched (only the rule's schedule rolls forward). Recurring
+     * rows always have exactly one allocation, so the single-allocation UPDATE is exact.
+     */
+    suspend fun updateRecurringPast(ruleId: Long, amountMinor: Long, categoryId: Long, merchant: String?, note: String?) =
+        db.withTransaction {
+            val now = DateUtils.nowMillis()
+            dao.updateRecurringExpenses(ruleId, amountMinor, merchant, note, now)
+            dao.updateRecurringAllocations(ruleId, categoryId, amountMinor)
+        }
 
     /**
      * Replace a transaction's category with a single allocation for [categoryId] over the full

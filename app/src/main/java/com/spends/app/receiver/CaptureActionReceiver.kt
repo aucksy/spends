@@ -31,20 +31,29 @@ class CaptureActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val notifId = intent.getIntExtra(EXTRA_NOTIF_ID, 0)
         NotificationManagerCompat.from(context).cancel(notifId)
-        if (intent.action != ACTION_ADD) return // ACTION_IGNORE (or anything else): just dismiss
 
         val sender = intent.getStringExtra(EXTRA_SENDER)
-        val body = intent.getStringExtra(EXTRA_BODY) ?: return
+        val body = intent.getStringExtra(EXTRA_BODY)
         val receivedAt = intent.getLongExtra(EXTRA_RECEIVED_AT, System.currentTimeMillis())
+        if (body == null) return
 
         val capture = EntryPointAccessors
             .fromApplication(context.applicationContext, CaptureActionEntryPoint::class.java)
             .captureRepository()
 
+        when (intent.action) {
+            // #7: learn from the ignore. After enough ignores of the same pattern, SmsReceiver stops
+            // posting its alert and quietly queues it for review instead.
+            ACTION_IGNORE -> launchAsync { capture.recordIgnore(sender, body, receivedAt) }
+            ACTION_ADD -> launchAsync { capture.captureReturningId(sender, body, receivedAt) }
+        }
+    }
+
+    private fun BroadcastReceiver.launchAsync(block: suspend () -> Unit) {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                runCatching { capture.captureReturningId(sender, body, receivedAt) }
+                runCatching { block() }
             } finally {
                 pending.finish()
             }

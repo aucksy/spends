@@ -3,13 +3,9 @@ package com.spends.app.core
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import com.spends.app.work.BackupScheduler
-import com.spends.app.work.RecurringWorker
+import com.spends.app.work.RecurringScheduler
 import dagger.hilt.android.HiltAndroidApp
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
@@ -30,11 +26,11 @@ class SpendsApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        // Daily backstop for materialising recurring rules. KEEP keeps an existing schedule intact
-        // across launches. (getInstance triggers on-demand WorkManager init using our config above.)
-        val wm = WorkManager.getInstance(this)
-        val daily = PeriodicWorkRequestBuilder<RecurringWorker>(1, TimeUnit.DAYS).build()
-        wm.enqueueUniquePeriodicWork(RecurringWorker.UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, daily)
+        // Materialise recurring rules at ~9 AM local + notify (#3). The app ALSO runs a silent pass on
+        // launch (MainViewModel), so this worker is the backstop for when the app isn't opened — it's the
+        // one that posts the "recurring added" notification. UPDATE re-anchors to the next 9 AM each launch,
+        // which is correct: if you open the app daily, the launch pass handles it and this never needs to fire.
+        RecurringScheduler.schedule(this, replace = true)
 
         // Daily Drive auto-backup runs near a user-chosen time (#11); the worker self-gates on the toggle.
         // KEEP so a process restart never disturbs the persisted schedule (which already holds the user's

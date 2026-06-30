@@ -28,10 +28,14 @@ class CategoriesViewModel @Inject constructor(
     val state: StateFlow<CategoriesUiState> = categoryRepository.observeAll()
         .map { all ->
             val active = all.filterNot { it.isArchived }
+            // Manage-categories list is alphabetical within each group (#4) — the most-used-first ordering
+            // stays only in the add-transaction picker, not here.
             CategoriesUiState(
-                expense = active.filter { it.usage == CategoryUsage.EXPENSE || it.usage == CategoryUsage.BOTH },
-                income = active.filter { it.usage == CategoryUsage.INCOME || it.usage == CategoryUsage.BOTH },
-                archived = all.filter { it.isArchived },
+                expense = active.filter { it.usage == CategoryUsage.EXPENSE || it.usage == CategoryUsage.BOTH }
+                    .sortedBy { it.name.lowercase() },
+                income = active.filter { it.usage == CategoryUsage.INCOME || it.usage == CategoryUsage.BOTH }
+                    .sortedBy { it.name.lowercase() },
+                archived = all.filter { it.isArchived }.sortedBy { it.name.lowercase() },
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CategoriesUiState())

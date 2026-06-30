@@ -26,6 +26,8 @@ data class RecurringInput(
     val frequency: RecurrenceFreq,
     val intervalCount: Int,
     val startDate: Long,
+    // 0 = repeats forever; N>0 = stop after N occurrences total (e.g. an EMI for 12 months) (#8).
+    val occurrenceLimit: Int = 0,
 )
 
 @Singleton
@@ -64,11 +66,18 @@ class RecurringRepository @Inject constructor(
             active = true,
             createdAt = now,
             updatedAt = now,
+            occurrenceLimit = input.occurrenceLimit.coerceAtLeast(0),
         )
         return dao.insert(rule)
     }
 
-    suspend fun update(id: Long, input: RecurringInput) {
+    /**
+     * Edit a rule. The schedule always rolls FORWARD (never backfills past dates from an edit). When
+     * [applyToPast] is true (#5), the already-generated past transactions also get the new value fields
+     * (amount / category / merchant / note) — but never their dates (those stay where they landed). When
+     * false, only upcoming occurrences carry the change.
+     */
+    suspend fun update(id: Long, input: RecurringInput, applyToPast: Boolean = false) {
         val existing = dao.getById(id) ?: return
         val now = DateUtils.nowMillis()
         val startLocal = DateUtils.toLocalDate(input.startDate)
@@ -77,6 +86,10 @@ class RecurringRepository @Inject constructor(
         // Editing must NOT backfill: roll the schedule forward to the first occurrence on/after today
         // so changing the amount/note of an old rule never re-creates its past occurrences.
         val nextRun = firstRunOnOrAfter(startLocal, DateUtils.toLocalDate(now), input.frequency, interval, anchor)
+        // A CAPPED rule that had auto-finished (active=false, occurrenceLimit>0) comes back to life when
+        // edited — e.g. raising an EMI from 12 to 18 occurrences. The immediate materializeDue after save
+        // self-corrects: it generates any remaining occurrences, or re-finishes the rule if there are none.
+        val reactivate = !existing.active && existing.occurrenceLimit > 0
         dao.update(
             existing.copy(
                 amountMinor = input.amountMinor,
@@ -89,10 +102,21 @@ class RecurringRepository @Inject constructor(
                 anchorDay = anchor,
                 startDate = input.startDate,
                 nextRunAt = DateUtils.startOfDayMillis(nextRun),
+                active = if (reactivate) true else existing.active,
                 updatedAt = now,
+                occurrenceLimit = input.occurrenceLimit.coerceAtLeast(0),
                 // lastRunAt preserved by copy().
             ),
         )
+        if (applyToPast) {
+            expenseRepository.updateRecurringPast(
+                ruleId = id,
+                amountMinor = input.amountMinor,
+                categoryId = input.categoryId,
+                merchant = input.merchant?.ifBlank { null },
+                note = input.note?.ifBlank { null },
+            )
+        }
     }
 
     suspend fun setActive(id: Long, active: Boolean) =
@@ -121,7 +145,10 @@ class RecurringRepository @Inject constructor(
                     var date = DateUtils.toLocalDate(rule.nextRunAt)
                     var last = rule.lastRunAt
                     var guard = 0
-                    while (!date.isAfter(today) && guard < maxCatchUpPerRule) {
+                    // For a capped rule (#8), the last allowed date is the Nth occurrence from the start; we
+                    // never generate past it, and deactivate the rule once it's behind us.
+                    val limitDate = if (rule.occurrenceLimit > 0) nthOccurrenceDate(rule) else null
+                    while (!date.isAfter(today) && guard < maxCatchUpPerRule && (limitDate == null || !date.isAfter(limitDate))) {
                         // Stamp at start-of-day so an auto-added recurring item sits at the BASE of its
                         // day — any transaction you enter manually during the day (real wall-clock time)
                         // sorts above it, instead of a fixed noon stamp pinning it over newer entries.
@@ -138,6 +165,7 @@ class RecurringRepository @Inject constructor(
                                     allocations = listOf(AllocationInput(rule.categoryId, rule.amountMinor)),
                                     source = TxnSource.RECURRING,
                                     dedupeHash = hash,
+                                    recurringRuleId = rule.id, // link back for "edit all past" (#5) + counting (#8)
                                 ),
                             )
                             last = occurredAt
@@ -146,11 +174,29 @@ class RecurringRepository @Inject constructor(
                         date = RecurrenceMath.nextDate(date, rule.frequency, rule.intervalCount, rule.anchorDay)
                         guard++
                     }
-                    dao.update(rule.copy(nextRunAt = DateUtils.startOfDayMillis(date), lastRunAt = last, updatedAt = now))
+                    // A capped rule whose schedule has advanced beyond its final occurrence is finished — stop it.
+                    val finished = limitDate != null && date.isAfter(limitDate)
+                    dao.update(
+                        rule.copy(
+                            nextRunAt = DateUtils.startOfDayMillis(date),
+                            lastRunAt = last,
+                            active = if (finished) false else rule.active,
+                            updatedAt = now,
+                        ),
+                    )
                 }
             }
         }
         created
+    }
+
+    /** The date of a capped rule's FINAL (Nth) occurrence = its start stepped (N-1) times by the cadence. */
+    private fun nthOccurrenceDate(rule: RecurringRuleEntity): LocalDate {
+        var d = DateUtils.toLocalDate(rule.startDate)
+        repeat((rule.occurrenceLimit - 1).coerceAtLeast(0)) {
+            d = RecurrenceMath.nextDate(d, rule.frequency, rule.intervalCount, rule.anchorDay)
+        }
+        return d
     }
 
     /** Roll [start] forward by the cadence until it is on/after [today] (no DB writes). */

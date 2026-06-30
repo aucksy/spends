@@ -12,10 +12,7 @@ import com.spends.app.R
 import com.spends.app.core.MainActivity
 import com.spends.app.core.QuickAddActivity
 import com.spends.app.core.money.Money
-import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
-import com.spends.app.core.period.PeriodSelection
-import com.spends.app.core.period.PeriodType
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.settings.SettingsRepository
@@ -46,6 +43,7 @@ class SummaryWidget : AppWidgetProvider() {
         fun expenseRepository(): ExpenseRepository
         fun settingsRepository(): SettingsRepository
         fun widgetMaskStore(): WidgetMaskStore
+        fun periodSelectionStore(): com.spends.app.core.period.PeriodSelectionStore
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -84,22 +82,27 @@ class SummaryWidget : AppWidgetProvider() {
             try {
                 val ep = entryPoint(context)
                 val settings = ep.settingsRepository().settings.first()
+                // Mirror whatever the user last selected in the app (#6) — read one-shot from the persisted
+                // store. SMART_CYCLE is approximated with the salary day (rarely used on the widget); ALL
+                // falls back to PeriodResolver's 5-year floor since the widget doesn't fetch the earliest day.
+                val selection = ep.periodSelectionStore().current()
                 val resolved = PeriodResolver.resolve(
-                    type = PeriodType.SALARY_CYCLE,
-                    range = PeriodRange.CURRENT,
+                    type = selection.type,
+                    range = selection.range,
                     salaryDay = settings.salaryCycleStartDay,
-                    smartDay = settings.salaryCycleStartDay, // unused for CURRENT/SALARY_CYCLE
+                    smartDay = settings.salaryCycleStartDay,
                     today = LocalDate.now(DateUtils.ZONE),
                     earliestDataDay = null,
-                    customStartMillis = null,
-                    customEndExclusiveMillis = null,
+                    customStartMillis = selection.customStartMillis,
+                    customEndExclusiveMillis = selection.customEndExclusiveMillis,
+                    cycleOffset = selection.cycleOffset,
                 )
                 val sums = ep.expenseRepository().kindSumsOnce(resolved.startMillis, resolved.endExclusiveMillis)
                 val income = sums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0L
                 val expense = sums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
                 val balance = income - expense
-                // Cycle NAME + dates (#11), e.g. "Current Salary Cycle · 1 Aug – 31 Aug".
-                val cycleName = PeriodSelection(PeriodType.SALARY_CYCLE, PeriodRange.CURRENT).describe()
+                // Cycle NAME + dates (#11), now reflecting the user's actual selection (#6).
+                val cycleName = selection.describe()
                 val store = ep.widgetMaskStore()
                 val eyeHidden = settings.widgetEyeHidden
                 ids.forEach { id ->

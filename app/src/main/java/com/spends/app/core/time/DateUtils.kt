@@ -11,13 +11,27 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Storage rule: amounts of time are stored as epoch-millis (UTC). Display and all
- * day/month/cycle math happen in [ZONE] (Asia/Kolkata). minSdk 26 gives us java.time natively,
- * so no desugaring is required.
+ * Storage rule: amounts of time are stored as epoch-millis (UTC). Display and all day/month/cycle math
+ * happen in [ZONE] — the **device's current time zone** (#3), so cycles, day grouping, the auto-dark
+ * window, the daily-backup time, and recurring all follow wherever the user actually is (not a fixed
+ * IST). minSdk 26 gives us java.time natively, so no desugaring is required.
  */
 object DateUtils {
 
-    val ZONE: ZoneId = ZoneId.of("Asia/Kolkata")
+    /** The device's current time zone, re-read on each access so a travel / DST change is picked up live. */
+    val ZONE: ZoneId get() = ZoneId.systemDefault()
+
+    /**
+     * A FIXED zone used ONLY for dedupe day-bucketing (SMS capture / manual-vs-scan keys), never for
+     * display. It stays constant regardless of the device zone so (a) hashes computed by earlier versions
+     * (which always used IST) still match — no mass re-duplication — and (b) re-scanning the same SMS after
+     * the user travels can't bucket it to a different day and slip past dedupe. Display/cycles use [ZONE].
+     */
+    private val DEDUPE_ZONE: ZoneId = ZoneId.of("Asia/Kolkata")
+
+    /** The dedupe day-bucket (epoch day) of an instant, in the fixed [DEDUPE_ZONE] — travel-stable. */
+    fun dedupeEpochDay(epochMillis: Long): Long =
+        Instant.ofEpochMilli(epochMillis).atZone(DEDUPE_ZONE).toLocalDate().toEpochDay()
 
     private val dayFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)
     private val dayMonthFormatter = DateTimeFormatter.ofPattern("EEE, d MMM", Locale.ENGLISH)

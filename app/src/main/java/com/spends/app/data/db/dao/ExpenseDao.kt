@@ -69,6 +69,14 @@ interface ExpenseDao {
     @Query("UPDATE expenses SET paymentMethodId = :to, updatedAt = :ts WHERE paymentMethodId = :from")
     suspend fun reassignPaymentMethod(from: Long, to: Long, ts: Long)
 
+    /** Apply a recurring rule's new value fields to its already-generated (non-trashed) rows (#5, edit-all). */
+    @Query("UPDATE expenses SET amountMinor = :amount, merchantRaw = :merchant, note = :note, updatedAt = :ts WHERE recurringRuleId = :ruleId AND deletedAt IS NULL")
+    suspend fun updateRecurringExpenses(ruleId: Long, amount: Long, merchant: String?, note: String?, ts: Long)
+
+    /** Re-point + resize the single allocation of each past recurring row to the rule's new category/amount (#5). */
+    @Query("UPDATE allocations SET categoryId = :categoryId, amountMinor = :amount WHERE expenseId IN (SELECT id FROM expenses WHERE recurringRuleId = :ruleId AND deletedAt IS NULL)")
+    suspend fun updateRecurringAllocations(ruleId: Long, categoryId: Long, amount: Long)
+
     // ---- Trash ----
 
     @Transaction

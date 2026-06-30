@@ -34,6 +34,8 @@ data class CategoryTxnsUiState(
     val categoryName: String = "",
     val totalMinor: Long = 0,
     val count: Int = 0,
+    // Average spend per month across the SELECTED period (#2): total ÷ the period's length in months.
+    val monthlyAverageMinor: Long = 0,
     val rows: List<CategoryTxnRow> = emptyList(),
 )
 
@@ -52,11 +54,24 @@ class CategoryTransactionsViewModel @Inject constructor(
         expenseRepository.observeByCategoryBetween(categoryId, startMillis, endExclusiveMillis)
             .map { items ->
                 val rows = items.map { it.toRow() }
+                val total = rows.sumOf { it.amountMinor }
+                // Months for the average (#2): from the FIRST transaction in this period up to the period
+                // end (capped at today). Using the actual data span keeps a full-data period at its true
+                // length, but doesn't divide All-time's wide window by years when there's only a little data.
+                val earliest = items.minOfOrNull { it.expense.occurredAt }
+                val now = DateUtils.nowMillis()
+                val spanEnd = minOf(endExclusiveMillis.takeIf { it > 0 } ?: now, now)
+                val months = if (earliest == null || spanEnd <= earliest) {
+                    1.0
+                } else {
+                    ((spanEnd - earliest).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
+                }
                 CategoryTxnsUiState(
                     loading = false,
                     categoryName = categoryName,
-                    totalMinor = rows.sumOf { it.amountMinor },
+                    totalMinor = total,
                     count = rows.size,
+                    monthlyAverageMinor = (total / months).toLong(),
                     rows = rows,
                 )
             }

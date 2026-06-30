@@ -94,7 +94,7 @@ fun RecurringScreen(
             categories = categories,
             onCancel = { editing = false },
             onDelete = editTarget?.let { target -> { viewModel.delete(target.id); editing = false } },
-            onSave = { input -> viewModel.save(input, editTarget?.id); editing = false },
+            onSave = { input, applyToPast -> viewModel.save(input, editTarget?.id, applyToPast); editing = false },
         )
         return
     }
@@ -241,7 +241,7 @@ private fun RecurringEditor(
     categories: List<CategoryEntity>,
     onCancel: () -> Unit,
     onDelete: (() -> Unit)?,
-    onSave: (RecurringInput) -> Unit,
+    onSave: (RecurringInput, Boolean) -> Unit,
 ) {
     var amountMinor by remember { mutableStateOf(initial?.amountMinor?.takeIf { it > 0 }) }
     var kind by remember { mutableStateOf(initial?.kind ?: TxnKind.EXPENSE) }
@@ -251,10 +251,15 @@ private fun RecurringEditor(
     var startDate by remember { mutableStateOf(initial?.startDate ?: DateUtils.nowMillis()) }
     var merchant by remember { mutableStateOf(initial?.merchant ?: "") }
     var note by remember { mutableStateOf(initial?.note ?: "") }
+    // #8 "repeat N times": occurrenceLimit 0 = forever; >0 = stop after N.
+    var limited by remember { mutableStateOf((initial?.occurrenceLimit ?: 0) > 0) }
+    var occurrenceCount by remember { mutableStateOf((initial?.occurrenceLimit ?: 0).takeIf { it > 0 } ?: 12) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showAddBlocked by remember { mutableStateOf(false) }
     var showAmountKeypad by remember { mutableStateOf(false) }
+    // #5 edit scope: when editing an existing rule, ask whether the change also rewrites past occurrences.
+    var pendingInput by remember { mutableStateOf<RecurringInput?>(null) }
 
     val usageFilter = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
@@ -369,6 +374,35 @@ private fun RecurringEditor(
                 Text(frequency.unitLabel(intervalCount), style = MaterialTheme.typography.bodyLarge)
             }
 
+            // #8 — optionally cap the number of occurrences (e.g. an EMI for 12 months).
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("End after a set number", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "For a fixed run like an EMI — e.g. 12 months, then it stops on its own.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = limited, onCheckedChange = { on -> limited = on; if (on && occurrenceCount < 1) occurrenceCount = 12 })
+            }
+            if (limited) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    Text("After", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.width(12.dp))
+                    IconButton(onClick = { if (occurrenceCount > 1) occurrenceCount-- }, enabled = occurrenceCount > 1) {
+                        Icon(Icons.Filled.Remove, contentDescription = "Fewer")
+                    }
+                    Text("$occurrenceCount", style = MaterialTheme.typography.titleMedium)
+                    IconButton(onClick = { if (occurrenceCount < 999) occurrenceCount++ }) {
+                        Icon(Icons.Filled.Add, contentDescription = "More")
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (occurrenceCount == 1) "time" else "times", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -419,18 +453,19 @@ private fun RecurringEditor(
                 onClick = {
                     val a = amountMinor ?: return@Button
                     val c = categoryId ?: return@Button
-                    onSave(
-                        RecurringInput(
-                            amountMinor = a,
-                            kind = kind,
-                            categoryId = c,
-                            merchant = merchant,
-                            note = note,
-                            frequency = frequency,
-                            intervalCount = intervalCount,
-                            startDate = startDate,
-                        ),
+                    val input = RecurringInput(
+                        amountMinor = a,
+                        kind = kind,
+                        categoryId = c,
+                        merchant = merchant,
+                        note = note,
+                        frequency = frequency,
+                        intervalCount = intervalCount,
+                        startDate = startDate,
+                        occurrenceLimit = if (limited) occurrenceCount else 0,
                     )
+                    // New rule → just save. Editing → ask whether to also rewrite past occurrences (#5).
+                    if (initial == null) onSave(input, false) else pendingInput = input
                 },
                 enabled = canSave,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -484,6 +519,21 @@ private fun RecurringEditor(
             title = "Amount",
             onConfirm = { amountMinor = it },
             onDismiss = { showAmountKeypad = false },
+        )
+    }
+
+    // #5 — on an edit, choose whether the change also rewrites the transactions already added by this rule.
+    pendingInput?.let { input ->
+        AlertDialog(
+            onDismissRequest = { pendingInput = null },
+            title = { Text("Apply changes to") },
+            text = { Text("Update only upcoming transactions, or also the ones this rule has already added? Amount, category, merchant and note are updated on past entries — their dates stay put.") },
+            confirmButton = {
+                TextButton(onClick = { pendingInput = null; onSave(input, true) }) { Text("All, incl. past") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingInput = null; onSave(input, false) }) { Text("Only upcoming") }
+            },
         )
     }
 }

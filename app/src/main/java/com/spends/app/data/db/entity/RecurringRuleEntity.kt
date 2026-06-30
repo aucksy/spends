@@ -1,5 +1,6 @@
 package com.spends.app.data.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -35,4 +36,7 @@ data class RecurringRuleEntity(
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
+    // 0 = repeats forever; N>0 = stop after N occurrences total (e.g. an EMI for 12 months), counted from
+    // [startDate] by cadence (#8). The rule deactivates once the Nth occurrence has been generated.
+    @ColumnInfo(defaultValue = "0") val occurrenceLimit: Int = 0,
 )

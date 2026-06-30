@@ -53,8 +53,14 @@ class SmsReceiver : BroadcastReceiver() {
             try {
                 // Review-only: never auto-add. A parseable bank SMS always prompts the user (Add/Edit/Ignore).
                 if (settings.settings.first().smsCaptureEnabled) {
-                    capture.preview(sender, body, receivedAt)?.let {
-                        notifier.postCapturePrompt(sender, body, receivedAt, it)
+                    capture.preview(sender, body, receivedAt)?.let { preview ->
+                        // #7: if the user has ignored this exact pattern enough times, stop nagging — drop it
+                        // silently into the review queue instead, so it's reviewable but never lost.
+                        if (capture.isPatternSuppressed(sender, body, receivedAt)) {
+                            capture.queueForReview(sender, body, receivedAt)
+                        } else {
+                            notifier.postCapturePrompt(sender, body, receivedAt, preview)
+                        }
                     }
                 }
             } finally {

@@ -7,6 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
+import com.spends.app.data.db.dao.IgnoredPatternDao
 import com.spends.app.data.db.dao.MerchantCategoryDao
 import com.spends.app.data.db.dao.PaymentMethodDao
 import com.spends.app.data.db.dao.PendingCaptureDao
@@ -14,6 +15,7 @@ import com.spends.app.data.db.dao.RecurringDao
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
+import com.spends.app.data.db.entity.IgnoredPatternEntity
 import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PaymentMethodEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
@@ -29,8 +31,9 @@ import com.spends.app.data.seed.CategorySeed
         PendingCaptureEntity::class,
         MerchantCategoryEntity::class,
         PaymentMethodEntity::class,
+        IgnoredPatternEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -42,6 +45,7 @@ abstract class SpendsDatabase : RoomDatabase() {
     abstract fun pendingCaptureDao(): PendingCaptureDao
     abstract fun merchantCategoryDao(): MerchantCategoryDao
     abstract fun paymentMethodDao(): PaymentMethodDao
+    abstract fun ignoredPatternDao(): IgnoredPatternDao
 
     companion object {
         const val NAME = "spends.db"
@@ -225,6 +229,26 @@ abstract class SpendsDatabase : RoomDatabase() {
                         "`firstSeenAt` INTEGER NOT NULL, " +
                         "`lastActivityAt` INTEGER NOT NULL, " +
                         "PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
+        /** v10 -> v11: link auto-created transactions to their recurring rule (`expenses.recurringRuleId`,
+         *  nullable → `INTEGER`, no NOT NULL, matching Room for `Long?`) for "edit all past" (#5); and add a
+         *  per-rule occurrence cap (`recurring_rules.occurrenceLimit`, `INTEGER NOT NULL DEFAULT 0`, matching
+         *  the entity's @ColumnInfo(defaultValue = "0")) for "repeat N times" (#8). */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE expenses ADD COLUMN recurringRuleId INTEGER")
+                db.execSQL("ALTER TABLE recurring_rules ADD COLUMN occurrenceLimit INTEGER NOT NULL DEFAULT 0")
+                // Learn-from-ignore counts (#7). DDL mirrors Room's schema for [IgnoredPatternEntity] (String
+                // PK → TEXT NOT NULL ... PRIMARY KEY, Int/Long → INTEGER NOT NULL).
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `ignored_patterns` (" +
+                        "`patternKey` TEXT NOT NULL, " +
+                        "`ignoreCount` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`patternKey`))",
                 )
             }
         }

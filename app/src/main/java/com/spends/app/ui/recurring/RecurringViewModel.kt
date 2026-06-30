@@ -26,9 +26,16 @@ class RecurringViewModel @Inject constructor(
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun save(input: RecurringInput, editingId: Long?) {
+    fun save(input: RecurringInput, editingId: Long?, applyToPast: Boolean = false) {
         viewModelScope.launch {
-            if (editingId == null) recurringRepository.add(input) else recurringRepository.update(editingId, input)
+            if (editingId == null) {
+                recurringRepository.add(input)
+            } else {
+                recurringRepository.update(editingId, input, applyToPast)
+            }
+            // Materialise immediately so a past start date backfills NOW (#9) instead of waiting for the next
+            // launch / 9am worker; also lets an edit's forward roll reflect right away.
+            recurringRepository.materializeDue(com.spends.app.core.time.DateUtils.nowMillis())
         }
     }
 

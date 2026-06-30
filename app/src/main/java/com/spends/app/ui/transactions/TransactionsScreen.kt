@@ -548,10 +548,10 @@ private fun TransactionRow(row: TransactionRowUi, selected: Boolean, onClick: ()
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            // Line 2 (#2): "<Category> Total: <category's total for the cycle>  <time>".
+            // Line 2: "Total: <category's total for the cycle>  <time>" — the category name is already the
+            // title on line 1, so it's dropped here (just "Total").
             val subtitle = buildString {
-                append(row.title)
-                append(" Total: ")
+                append("Total: ")
                 append(Money.formatRupees(row.categoryTotalMinor))
                 row.timeLabel?.let { append("  "); append(it) }
             }

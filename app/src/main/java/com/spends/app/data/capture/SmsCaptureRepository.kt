@@ -7,6 +7,7 @@ import androidx.room.withTransaction
 import com.spends.app.core.category.IconAssigner
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.SpendsDatabase
+import com.spends.app.data.db.entity.IgnoredPatternEntity
 import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
 import com.spends.app.data.repo.AllocationInput
@@ -47,6 +48,7 @@ class SmsCaptureRepository @Inject constructor(
     private val expenseDao = db.expenseDao()
     private val pendingDao = db.pendingCaptureDao()
     private val merchantDao = db.merchantCategoryDao()
+    private val ignoredPatternDao = db.ignoredPatternDao()
 
     // Serialises capture so concurrent broadcasts / a scan can't both pass the read-then-insert check.
     private val captureMutex = Mutex()
@@ -143,6 +145,66 @@ class SmsCaptureRepository @Inject constructor(
 
     /** #7: live count of SMS-captured ledger transactions (independent of the review queue). */
     fun observeCapturedCount(): Flow<Int> = expenseDao.observeCapturedCount()
+
+    // ---- Learn from "Ignore" (#7, conservative: suppress the NAG, never lose the transaction) ----
+
+    /** A stable pattern key for an alert: sender header + merchant (or institution) + amount + kind. */
+    private fun ignoreKey(sender: String?, parsed: SmsParser.Parsed): String {
+        val header = SenderAllowlist.headerOf(sender) ?: sender?.uppercase() ?: ""
+        val who = parsed.merchant?.lowercase()?.trim()?.takeIf { it.isNotBlank() }
+            ?: parsed.institution?.lowercase() ?: ""
+        return "$header|$who|${parsed.amountMinor ?: 0}|${parsed.kind?.name ?: ""}"
+    }
+
+    /** Record that the user ignored this exact alert; the count drives suppression (#7). */
+    suspend fun recordIgnore(sender: String?, body: String?, receivedAt: Long) {
+        val parsed = SmsParser.parse(sender, body, receivedAt)
+        if (parsed.result != SmsParser.Result.TRANSACTION) return
+        val key = ignoreKey(sender, parsed)
+        val current = ignoredPatternDao.countFor(key) ?: 0
+        ignoredPatternDao.upsert(IgnoredPatternEntity(key, current + 1, DateUtils.nowMillis()))
+    }
+
+    /** True once this exact pattern has been ignored enough times to stop posting its live alert (#7). */
+    suspend fun isPatternSuppressed(sender: String?, body: String?, receivedAt: Long): Boolean {
+        val parsed = SmsParser.parse(sender, body, receivedAt)
+        if (parsed.result != SmsParser.Result.TRANSACTION) return false
+        return (ignoredPatternDao.countFor(ignoreKey(sender, parsed)) ?: 0) >= IGNORE_SUPPRESS_THRESHOLD
+    }
+
+    /**
+     * Silently drop a parsed SMS into the review queue (#7) — used when its alert is suppressed, so a
+     * suppressed-but-genuine transaction is still reviewable and NEVER lost. Skips anything already in the
+     * ledger or queue (dedupe hash). Returns the queued row id, or null if not a txn / already known.
+     */
+    suspend fun queueForReview(sender: String?, body: String?, receivedAt: Long): Long? = captureMutex.withLock {
+        val parsed = SmsParser.parse(sender, body, receivedAt)
+        if (parsed.result != SmsParser.Result.TRANSACTION) return@withLock null
+        val amount = parsed.amountMinor ?: return@withLock null
+        val kind = parsed.kind ?: return@withLock null
+        val occurredAt = parsed.occurredAt ?: receivedAt
+        val hash = hashFor(parsed, occurredAt, amount, kind)
+        if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null
+        if (hash in pendingDao.allHashes().toHashSet()) return@withLock null
+        val categoryId = resolveCategory(parsed, kind)
+        pendingDao.insert(
+            PendingCaptureEntity(
+                amountMinor = amount,
+                kind = kind,
+                occurredAt = occurredAt,
+                merchant = parsed.merchant?.ifBlank { null },
+                last4 = parsed.last4,
+                institution = parsed.institution,
+                categoryId = categoryId,
+                parseConfidence = parsed.confidence,
+                dedupeHash = hash,
+                receivedAt = receivedAt,
+                createdAt = DateUtils.nowMillis(),
+                rawBody = body,
+                sender = sender,
+            ),
+        ).takeIf { it != -1L }
+    }
 
     /**
      * Scan the SMS inbox for [startMillis, endExclusiveMillis) and queue every parseable transaction
@@ -384,14 +446,15 @@ class SmsCaptureRepository @Inject constructor(
     suspend fun pruneLearnedOrphans() = runCatching { merchantDao.pruneOrphans() }
 
     private fun hashFor(parsed: SmsParser.Parsed, occurredAt: Long, amount: Long, kind: TxnKind): String {
-        val day = DateUtils.toLocalDate(occurredAt).toEpochDay()
+        // Fixed-zone day bucket so existing hashes stay valid and a re-scan after travel can't slip past dedupe.
+        val day = DateUtils.dedupeEpochDay(occurredAt)
         val key = parsed.last4 ?: parsed.merchant?.lowercase() ?: ""
         return sha256("sms|$day|$amount|${kind.name}|$key|${parsed.refNumber ?: ""}")
     }
 
-    /** Day+amount+kind key used to skip captures that would duplicate the user's own entries. */
+    /** Day+amount+kind key used to skip captures that would duplicate the user's own entries (fixed-zone day). */
     private fun manualKey(occurredAt: Long, amount: Long, kind: TxnKind): String {
-        val day = DateUtils.toLocalDate(occurredAt).toEpochDay()
+        val day = DateUtils.dedupeEpochDay(occurredAt)
         return "$day|$amount|${kind.name}"
     }
 
@@ -425,6 +488,9 @@ class SmsCaptureRepository @Inject constructor(
 
     companion object {
         const val REVIEW_THRESHOLD = 70
+
+        /** #7: after this many ignores of the SAME alert pattern, stop notifying (queue silently instead). */
+        private const val IGNORE_SUPPRESS_THRESHOLD = 3
 
         private val iconKeyToCategory = mapOf(
             "food" to "Food", "fastfood" to "Food", "coffee" to "Food",

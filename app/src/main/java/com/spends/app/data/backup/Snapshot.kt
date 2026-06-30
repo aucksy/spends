@@ -88,6 +88,8 @@ data class SnapshotExpense(
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,
+    // Added in v4 (links a transaction to the recurring rule that created it). Default keeps older backups valid.
+    val recurringRuleId: Long? = null,
 )
 
 @Serializable
@@ -115,6 +117,8 @@ data class SnapshotRecurring(
     val active: Boolean,
     val createdAt: Long,
     val updatedAt: Long,
+    // Added in v4 (#8 occurrence cap). 0 = forever. Default keeps older backups valid.
+    val occurrenceLimit: Int = 0,
 )
 
 @Serializable

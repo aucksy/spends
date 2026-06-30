@@ -40,4 +40,7 @@ data class ExpenseEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,
+    // Set when this row was auto-created by a recurring rule — links it back to the rule so an edit can
+    // optionally update all past occurrences (#5) and the occurrence cap (#8) can count them. Null otherwise.
+    val recurringRuleId: Long? = null,
 )
