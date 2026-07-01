@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -116,6 +117,11 @@ class CardsViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CardsUiState())
 
+    /** Dismissed ("Not a card") instruments, shown in a restorable section (#14). */
+    val dismissed: StateFlow<List<CandidateUi>> = paymentMethodRepository.observeDismissed()
+        .map { list -> list.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun addCard(label: String, last4: String?, institution: String?, billingDay: Int?, dueDay: Int?) =
         viewModelScope.launch {
             paymentMethodRepository.addManual(
@@ -182,6 +188,12 @@ class CardsViewModel @Inject constructor(
         }
 
     fun dismissCandidate(id: Long) = viewModelScope.launch { paymentMethodRepository.dismissCandidate(id) }
+
+    /** X — remove a candidate row; a later scan can re-discover it (#14). */
+    fun removeCandidate(id: Long) = viewModelScope.launch { paymentMethodRepository.removeCandidate(id) }
+
+    /** Restore a dismissed instrument back to a review candidate (#14). */
+    fun restoreDismissed(id: Long) = viewModelScope.launch { paymentMethodRepository.restoreDismissed(id) }
 
     fun deleteCard(id: Long) = viewModelScope.launch { paymentMethodRepository.delete(id) }
 

@@ -289,6 +289,10 @@ class SmsCaptureRepository @Inject constructor(
             // another card-discovery — can't both pass discoverCard's read-then-insert check and double-add.
             captureMutex.withLock {
                 var added = 0
+                // Many banks (Axis, IDFC First, …) issue credit cards under their BANK sender header, so a
+                // type-only filter missed them (#7). Accept a dedicated credit-card sender OR a bank-header
+                // alert whose body clearly names a "Credit Card". Never silent — each still lands in review.
+                val creditCardBodyRe = Regex("credit\\s*card", RegexOption.IGNORE_CASE)
                 val cols = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
                 val uri: Uri = Telephony.Sms.Inbox.CONTENT_URI
                 val selection = "${Telephony.Sms.DATE} >= ? AND ${Telephony.Sms.DATE} < ?"
@@ -302,8 +306,13 @@ class SmsCaptureRepository @Inject constructor(
                         scanned++
                         val sender = if (iAddr >= 0) c.getString(iAddr) else null
                         val inst = SenderAllowlist.lookup(sender) ?: continue
-                        if (inst.type != InstitutionType.CREDIT_CARD) continue // cards only in Round A
                         val body = if (iBody >= 0) c.getString(iBody) else null
+                        // A dedicated credit-card sender, OR a BANK-header alert whose body names a "Credit
+                        // Card" (Axis/IDFC issue cards under their bank header). Restricted to BANK so wallets
+                        // / payment apps (e.g. CRED) don't propose card-named candidates from their messages.
+                        val looksLikeCard = inst.type == InstitutionType.CREDIT_CARD ||
+                            (inst.type == InstitutionType.BANK && body != null && creditCardBodyRe.containsMatchIn(body))
+                        if (!looksLikeCard) continue
                         val date = if (iDate >= 0) c.getLong(iDate) else DateUtils.nowMillis()
                         val last4 = SmsParser.parse(sender, body, date).last4 ?: continue
                         if (paymentMethodRepository.discoverCard(last4, inst.name)) added++

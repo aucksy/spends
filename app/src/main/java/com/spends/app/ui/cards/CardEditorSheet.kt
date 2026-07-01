@@ -168,21 +168,22 @@ fun CardEditorSheet(
 
 @Composable
 private fun BillingDayDialog(current: Int, onConfirm: (Int) -> Unit, onClear: () -> Unit, onDismiss: () -> Unit) {
-    var selected by remember { mutableStateOf(current.coerceIn(1, 28)) }
+    var selected by remember { mutableStateOf(current.coerceIn(1, 31)) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Billing day") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "The day this card's statement usually generates (1–28).",
+                    // 29/30/31 are clamped to each month's last day by the cycle math, so a 31 lands on Feb 28/29.
+                    "The day this card's statement usually generates (1–31). Month-end days adjust for shorter months.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
                 NumberWheelPicker(
                     value = selected,
-                    range = 1..28,
+                    range = 1..31,
                     onValueChange = { selected = it },
                     modifier = Modifier.fillMaxWidth(),
                 )

@@ -31,6 +31,9 @@ class PaymentMethodRepository @Inject constructor(
     /** Auto-discovered candidates awaiting review ("Cards to review"). */
     fun observeCandidates(): Flow<List<PaymentMethodEntity>> = dao.observeCandidates()
 
+    /** Dismissed instruments ("Not a card"), for the restorable Dismissed section (#14). */
+    fun observeDismissed(): Flow<List<PaymentMethodEntity>> = dao.observeDismissed()
+
     suspend fun getById(id: Long): PaymentMethodEntity? = dao.getById(id)
 
     /** Add a card the user typed in manually (already reviewed). Returns the new id. */
@@ -68,6 +71,12 @@ class PaymentMethodRepository @Inject constructor(
 
     /** "Not a card" — keep the row hidden so discovery never re-proposes this instrument. */
     suspend fun dismissCandidate(id: Long) = dao.dismiss(id)
+
+    /** Restore a dismissed instrument back to a review candidate (#14). */
+    suspend fun restoreDismissed(id: Long) = dao.undismiss(id)
+
+    /** Remove a candidate row entirely (#14 "X") — unlike dismiss, a future scan can re-discover it. */
+    suspend fun removeCandidate(id: Long) = dao.deleteById(id)
 
     /** Delete a card; its expenses fall back to the Bank bucket (paymentMethodId → null). */
     suspend fun delete(id: Long) = db.withTransaction {

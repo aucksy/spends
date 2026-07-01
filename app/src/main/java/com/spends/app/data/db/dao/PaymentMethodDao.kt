@@ -19,6 +19,10 @@ interface PaymentMethodDao {
     @Query("SELECT * FROM payment_methods WHERE reviewed = 0 AND dismissed = 0 ORDER BY lastActivityAt DESC, id DESC")
     fun observeCandidates(): Flow<List<PaymentMethodEntity>>
 
+    /** Instruments the user marked "Not a card" — shown in a restorable "Dismissed" section (#14). */
+    @Query("SELECT * FROM payment_methods WHERE dismissed = 1 ORDER BY lastActivityAt DESC, id DESC")
+    fun observeDismissed(): Flow<List<PaymentMethodEntity>>
+
     @Query("SELECT * FROM payment_methods WHERE id = :id")
     suspend fun getById(id: Long): PaymentMethodEntity?
 
@@ -45,6 +49,10 @@ interface PaymentMethodDao {
     /** Mark a candidate as "Not a card": keep the row (hidden) so discovery won't re-propose it. */
     @Query("UPDATE payment_methods SET dismissed = 1, reviewed = 1 WHERE id = :id")
     suspend fun dismiss(id: Long)
+
+    /** Restore a dismissed row back to a review candidate (#14 — undo "Not a card"). */
+    @Query("UPDATE payment_methods SET dismissed = 0, reviewed = 0 WHERE id = :id")
+    suspend fun undismiss(id: Long)
 
     /** Touch lastActivityAt when an instrument is used again (keeps the most-used cards on top). */
     @Query("UPDATE payment_methods SET lastActivityAt = :ts WHERE id = :id")

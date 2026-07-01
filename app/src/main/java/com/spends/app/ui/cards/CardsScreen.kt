@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -73,12 +74,14 @@ fun CardsScreen(
     viewModel: CardsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
     var showAddCard by remember { mutableStateOf(false) }
     var showAddBank by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<CardUi?>(null) }
     var editingBank by remember { mutableStateOf<CardUi?>(null) }
     var reviewing by remember { mutableStateOf<CandidateUi?>(null) }
+    var dismissConfirm by remember { mutableStateOf<CandidateUi?>(null) }
     var showDefaultPicker by remember { mutableStateOf(false) }
     var showCommonBilling by remember { mutableStateOf(false) }
 
@@ -122,19 +125,6 @@ fun CardsScreen(
                 DefaultInstrumentRow(label = state.defaultLabel, onClick = { showDefaultPicker = true })
             }
 
-            if (state.candidates.isNotEmpty()) {
-                item { SectionLabel("Cards to review") }
-                items(state.candidates, key = { "cand-${it.id}" }) { cand ->
-                    CandidateCard(
-                        candidate = cand,
-                        onAdd = { viewModel.confirmCandidate(cand.id, cand.label, cand.last4, cand.institution, null, null) },
-                        onEdit = { reviewing = cand },
-                        onDismiss = { viewModel.dismissCandidate(cand.id) },
-                    )
-                }
-                item { Spacer(Modifier.height(2.dp)) }
-            }
-
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     SectionLabel("Your cards", modifier = Modifier.weight(1f))
@@ -157,6 +147,28 @@ fun CardsScreen(
             } else {
                 items(state.banks, key = { "bank-${it.id}" }) { bank ->
                     CardRow(card = bank, tag = "A/C", onClick = { editingBank = bank })
+                }
+            }
+
+            // "Cards to review" sits BELOW the added cards/banks (#14) — suggestions, not the main list.
+            if (state.candidates.isNotEmpty()) {
+                item { Column { Spacer(Modifier.height(2.dp)); SectionLabel("Cards to review") } }
+                items(state.candidates, key = { "cand-${it.id}" }) { cand ->
+                    CandidateCard(
+                        candidate = cand,
+                        onAdd = { viewModel.confirmCandidate(cand.id, cand.label, cand.last4, cand.institution, null, null) },
+                        onEdit = { reviewing = cand },
+                        onNotACard = { dismissConfirm = cand },
+                        onRemove = { viewModel.removeCandidate(cand.id) },
+                    )
+                }
+            }
+
+            // Dismissed ("Not a card") — restorable in case something was rejected by mistake (#14).
+            if (dismissed.isNotEmpty()) {
+                item { Column { Spacer(Modifier.height(2.dp)); SectionLabel("Dismissed") } }
+                items(dismissed, key = { "dis-${it.id}" }) { cand ->
+                    DismissedRow(candidate = cand, onRestore = { viewModel.restoreDismissed(cand.id) })
                 }
             }
 
@@ -245,6 +257,20 @@ fun CardsScreen(
             onDismiss = { showCommonBilling = false },
         )
     }
+
+    // "Not a card" is permanent-ish (hidden from future scans), so confirm it — with a note that it's
+    // restorable from the Dismissed section (#14).
+    dismissConfirm?.let { cand ->
+        AlertDialog(
+            onDismissRequest = { dismissConfirm = null },
+            title = { Text("Not a card?") },
+            text = { Text("We'll stop suggesting \"${cand.label}\". You can bring it back later from the Dismissed section below.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissCandidate(cand.id); dismissConfirm = null }) { Text("Not a card") }
+            },
+            dismissButton = { TextButton(onClick = { dismissConfirm = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 /** The "Default for new expenses" row (#2) — tap to pick which instrument new expenses pre-select. */
@@ -322,13 +348,13 @@ private fun cardSubline(card: CardUi): String {
 }
 
 @Composable
-private fun CandidateCard(candidate: CandidateUi, onAdd: () -> Unit, onEdit: () -> Unit, onDismiss: () -> Unit) {
+private fun CandidateCard(candidate: CandidateUi, onAdd: () -> Unit, onEdit: () -> Unit, onNotACard: () -> Unit, onRemove: () -> Unit) {
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 14.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
                 CardChip(candidate.colorHex, "CR")
                 Spacer(Modifier.size(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).padding(top = 6.dp)) {
                     Text(
                         candidate.label + (candidate.last4?.let { " ·$it" } ?: ""),
                         style = MaterialTheme.typography.bodyLarge,
@@ -338,14 +364,42 @@ private fun CandidateCard(candidate: CandidateUi, onAdd: () -> Unit, onEdit: () 
                     )
                     Text("Found in your SMS", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                // X = remove for now; a later scan can surface it again (distinct from "Not a card").
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Filled.Close, contentDescription = "Remove for now", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = onAdd) { Text("Add card") }
                 OutlinedButton(onClick = onEdit) { Text("Edit") }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text("Not a card") }
+                TextButton(onClick = onNotACard) { Text("Not a card") }
             }
+        }
+    }
+}
+
+/** A dismissed instrument with a Restore action (#14 — undo an accidental "Not a card"). */
+@Composable
+private fun DismissedRow(candidate: CandidateUi, onRestore: () -> Unit) {
+    SpendsCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CardChip(candidate.colorHex, "CR")
+            Spacer(Modifier.size(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    candidate.label + (candidate.last4?.let { " ·$it" } ?: ""),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text("Marked \"Not a card\"", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = onRestore) { Text("Restore") }
         }
     }
 }
@@ -391,7 +445,7 @@ private fun CommonBillingDialog(cards: List<CardUi>, onApply: (Set<Long>, Int) -
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                NumberWheelPicker(value = day, range = 1..28, onValueChange = { day = it }, modifier = Modifier.fillMaxWidth())
+                NumberWheelPicker(value = day, range = 1..31, onValueChange = { day = it }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
