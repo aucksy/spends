@@ -285,6 +285,7 @@ private fun PaymentMethodEntity.toSnapshot() = SnapshotPaymentMethod(
     id = id, type = type.name, label = label, institution = institution, last4 = last4,
     colorHex = colorHex, billingDay = billingDay, dueDay = dueDay, reviewed = reviewed,
     dismissed = dismissed, firstSeenAt = firstSeenAt, lastActivityAt = lastActivityAt,
+    proposedBillingDay = proposedBillingDay,
 )
 
 private fun SnapshotPaymentMethod.toEntity() = PaymentMethodEntity(
@@ -292,7 +293,7 @@ private fun SnapshotPaymentMethod.toEntity() = PaymentMethodEntity(
     type = runCatching { PaymentMethodType.valueOf(type) }.getOrDefault(PaymentMethodType.CREDIT_CARD),
     label = label, institution = institution, last4 = last4, colorHex = colorHex,
     billingDay = billingDay, dueDay = dueDay, reviewed = reviewed, dismissed = dismissed,
-    firstSeenAt = firstSeenAt, lastActivityAt = lastActivityAt,
+    firstSeenAt = firstSeenAt, lastActivityAt = lastActivityAt, proposedBillingDay = proposedBillingDay,
 )
 
 private fun SettingsState.toSnapshot() = SnapshotSettings(

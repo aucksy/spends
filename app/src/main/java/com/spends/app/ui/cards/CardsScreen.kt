@@ -137,7 +137,13 @@ fun CardsScreen(
                 item { EmptyHint("No cards yet", "Add a card, or scan your SMS. Each card gets its own billing cycle.") }
             } else {
                 items(state.cards, key = { "card-${it.id}" }) { card ->
-                    CardRow(card = card, tag = "CR", onClick = { editing = card })
+                    CardRow(
+                        card = card,
+                        tag = "CR",
+                        onClick = { editing = card },
+                        onConfirmBillingDay = { viewModel.confirmProposedBillingDay(card.id) },
+                        onDismissBillingDay = { viewModel.dismissProposedBillingDay(card.id) },
+                    )
                 }
             }
 
@@ -311,30 +317,68 @@ private fun CardChip(colorHex: String, tag: String) {
 }
 
 @Composable
-private fun CardRow(card: CardUi, tag: String, onClick: () -> Unit) {
-    SpendsCard(modifier = Modifier.fillMaxWidth().clickable { onClick() }) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CardChip(card.colorHex, tag)
-            Spacer(Modifier.size(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(card.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    text = cardSubline(card),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+private fun CardRow(
+    card: CardUi,
+    tag: String,
+    onClick: () -> Unit,
+    onConfirmBillingDay: (() -> Unit)? = null,
+    onDismissBillingDay: (() -> Unit)? = null,
+) {
+    SpendsCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CardChip(card.colorHex, tag)
+                Spacer(Modifier.size(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(card.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text = cardSubline(card),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.size(10.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(rupeeText(card.cycleSpendMinor), style = Numerals.amountRow, maxLines = 1)
+                    Text(card.cycleLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            // #13: a billing day detected from a statement SMS — the user confirms it into the real cycle.
+            // Only while no billing day is set yet, so it can never overwrite a day the user chose themselves.
+            if (card.proposedBillingDay != null && card.billingDay == null && onConfirmBillingDay != null) {
+                BillingProposalRow(
+                    day = card.proposedBillingDay,
+                    onConfirm = onConfirmBillingDay,
+                    onDismiss = onDismissBillingDay ?: {},
                 )
             }
-            Spacer(Modifier.size(10.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(rupeeText(card.cycleSpendMinor), style = Numerals.amountRow, maxLines = 1)
-                Text(card.cycleLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
         }
+    }
+}
+
+/** The "we spotted a statement day — confirm?" strip shown under a card (#13). */
+@Composable
+private fun BillingProposalRow(day: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+            .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Statement day looks like the ${cardOrdinal(day)} — set it?",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onDismiss) { Text("Not now") }
+        TextButton(onClick = onConfirm) { Text("Set") }
     }
 }
 

@@ -29,10 +29,13 @@ data class PaymentMethodEntity(
     val last4: String? = null,
     /** Card accent colour ("#RRGGBB"), assigned on creation. */
     val colorHex: String,
-    /** Statement day-of-month (1..28). null = not known yet → the card rides the salary cycle until set. */
+    /** Statement day-of-month (1..31). null = not known yet → the card rides the salary cycle until set. */
     val billingDay: Int? = null,
     /** Optional payment-due day-of-month. */
     val dueDay: Int? = null,
+    /** A billing day auto-detected from a statement SMS, awaiting the user's confirm (#13). null = none
+     *  proposed. Never applied silently — the user confirms it into [billingDay] or dismisses it. */
+    val proposedBillingDay: Int? = null,
     /** false = an auto-discovered candidate awaiting the user's review; true = a confirmed/manual card. */
     val reviewed: Boolean = true,
     /** true = the user said "Not a card"; kept (hidden) so discovery never re-proposes the same instrument. */

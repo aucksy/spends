@@ -33,7 +33,7 @@ import com.spends.app.data.seed.CategorySeed
         PaymentMethodEntity::class,
         IgnoredPatternEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -259,6 +259,15 @@ abstract class SpendsDatabase : RoomDatabase() {
         val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE recurring_rules ADD COLUMN paymentMethodId INTEGER")
+            }
+        }
+
+        /** v12 -> v13: a billing day auto-detected from a statement SMS, awaiting the user's confirm
+         *  (`payment_methods.proposedBillingDay`, nullable `Int?` → `INTEGER`, no NOT NULL, matching Room's
+         *  generated DDL) for #13. Existing cards default to NULL = nothing proposed. */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE payment_methods ADD COLUMN proposedBillingDay INTEGER")
             }
         }
     }

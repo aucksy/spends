@@ -293,6 +293,15 @@ class SmsCaptureRepository @Inject constructor(
                 // type-only filter missed them (#7). Accept a dedicated credit-card sender OR a bank-header
                 // alert whose body clearly names a "Credit Card". Never silent — each still lands in review.
                 val creditCardBodyRe = Regex("credit\\s*card", RegexOption.IGNORE_CASE)
+                // A statement-GENERATED alert (#13): the SMS arrives on the day the statement generates, which
+                // is the card's billing-day anchor. Requires "is/has been/was generated" near "statement/bill"
+                // so a due-date reminder OR a future "will be generated" notice (different days) is not used.
+                val statementGeneratedRe = Regex(
+                    "(?:e-?statement|statement|bill)\\b.{0,80}?\\b(?:has been|is|was)\\s+generated",
+                    setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+                )
+                // last4 -> the day-of-month of each statement-generated SMS; we propose the most common day.
+                val statementDays = HashMap<String, MutableList<Int>>()
                 val cols = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
                 val uri: Uri = Telephony.Sms.Inbox.CONTENT_URI
                 val selection = "${Telephony.Sms.DATE} >= ? AND ${Telephony.Sms.DATE} < ?"
@@ -316,11 +325,26 @@ class SmsCaptureRepository @Inject constructor(
                         val date = if (iDate >= 0) c.getLong(iDate) else DateUtils.nowMillis()
                         val last4 = SmsParser.parse(sender, body, date).last4 ?: continue
                         if (paymentMethodRepository.discoverCard(last4, inst.name)) added++
+                        // #13: record this card's statement-generation day for a billing-day proposal.
+                        if (body != null && statementGeneratedRe.containsMatchIn(body)) {
+                            statementDays.getOrPut(last4) { mutableListOf() }.add(DateUtils.toLocalDate(date).dayOfMonth)
+                        }
                     }
+                }
+                // Propose the most common statement day per card (#13) — attaches only to cards without a
+                // confirmed billing day, and awaits the user's confirm on the Cards screen (never silent).
+                statementDays.forEach { (last4, days) ->
+                    modeDay(days)?.let { paymentMethodRepository.proposeBillingDay(last4, it) }
                 }
                 added
             }
         }
+
+    /** The most frequent day in [days]; ties resolve to the smaller day. Null for an empty list (#13). */
+    private fun modeDay(days: List<Int>): Int? =
+        days.groupingBy { it }.eachCount().entries
+            .maxWithOrNull(compareBy({ it.value }, { -it.key }))
+            ?.key
 
     /** Confirm one pending capture into the ledger (optionally overriding the guessed category). */
     suspend fun confirmPending(id: Long, categoryId: Long? = null): Long? = captureMutex.withLock {

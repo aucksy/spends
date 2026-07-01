@@ -138,4 +138,6 @@ data class SnapshotPaymentMethod(
     val dismissed: Boolean = false,
     val firstSeenAt: Long,
     val lastActivityAt: Long,
+    // A statement-detected billing day awaiting confirm (#13). Defaulted so older backups still decode.
+    val proposedBillingDay: Int? = null,
 )

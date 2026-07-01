@@ -35,6 +35,7 @@ data class CardUi(
     val txnCount: Int,
     val cycleLabel: String, // e.g. "17 Jun – 16 Jul"
     val billsLabel: String?, // e.g. "Bills 17th"; null when no billing day set yet
+    val proposedBillingDay: Int? = null, // a statement-SMS-detected day awaiting confirm (#13)
 )
 
 /** An auto-discovered card awaiting review ("Cards to review"). */
@@ -102,6 +103,7 @@ class CardsViewModel @Inject constructor(
                 txnCount = inWindow.size,
                 cycleLabel = "${dayFmt.format(window.start)} – ${dayFmt.format(window.endInclusive)}",
                 billsLabel = pm.billingDay?.let { "Bills ${ordinal(it)}" },
+                proposedBillingDay = pm.proposedBillingDay,
             )
         }
         val defaultId = settings.defaultPaymentMethodId
@@ -150,11 +152,18 @@ class CardsViewModel @Inject constructor(
     /** Set the default "Paid with" instrument for new expenses (#2); null = generic Bank. */
     fun setDefaultInstrument(id: Long?) = viewModelScope.launch { settingsRepository.setDefaultPaymentMethodId(id) }
 
+    /** Accept a statement-SMS-detected billing day into the card's real billing day (#13). */
+    fun confirmProposedBillingDay(id: Long) = viewModelScope.launch { paymentMethodRepository.confirmProposedBillingDay(id) }
+
+    /** Dismiss a statement-SMS billing-day proposal without applying it (#13). */
+    fun dismissProposedBillingDay(id: Long) = viewModelScope.launch { paymentMethodRepository.dismissProposedBillingDay(id) }
+
     /** Apply one billing day to several cards at once (#10, replaces the old per-card Merge). */
     fun setCommonBillingDay(cardIds: Set<Long>, billingDay: Int) = viewModelScope.launch {
         cardIds.forEach { id ->
             val card = paymentMethodRepository.getById(id) ?: return@forEach
-            paymentMethodRepository.updateCard(card.copy(billingDay = billingDay))
+            // Setting a day explicitly clears any pending statement proposal (#13).
+            paymentMethodRepository.updateCard(card.copy(billingDay = billingDay, proposedBillingDay = null))
         }
     }
 
@@ -168,6 +177,8 @@ class CardsViewModel @Inject constructor(
                     institution = institution?.ifBlank { null },
                     billingDay = billingDay,
                     dueDay = dueDay,
+                    // If the user sets their own billing day, drop any stale statement proposal (#13).
+                    proposedBillingDay = if (billingDay != null) null else existing.proposedBillingDay,
                 ),
             )
         }
