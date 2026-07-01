@@ -30,6 +30,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,7 +63,13 @@ fun HomeScreen(
     onQuickAddConsumed: () -> Unit = {},
 ) {
     val initialTab = if (settings.defaultLanding == DefaultLanding.ANALYTICS) HomeTab.ANALYTICS else HomeTab.TRANSACTIONS
-    var tab by rememberSaveable { mutableStateOf(initialTab) }
+    // Persist the tab by NAME with a guarded restore: a saved-state bundle from an older build could still
+    // hold the removed "CARDS" value (#3), and letting rememberSaveable deserialize that enum would crash on
+    // relaunch (Enum.valueOf throws inside Bundle unmarshalling). Coerce anything unknown back to initialTab.
+    val tabSaver = remember {
+        Saver<HomeTab, String>(save = { it.name }, restore = { runCatching { HomeTab.valueOf(it) }.getOrDefault(initialTab) })
+    }
+    var tab by rememberSaveable(stateSaver = tabSaver) { mutableStateOf(initialTab) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val view = LocalView.current
