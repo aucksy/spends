@@ -51,6 +51,11 @@ data class SettingsState(
     // Smart Cycle / Cards feature master switch (PRD §4.7/§4.8). OFF by default → the app behaves exactly
     // as before (no cards, no "Paid with", no Cards tab). ON reveals the cards machinery. Travels in backup.
     val smartCycleEnabled: Boolean = false,
+    // Whether the daily recurring-materialisation worker posts a "recurring added" notification, and the
+    // minute-of-day it runs/notifies (#15). Device-local (like the widget-eye pref) — not in the backup
+    // snapshot, so it never needs a snapshot-schema bump. ON at 09:00 by default = the prior behaviour.
+    val recurringNotifyEnabled: Boolean = true,
+    val recurringNotifyMinute: Int = 9 * 60,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -81,6 +86,8 @@ class SettingsRepository @Inject constructor(
             hideCapturedInLists = prefs[Keys.HIDE_CAPTURED] ?: false,
             widgetEyeHidden = prefs[Keys.WIDGET_EYE_HIDDEN] ?: false,
             smartCycleEnabled = prefs[Keys.SMART_CYCLE_ENABLED] ?: false,
+            recurringNotifyEnabled = prefs[Keys.RECURRING_NOTIFY] ?: true,
+            recurringNotifyMinute = prefs[Keys.RECURRING_NOTIFY_MINUTE] ?: (9 * 60),
         )
     }
 
@@ -103,6 +110,8 @@ class SettingsRepository @Inject constructor(
     suspend fun setHideCapturedInLists(value: Boolean) = edit { it[Keys.HIDE_CAPTURED] = value }
     suspend fun setWidgetEyeHidden(value: Boolean) = edit { it[Keys.WIDGET_EYE_HIDDEN] = value }
     suspend fun setSmartCycleEnabled(value: Boolean) = edit { it[Keys.SMART_CYCLE_ENABLED] = value }
+    suspend fun setRecurringNotifyEnabled(value: Boolean) = edit { it[Keys.RECURRING_NOTIFY] = value }
+    suspend fun setRecurringNotifyTime(minuteOfDay: Int) = edit { it[Keys.RECURRING_NOTIFY_MINUTE] = minuteOfDay.coerceIn(0, 1439) }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -157,5 +166,7 @@ class SettingsRepository @Inject constructor(
         val HIDE_CAPTURED = booleanPreferencesKey("hide_captured_in_lists")
         val WIDGET_EYE_HIDDEN = booleanPreferencesKey("widget_eye_hidden")
         val SMART_CYCLE_ENABLED = booleanPreferencesKey("smart_cycle_enabled")
+        val RECURRING_NOTIFY = booleanPreferencesKey("recurring_notify_enabled")
+        val RECURRING_NOTIFY_MINUTE = intPreferencesKey("recurring_notify_minute")
     }
 }

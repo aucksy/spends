@@ -15,8 +15,10 @@ import com.spends.app.R
 import com.spends.app.core.MainActivity
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.repo.RecurringRepository
+import com.spends.app.data.settings.SettingsRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.first
 
 /**
  * The ~9 AM daily pass that materialises any due recurring rules (PRD §4.8) and, when it adds anything,
@@ -28,11 +30,14 @@ class RecurringWorker @AssistedInject constructor(
     @Assisted private val appContext: Context,
     @Assisted params: WorkerParameters,
     private val recurringRepository: RecurringRepository,
+    private val settingsRepository: SettingsRepository,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result = try {
+        // Auto-add always runs; the NOTIFICATION is gated on the user's toggle (#15). Materialisation is the
+        // core feature the user relies on — only the "recurring added" heads-up is optional.
         val created = recurringRepository.materializeDue(DateUtils.nowMillis())
-        if (created > 0) notify(created)
+        if (created > 0 && settingsRepository.settings.first().recurringNotifyEnabled) notify(created)
         Result.success()
     } catch (e: Exception) {
         Result.retry()

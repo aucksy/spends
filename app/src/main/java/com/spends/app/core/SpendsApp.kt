@@ -26,11 +26,12 @@ class SpendsApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        // Materialise recurring rules at ~9 AM local + notify (#3). The app ALSO runs a silent pass on
-        // launch (MainViewModel), so this worker is the backstop for when the app isn't opened — it's the
-        // one that posts the "recurring added" notification. UPDATE re-anchors to the next 9 AM each launch,
-        // which is correct: if you open the app daily, the launch pass handles it and this never needs to fire.
-        RecurringScheduler.schedule(this, replace = true)
+        // Materialise recurring rules near a user-chosen time (default 9 AM local) + notify (#3/#15). The app
+        // ALSO runs a silent pass on launch (MainViewModel), so this worker is the backstop for when the app
+        // isn't opened — it's the one that posts the "recurring added" notification (self-gated on the notify
+        // toggle). KEEP so a process restart never disturbs the persisted schedule (which holds the user's
+        // chosen time); the DEFAULT_MINUTE only applies on a first-ever creation. Settings UPDATEs the time.
+        RecurringScheduler.schedule(this, RecurringScheduler.DEFAULT_MINUTE, replace = false)
 
         // Daily Drive auto-backup runs near a user-chosen time (#11); the worker self-gates on the toggle.
         // KEEP so a process restart never disturbs the persisted schedule (which already holds the user's

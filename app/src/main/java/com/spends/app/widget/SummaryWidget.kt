@@ -113,8 +113,10 @@ class SummaryWidget : AppWidgetProvider() {
                         .filter { composite.contains(it.occurredAt, it.paymentMethodId) }
                     income = items.filter { it.kind == TxnKind.INCOME }.sumOf { it.amountMinor }
                     expense = items.filter { it.kind == TxnKind.EXPENSE }.sumOf { it.amountMinor }
+                    // Just the cycle name (a single card's label already carries its dates); NO instrument
+                    // count on the widget (#1) — the composite has no single date range to show below it.
                     cycleName = composite.label
-                    cycleLabel = if (card != null) "single card" else "${cards.size} card${if (cards.size == 1) "" else "s"} + bank"
+                    cycleLabel = ""
                 } else {
                     // A stale SMART_CYCLE selection while the feature is off falls back to the salary cycle.
                     val effType = if (selection.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else selection.type
@@ -165,8 +167,11 @@ class SummaryWidget : AppWidgetProvider() {
         eyeHidden: Boolean,
     ): RemoteViews {
         fun money(v: Long) = if (masked) MASK else Money.formatRupees(v, alwaysTwoDecimals = false)
+        // Show "Name · dates" when there's a concrete date range; just the name when there isn't (e.g. the
+        // Smart Cycle composite, whose instruments each have their own window — #1/#5).
+        val cycleHeader = if (cycleLabel.isBlank()) cycleName else "$cycleName · $cycleLabel"
         return RemoteViews(context.packageName, R.layout.widget_summary).apply {
-            setTextViewText(R.id.widget_summary_cycle, "$cycleName · $cycleLabel")
+            setTextViewText(R.id.widget_summary_cycle, cycleHeader)
             setTextViewText(R.id.widget_summary_balance, money(balance))
             setTextViewText(R.id.widget_summary_expense, money(expense))
             setTextViewText(R.id.widget_summary_income, money(income))

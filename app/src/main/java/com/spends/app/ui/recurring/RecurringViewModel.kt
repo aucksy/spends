@@ -1,5 +1,6 @@
 package com.spends.app.ui.recurring
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.data.db.entity.CategoryEntity
@@ -7,7 +8,11 @@ import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.repo.CategoryRepository
 import com.spends.app.data.repo.RecurringInput
 import com.spends.app.data.repo.RecurringRepository
+import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.data.settings.SettingsState
+import com.spends.app.work.RecurringScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -16,7 +21,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class RecurringViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val recurringRepository: RecurringRepository,
+    private val settingsRepository: SettingsRepository,
     categoryRepository: CategoryRepository,
 ) : ViewModel() {
 
@@ -25,6 +32,20 @@ class RecurringViewModel @Inject constructor(
 
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Recurring-notification prefs (#15): whether to notify when the daily worker adds rules, and at what time. */
+    val settings: StateFlow<SettingsState> = settingsRepository.settings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
+
+    fun setNotifyEnabled(value: Boolean) = viewModelScope.launch {
+        settingsRepository.setRecurringNotifyEnabled(value)
+    }
+
+    /** Change the daily recurring-add/notify time and reschedule the worker to the next occurrence of it. */
+    fun setNotifyTime(minuteOfDay: Int) = viewModelScope.launch {
+        settingsRepository.setRecurringNotifyTime(minuteOfDay)
+        RecurringScheduler.schedule(context, minuteOfDay, replace = true)
+    }
 
     fun save(input: RecurringInput, editingId: Long?, applyToPast: Boolean = false) {
         viewModelScope.launch {

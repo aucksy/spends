@@ -17,22 +17,29 @@ import java.util.concurrent.TimeUnit
  */
 object RecurringScheduler {
 
-    /** Recurring auto-add + its notification target 09:00 local. */
-    private const val TARGET_MINUTE = 9 * 60
+    /** Default auto-add + notification time when the user hasn't chosen one — 09:00 local (#15). */
+    const val DEFAULT_MINUTE = 9 * 60
 
-    fun schedule(context: Context, replace: Boolean = false) {
+    /**
+     * (Re)schedule the daily recurring pass for [minuteOfDay] (local). [replace]=true when the user changes
+     * the time (UPDATE to the new time); false at launch (KEEP the persisted schedule so a process restart
+     * never disturbs the user's chosen time — the DEFAULT only applies on a first-ever creation). Mirrors
+     * [BackupScheduler]. The worker self-gates the *notification* on the recurring-notify toggle.
+     */
+    fun schedule(context: Context, minuteOfDay: Int = DEFAULT_MINUTE, replace: Boolean = false) {
         val request = PeriodicWorkRequestBuilder<RecurringWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(initialDelayMinutes(), TimeUnit.MINUTES)
+            .setInitialDelay(initialDelayMinutes(minuteOfDay), TimeUnit.MINUTES)
             .build()
         val policy = if (replace) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(RecurringWorker.UNIQUE_NAME, policy, request)
     }
 
-    /** Minutes from now until the next 09:00 local; at least 1 so it never enqueues "now". */
-    private fun initialDelayMinutes(): Long {
+    /** Minutes from now until the next [minuteOfDay] local; at least 1 so it never enqueues "now". */
+    private fun initialDelayMinutes(minuteOfDay: Int): Long {
         val zone = DateUtils.ZONE
         val now = Instant.ofEpochMilli(DateUtils.nowMillis()).atZone(zone)
-        val todaysTarget = now.toLocalDate().atTime(TARGET_MINUTE / 60, TARGET_MINUTE % 60).atZone(zone)
+        val safeMinute = minuteOfDay.coerceIn(0, 1439)
+        val todaysTarget = now.toLocalDate().atTime(safeMinute / 60, safeMinute % 60).atZone(zone)
         val target = if (todaysTarget.isAfter(now)) todaysTarget else todaysTarget.plusDays(1)
         return Duration.between(now, target).toMinutes().coerceAtLeast(1)
     }

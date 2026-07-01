@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -32,6 +33,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,8 +47,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +59,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,10 +91,13 @@ fun RecurringScreen(
     val rules by viewModel.rules.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
 
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+
     // null = list view; non-null = editor. Editing(null rule) is "add new".
     var editing by remember { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<RecurringRuleEntity?>(null) }
     var sortByDate by rememberSaveable { mutableStateOf(true) }
+    var showNotifyTimePicker by remember { mutableStateOf(false) }
 
     if (editing) {
         RecurringEditor(
@@ -119,20 +130,28 @@ fun RecurringScreen(
             }
         },
     ) { padding ->
-        if (rules.isEmpty()) {
-            EmptyState(modifier = Modifier.fillMaxSize().padding(padding))
-        } else {
-            val byId = categories.associateBy { it.id }
-            val sorted = remember(rules, categories, sortByDate) {
-                if (sortByDate) {
-                    rules.sortedWith(compareByDescending<RecurringRuleEntity> { it.active }.thenBy { it.nextRunAt })
-                } else {
-                    rules.sortedBy {
-                        (it.merchant?.takeIf { m -> m.isNotBlank() } ?: byId[it.categoryId]?.name ?: "Recurring").lowercase()
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Notification prefs sit at the top of the Recurring screen (#15) — always visible so it can be
+            // set up before any rules exist.
+            NotifyCard(
+                enabled = settings.recurringNotifyEnabled,
+                minute = settings.recurringNotifyMinute,
+                onToggle = viewModel::setNotifyEnabled,
+                onTimeClick = { showNotifyTimePicker = true },
+            )
+            if (rules.isEmpty()) {
+                EmptyState(modifier = Modifier.fillMaxSize())
+            } else {
+                val byId = categories.associateBy { it.id }
+                val sorted = remember(rules, categories, sortByDate) {
+                    if (sortByDate) {
+                        rules.sortedWith(compareByDescending<RecurringRuleEntity> { it.active }.thenBy { it.nextRunAt })
+                    } else {
+                        rules.sortedBy {
+                            (it.merchant?.takeIf { m -> m.isNotBlank() } ?: byId[it.categoryId]?.name ?: "Recurring").lowercase()
+                        }
                     }
                 }
-            }
-            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 SortToggle(sortByDate = sortByDate, onChange = { sortByDate = it })
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(sorted, key = { it.id }) { rule ->
@@ -147,6 +166,90 @@ fun RecurringScreen(
             }
         }
     }
+
+    if (showNotifyTimePicker) {
+        NotifyTimePickerDialog(
+            initialMinute = settings.recurringNotifyMinute,
+            onConfirm = { viewModel.setNotifyTime(it); showNotifyTimePicker = false },
+            onDismiss = { showNotifyTimePicker = false },
+        )
+    }
+}
+
+/** The recurring "notify when added" toggle + time row (#15), shown at the top of the Recurring screen. */
+@Composable
+private fun NotifyCard(enabled: Boolean, minute: Int, onToggle: (Boolean) -> Unit, onTimeClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Notify when added", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    Text(
+                        "A heads-up when scheduled transactions are added automatically, even if the app isn't open.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = enabled, onCheckedChange = onToggle)
+            }
+            if (enabled) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onTimeClick).padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Notify at", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text(
+                        formatTimeOfDay(minute),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotifyTimePickerDialog(initialMinute: Int, onConfirm: (Int) -> Unit, onDismiss: () -> Unit) {
+    val timeState = rememberTimePickerState(
+        initialHour = (initialMinute / 60).coerceIn(0, 23),
+        initialMinute = (initialMinute % 60).coerceIn(0, 59),
+        is24Hour = false,
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Notify at") },
+        text = {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                TimePicker(state = timeState)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(timeState.hour * 60 + timeState.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Minutes-of-day → a friendly "h:mm AM/PM" label. */
+private fun formatTimeOfDay(minute: Int): String {
+    val h = minute / 60
+    val m = minute % 60
+    val period = if (h < 12) "AM" else "PM"
+    val h12 = when {
+        h == 0 -> 12
+        h > 12 -> h - 12
+        else -> h
+    }
+    return "%d:%02d %s".format(h12, m, period)
 }
 
 @Composable
@@ -208,10 +311,20 @@ private fun RecurringRow(
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
+            // Line 1: the merchant (or category) title + the note shown muted after it (#16) — the note was
+            // previously stored but never surfaced. Mirrors the transaction-row note styling.
+            val title = rule.merchant?.takeIf { it.isNotBlank() } ?: category?.name ?: "Recurring"
+            val note = rule.note?.takeIf { it.isNotBlank() && it != title }
+            val muted = MaterialTheme.colorScheme.onSurfaceVariant
             Text(
-                text = rule.merchant?.takeIf { it.isNotBlank() } ?: category?.name ?: "Recurring",
+                text = buildAnnotatedString {
+                    append(title)
+                    if (note != null) withStyle(SpanStyle(color = muted)) { append("  $note") }
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = RecurrenceMath.describe(rule.frequency, rule.intervalCount, rule.anchorDay) +

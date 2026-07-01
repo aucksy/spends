@@ -100,6 +100,11 @@ fun PeriodSelectorBar(
     }
     // Prev/next cycle stepping shows only for a single current cycle; future is capped at the present (#6).
     val navigable = effective.isNavigable
+    // The secondary line is the concrete date range. Hide it when there's nothing meaningful to show (the
+    // Smart composite has no single range, so its label == the name) — otherwise the name duplicates on two
+    // lines and the larger title truncates (#5). Compared case-insensitively so near-duplicates like
+    // "All Time" over "All time" / "Last 3 Months" over "Last 3 months" collapse to a single clean line too.
+    val dateLine = label.takeIf { it.isNotBlank() && !it.equals(effective.describe(), ignoreCase = true) }
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Surface(
             modifier = Modifier.weight(1f),
@@ -130,28 +135,34 @@ fun PeriodSelectorBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (dateLine != null) {
+                        Text(
+                            dateLine,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 if (navigable) {
                     // Can't step into the future — › is disabled once back at the current cycle.
                     CycleArrow(Icons.Filled.ChevronRight, "Next cycle", enabled = effective.cycleOffset < 0) {
                         onSelect(effective.copy(cycleOffset = effective.cycleOffset + 1))
                     }
+                    // No trailing dropdown caret when the stepper arrows are present — the pill is tappable and
+                    // the arrows already read as interactive, so dropping the caret frees width for the full
+                    // cycle name (#5, the truncated "Current Smart C…").
+                    Spacer(Modifier.width(4.dp))
                 } else {
                     Spacer(Modifier.width(4.dp))
+                    Icon(
+                        Icons.Filled.ArrowDropDown,
+                        contentDescription = "Change period",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable { open = true }.padding(end = 4.dp),
+                    )
                 }
-                Icon(
-                    Icons.Filled.ArrowDropDown,
-                    contentDescription = "Change period",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.clickable { open = true }.padding(end = 4.dp),
-                )
             }
         }
         // Search lives here beside Settings (#16) so the timeline no longer needs a permanent search bar.
@@ -485,6 +496,7 @@ private fun DropdownAnchor(text: String, onClick: () -> Unit) {
 
 @Composable
 private fun MiniDayGrid(yearMonth: YearMonth, selectedDay: Int?, onSelect: (Int) -> Unit) {
+    val view = LocalView.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         (1..yearMonth.lengthOfMonth()).chunked(7).forEach { week ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
@@ -496,7 +508,10 @@ private fun MiniDayGrid(yearMonth: YearMonth, selectedDay: Int?, onSelect: (Int)
                             .height(40.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { onSelect(d) },
+                            .clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) // a felt tick on each day pick (#12)
+                                onSelect(d)
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
