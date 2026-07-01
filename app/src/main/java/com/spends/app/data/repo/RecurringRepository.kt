@@ -28,6 +28,8 @@ data class RecurringInput(
     val startDate: Long,
     // 0 = repeats forever; N>0 = stop after N occurrences total (e.g. an EMI for 12 months) (#8).
     val occurrenceLimit: Int = 0,
+    // The instrument the generated transactions are paid with (#6). null = Bank.
+    val paymentMethodId: Long? = null,
 )
 
 @Singleton
@@ -67,6 +69,7 @@ class RecurringRepository @Inject constructor(
             createdAt = now,
             updatedAt = now,
             occurrenceLimit = input.occurrenceLimit.coerceAtLeast(0),
+            paymentMethodId = input.paymentMethodId,
         )
         return dao.insert(rule)
     }
@@ -105,6 +108,7 @@ class RecurringRepository @Inject constructor(
                 active = if (reactivate) true else existing.active,
                 updatedAt = now,
                 occurrenceLimit = input.occurrenceLimit.coerceAtLeast(0),
+                paymentMethodId = input.paymentMethodId,
                 // lastRunAt preserved by copy().
             ),
         )
@@ -115,6 +119,7 @@ class RecurringRepository @Inject constructor(
                 categoryId = input.categoryId,
                 merchant = input.merchant?.ifBlank { null },
                 note = input.note?.ifBlank { null },
+                paymentMethodId = input.paymentMethodId,
             )
         }
     }
@@ -166,6 +171,7 @@ class RecurringRepository @Inject constructor(
                                     source = TxnSource.RECURRING,
                                     dedupeHash = hash,
                                     recurringRuleId = rule.id, // link back for "edit all past" (#5) + counting (#8)
+                                    paymentMethodId = rule.paymentMethodId, // pay each occurrence with the rule's instrument (#6)
                                 ),
                             )
                             last = occurredAt

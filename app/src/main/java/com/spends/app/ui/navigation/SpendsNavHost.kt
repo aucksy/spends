@@ -12,6 +12,7 @@ import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.addedit.AddEditScreen
 import com.spends.app.ui.backup.OnboardingRestoreScreen
 import com.spends.app.ui.breakdown.CycleBreakdownScreen
+import com.spends.app.ui.cards.CardsScreen
 import com.spends.app.ui.capture.CaptureSettingsScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
@@ -137,7 +138,12 @@ fun SpendsNavHost(
                 onOpenImport = { navController.navigate(Routes.importRoute(fromOnboarding = false)) },
                 onOpenRecurring = { navController.navigate(Routes.RECURRING) },
                 onOpenCapture = { navController.navigate(Routes.CAPTURE) },
+                onOpenBanksCards = { navController.navigate(Routes.BANKS_CARDS) },
             )
+        }
+
+        composable(Routes.BANKS_CARDS) {
+            CardsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.CAPTURE) {

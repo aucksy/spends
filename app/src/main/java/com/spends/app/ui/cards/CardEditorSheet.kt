@@ -40,9 +40,9 @@ data class CardEditorInitial(
 )
 
 /**
- * One bottom sheet for adding, editing, or confirming-a-discovered card. [onSave] returns the entered
- * values; the caller decides whether that means create / update / confirm-candidate. Edit mode also gets
- * a Delete (and, when there are other cards, a Merge) action.
+ * One bottom sheet for adding, editing, or confirming-a-discovered instrument. [onSave] returns the entered
+ * values; the caller decides whether that means create / update / confirm-candidate. Edit mode also gets a
+ * Delete. [isBank] = a bank/UPI account (no billing day — it rides the salary cycle, #2); false = a card.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,8 +53,7 @@ fun CardEditorSheet(
     onSave: (label: String, last4: String?, institution: String?, billingDay: Int?, dueDay: Int?) -> Unit,
     onDismiss: () -> Unit,
     onDelete: (() -> Unit)? = null,
-    mergeTargets: List<CardUi> = emptyList(),
-    onMerge: ((targetId: Long) -> Unit)? = null,
+    isBank: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var label by remember { mutableStateOf(initial.label) }
@@ -62,7 +61,6 @@ fun CardEditorSheet(
     var billingDay by remember { mutableStateOf(initial.billingDay) }
     var showBillingPicker by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    var showMerge by remember { mutableStateOf(false) }
 
     val canSave = label.isNotBlank() || last4.isNotBlank()
 
@@ -79,8 +77,8 @@ fun CardEditorSheet(
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
-                label = { Text("Card name") },
-                placeholder = { Text("e.g. HDFC Millennia") },
+                label = { Text(if (isBank) "Bank name" else "Card name") },
+                placeholder = { Text(if (isBank) "e.g. Axis Bank" else "e.g. HDFC Millennia") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -97,29 +95,32 @@ fun CardEditorSheet(
             )
             Spacer(Modifier.height(10.dp))
 
-            // Billing day — opens a wheel; leaving it unset means the card follows the salary cycle.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showBillingPicker = true }
-                    .padding(vertical = 12.dp),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Billing day", style = MaterialTheme.typography.bodyLarge)
+            // Billing day (cards only) — opens a wheel; unset means the card follows the salary cycle. Banks
+            // always ride the salary cycle, so they have no billing day (#2).
+            if (!isBank) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showBillingPicker = true }
+                        .padding(vertical = 12.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Billing day", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "This card's spending is grouped from this day. Leave it unset and it follows your salary cycle until you know the day.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.padding(horizontal = 6.dp))
                     Text(
-                        "This card's spending is grouped from this day. Leave it unset and it follows your salary cycle until you know the day.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        billingDay?.let(::cardOrdinal) ?: "Not set",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
-                Spacer(Modifier.padding(horizontal = 6.dp))
-                Text(
-                    billingDay?.let(::cardOrdinal) ?: "Not set",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                )
             }
 
             Spacer(Modifier.height(14.dp))
@@ -132,9 +133,6 @@ fun CardEditorSheet(
             if (onDelete != null) {
                 Spacer(Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    if (onMerge != null && mergeTargets.isNotEmpty()) {
-                        TextButton(onClick = { showMerge = true }) { Text("Merge into…") }
-                    }
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = { confirmDelete = true }) {
                         Text("Delete", color = MaterialTheme.colorScheme.error)
@@ -156,7 +154,7 @@ fun CardEditorSheet(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete this card?") },
+            title = { Text(if (isBank) "Delete this bank?" else "Delete this card?") },
             text = { Text("Transactions paid with it stay, but become untagged (counted under Bank). This can't be undone.") },
             confirmButton = {
                 TextButton(onClick = { confirmDelete = false; onDelete?.invoke() }) {
@@ -164,34 +162,6 @@ fun CardEditorSheet(
                 }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-        )
-    }
-
-    if (showMerge && onMerge != null) {
-        AlertDialog(
-            onDismissRequest = { showMerge = false },
-            title = { Text("Merge into which card?") },
-            text = {
-                Column {
-                    Text(
-                        "This card's transactions move to the card you pick, and this one is removed.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    mergeTargets.forEach { target ->
-                        Text(
-                            text = target.label + (target.last4?.let { " ·$it" } ?: ""),
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showMerge = false; onMerge(target.id) }
-                                .padding(vertical = 12.dp),
-                        )
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showMerge = false }) { Text("Cancel") } },
         )
     }
 }

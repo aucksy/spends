@@ -1,12 +1,9 @@
 package com.spends.app.ui.transactions
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,8 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -29,7 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -46,7 +40,6 @@ import com.spends.app.ui.components.rupeeText
 fun SummaryHeader(
     state: TransactionsUiState,
     modifier: Modifier = Modifier,
-    onOpenBreakdown: () -> Unit = {},
 ) {
     val semantic = LocalSemanticColors.current
     val scheme = MaterialTheme.colorScheme
@@ -123,42 +116,6 @@ fun SummaryHeader(
                     // Shrink the figure to fit the tile width instead of letting it overflow / scroll (#4).
                     minScale = 0.35f,
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                )
-            }
-        }
-
-        // Smart Cycle composite (Round B): this one number spans instruments each on their own cycle, so
-        // offer a tap to see the per-instrument breakdown (design Screen 2, "My Cycle breakdown").
-        if (state.isComposite) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(scheme.surfaceVariant)
-                    .clickable(onClick = onOpenBreakdown)
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Filled.AccountBalanceWallet,
-                    contentDescription = null,
-                    tint = scheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "Per-instrument breakdown",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = scheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Open breakdown",
-                    tint = scheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
                 )
             }
         }

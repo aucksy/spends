@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.UploadFile
@@ -78,6 +79,7 @@ fun SettingsScreen(
     onOpenImport: () -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenCapture: () -> Unit,
+    onOpenBanksCards: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -195,10 +197,16 @@ fun SettingsScreen(
                 )
                 if (state.smartCycleEnabled) {
                     Text(
-                        "A Cards tab appears at the bottom. Add your cards there (or scan your SMS to find them) and set each card's billing day. Tag spending with \"Paid with\" when you add it. Turn this off any time to return to the simple salary / month view.",
+                        "Manage your cards and banks below (or scan your SMS to find cards) and set each card's billing day. Tag spending with \"Paid with\" when you add it. Turn this off any time to return to the simple salary / month view.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    ClickableRow(
+                        title = "Banks & Cards",
+                        value = "Manage cards, banks & default instrument",
+                        onClick = onOpenBanksCards,
+                        leading = { Icon(Icons.Filled.CreditCard, contentDescription = null) },
                     )
                 }
             }

@@ -39,4 +39,7 @@ data class RecurringRuleEntity(
     // 0 = repeats forever; N>0 = stop after N occurrences total (e.g. an EMI for 12 months), counted from
     // [startDate] by cadence (#8). The rule deactivates once the Nth occurrence has been generated.
     @ColumnInfo(defaultValue = "0") val occurrenceLimit: Int = 0,
+    // The instrument each generated transaction is paid with (#6). null = Bank (the salary-cycle bucket),
+    // exactly like [ExpenseEntity.paymentMethodId]. No FK, so deleting a card never orphans the rule.
+    val paymentMethodId: Long? = null,
 )

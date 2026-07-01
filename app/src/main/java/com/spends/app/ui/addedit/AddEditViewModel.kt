@@ -17,8 +17,9 @@ import com.spends.app.data.repo.TransactionInput
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
-import com.spends.app.ui.cards.CardOption
 import com.spends.app.ui.cards.PaymentState
+import com.spends.app.ui.cards.toCardOption
+import kotlinx.coroutines.flow.first
 import com.spends.app.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,7 +48,7 @@ class AddEditViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val captureRepository: SmsCaptureRepository,
     private val paymentMethodRepository: PaymentMethodRepository,
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
     captureDraftStore: CaptureDraftStore,
 ) : ViewModel() {
 
@@ -85,7 +86,7 @@ class AddEditViewModel @Inject constructor(
     /** Whether "Paid with" should show (Smart Cycle on) and the available cards. */
     val paymentState: StateFlow<PaymentState> =
         combine(settingsRepository.settings, paymentMethodRepository.observeConfirmed()) { s, cards ->
-            PaymentState(s.smartCycleEnabled, cards.map { CardOption(it.id, it.label, it.last4, it.colorHex) })
+            PaymentState(s.smartCycleEnabled, cards.map { it.toCardOption() })
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentState())
 
     /** The editor offers "Paid with" for a normal add/edit; capture reviews auto-tag from the SMS last4. */
@@ -147,7 +148,12 @@ class AddEditViewModel @Inject constructor(
                     occurredAt = it.occurredAt,
                 )
             }
-            else -> _initial.value = newInitial()
+            // A fresh manual add pre-selects the user's default instrument (#2) when Smart Cycle is on.
+            else -> viewModelScope.launch {
+                val s = settingsRepository.settings.first()
+                val default = if (s.smartCycleEnabled) s.defaultPaymentMethodId else null
+                _initial.value = newInitial().copy(paymentMethodId = default)
+            }
         }
     }
 

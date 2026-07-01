@@ -268,6 +268,7 @@ private fun RecurringRuleEntity.toSnapshot() = SnapshotRecurring(
     note = note, frequency = frequency.name, intervalCount = intervalCount, anchorDay = anchorDay,
     startDate = startDate, nextRunAt = nextRunAt, lastRunAt = lastRunAt, active = active,
     createdAt = createdAt, updatedAt = updatedAt, occurrenceLimit = occurrenceLimit,
+    paymentMethodId = paymentMethodId,
 )
 
 private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
@@ -277,7 +278,7 @@ private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
     frequency = runCatching { RecurrenceFreq.valueOf(frequency) }.getOrDefault(RecurrenceFreq.MONTHLY),
     intervalCount = intervalCount, anchorDay = anchorDay, startDate = startDate, nextRunAt = nextRunAt,
     lastRunAt = lastRunAt, active = active, createdAt = createdAt, updatedAt = updatedAt,
-    occurrenceLimit = occurrenceLimit,
+    occurrenceLimit = occurrenceLimit, paymentMethodId = paymentMethodId,
 )
 
 private fun PaymentMethodEntity.toSnapshot() = SnapshotPaymentMethod(

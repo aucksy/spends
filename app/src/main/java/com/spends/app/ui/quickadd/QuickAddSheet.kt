@@ -87,6 +87,14 @@ fun QuickAddSheet(
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showAddCategory by remember { mutableStateOf(false) }
     var selectedPaymentMethodId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // Pre-select the user's default instrument (#2) once the state loads, unless they've already chosen.
+    var seededDefaultInstrument by rememberSaveable { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(paymentState.enabled, paymentState.defaultId) {
+        if (!seededDefaultInstrument && paymentState.enabled && paymentState.defaultId != null) {
+            selectedPaymentMethodId = paymentState.defaultId
+            seededDefaultInstrument = true
+        }
+    }
     var showPaidWith by remember { mutableStateOf(false) }
     // #6: the "pick a category" warning + a gentle shake only fire when the user actually tries to save
     // without one — never reactively while typing the amount (which used to shove the keypad).

@@ -31,13 +31,37 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.spends.app.data.db.entity.PaymentMethodEntity
+import com.spends.app.domain.model.PaymentMethodType
 import com.spends.app.ui.components.parseHexColor
 
-/** A selectable instrument in the "Paid with" picker. A null selection means "Bank" (the salary cycle). */
-data class CardOption(val id: Long, val label: String, val last4: String?, val colorHex: String)
+/**
+ * Classify a payment method for the "Paid with" picker + Single-Card selector (#2): credit/debit cards
+ * carry their own billing cycle; banks / UPI / wallets ride the salary cycle. Single source of truth so
+ * every screen groups instruments the same way.
+ */
+fun PaymentMethodEntity.isCardInstrument(): Boolean =
+    type == PaymentMethodType.CREDIT_CARD || type == PaymentMethodType.DEBIT_CARD
 
-/** What the entry screens need to render "Paid with": whether the feature is on, and the available cards. */
-data class PaymentState(val enabled: Boolean = false, val cards: List<CardOption> = emptyList())
+fun PaymentMethodEntity.toCardOption(): CardOption =
+    CardOption(id = id, label = label, last4 = last4, colorHex = colorHex, isCard = isCardInstrument())
+
+/**
+ * A selectable instrument in the "Paid with" picker. A null selection means the generic "Bank" (the
+ * salary-cycle bucket). [isCard] = a credit/debit card (its own billing cycle); false = a named bank
+ * (rides the salary cycle) — used to group + caption the picker (#2).
+ */
+data class CardOption(val id: Long, val label: String, val last4: String?, val colorHex: String, val isCard: Boolean = true)
+
+/**
+ * What the entry screens need to render "Paid with": whether the feature is on, the available instruments,
+ * and the [defaultId] a NEW expense pre-selects (#2; null = generic Bank).
+ */
+data class PaymentState(
+    val enabled: Boolean = false,
+    val cards: List<CardOption> = emptyList(),
+    val defaultId: Long? = null,
+)
 
 /** A tiny colour swatch (or a Bank glyph for the null/Bank option). */
 @Composable
@@ -115,6 +139,8 @@ fun PaidWithPickerSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val banks = cards.filter { !it.isCard }
+    val creditCards = cards.filter { it.isCard }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 24.dp)) {
             Text(
@@ -123,12 +149,21 @@ fun PaidWithPickerSheet(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 8.dp),
             )
+            // The generic Bank bucket + any named banks share the salary cycle; cards each have their own.
             PaidWithOptionRow(swatch = null, label = "Bank", caption = "Bank / UPI / cash · salary cycle", selected = selectedId == null) { onSelect(null) }
-            cards.forEach { card ->
+            banks.forEach { bank ->
+                PaidWithOptionRow(
+                    swatch = bank.colorHex,
+                    label = bank.display(),
+                    caption = "Bank · salary cycle",
+                    selected = selectedId == bank.id,
+                ) { onSelect(bank.id) }
+            }
+            creditCards.forEach { card ->
                 PaidWithOptionRow(
                     swatch = card.colorHex,
                     label = card.display(),
-                    caption = "Credit card · its own billing cycle",
+                    caption = "Card · its own billing cycle",
                     selected = selectedId == card.id,
                 ) { onSelect(card.id) }
             }
