@@ -37,6 +37,7 @@ import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CategoryAvatar
+import com.spends.app.ui.components.PillSegmentedControl
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,7 +66,7 @@ fun CategoryTransactionsScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
-                item(key = "header") { CategoryHeader(state) }
+                item(key = "header") { CategoryHeader(state, onAvgWindow = viewModel::setAvgWindow) }
                 items(state.rows, key = { it.id }) { row -> CategoryTxnRowItem(row) }
             }
         }
@@ -73,7 +74,7 @@ fun CategoryTransactionsScreen(
 }
 
 @Composable
-private fun CategoryHeader(state: CategoryTxnsUiState) {
+private fun CategoryHeader(state: CategoryTxnsUiState, onAvgWindow: (AvgWindow) -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
@@ -95,12 +96,39 @@ private fun CategoryHeader(state: CategoryTxnsUiState) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            "Monthly average · ${Money.formatRupees(state.monthlyAverageMinor)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+
+        Spacer(Modifier.height(12.dp))
+        // Monthly average with its own trailing window (#8): "Last" is static; 3M / 6M / All are tappable.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Monthly average",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                Money.formatRupees(state.monthlyAverageMinor),
+                style = Numerals.amountRow,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Last",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(10.dp))
+            val windows = AvgWindow.entries
+            PillSegmentedControl(
+                options = windows.map { it.label },
+                selectedIndex = windows.indexOf(state.avgWindow).coerceAtLeast(0),
+                onSelect = { onAvgWindow(windows[it]) },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 }

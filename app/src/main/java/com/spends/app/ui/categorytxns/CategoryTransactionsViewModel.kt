@@ -9,11 +9,19 @@ import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import java.time.LocalDate
 import javax.inject.Inject
+
+/** Trailing window the monthly-average metric is computed over (#8). null months = all time. */
+enum class AvgWindow(val label: String, val monthsBack: Long?) {
+    M3("3M", 3), M6("6M", 6), ALL("All", null)
+}
 
 /** One transaction row in the per-category drill-down list. */
 data class CategoryTxnRow(
@@ -34,8 +42,10 @@ data class CategoryTxnsUiState(
     val categoryName: String = "",
     val totalMinor: Long = 0,
     val count: Int = 0,
-    // Average spend per month across the SELECTED period (#2): total ÷ the period's length in months.
+    // Average spend per month over the chosen trailing window (#8: Last 3M / 6M / All), independent of the
+    // opened period. total-in-window ÷ months-in-window (capped at the category's own data span).
     val monthlyAverageMinor: Long = 0,
+    val avgWindow: AvgWindow = AvgWindow.M6,
     val rows: List<CategoryTxnRow> = emptyList(),
 )
 
@@ -50,36 +60,54 @@ class CategoryTransactionsViewModel @Inject constructor(
     private val startMillis: Long = savedStateHandle[Routes.ARG_PERIOD_START] ?: 0L
     private val endExclusiveMillis: Long = savedStateHandle[Routes.ARG_PERIOD_END] ?: 0L
 
+    private val avgWindow = MutableStateFlow(AvgWindow.M6)
+
+    fun setAvgWindow(window: AvgWindow) = avgWindow.update { window }
+
     val state: StateFlow<CategoryTxnsUiState> =
-        expenseRepository.observeByCategoryBetween(categoryId, startMillis, endExclusiveMillis)
-            .map { items ->
-                val rows = items.map { it.toRow() }
-                val total = rows.sumOf { it.amountMinor }
-                // Months for the average (#2): from the FIRST transaction in this period up to the period
-                // end (capped at today). Using the actual data span keeps a full-data period at its true
-                // length, but doesn't divide All-time's wide window by years when there's only a little data.
-                val earliest = items.minOfOrNull { it.expense.occurredAt }
-                val now = DateUtils.nowMillis()
-                val spanEnd = minOf(endExclusiveMillis.takeIf { it > 0 } ?: now, now)
-                val months = if (earliest == null || spanEnd <= earliest) {
-                    1.0
-                } else {
-                    ((spanEnd - earliest).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
-                }
-                CategoryTxnsUiState(
-                    loading = false,
-                    categoryName = categoryName,
-                    totalMinor = total,
-                    count = rows.size,
-                    monthlyAverageMinor = (total / months).toLong(),
-                    rows = rows,
-                )
+        // Query the category's WHOLE history once, then slice in memory: the list/total show the opened
+        // period, while the monthly average is computed over the chosen trailing window (#8).
+        combine(
+            expenseRepository.observeByCategoryBetween(categoryId, 0L, Long.MAX_VALUE),
+            avgWindow,
+        ) { allItems, window ->
+            val now = DateUtils.nowMillis()
+            val periodItems = allItems.filter {
+                it.expense.occurredAt >= startMillis && (endExclusiveMillis <= 0L || it.expense.occurredAt < endExclusiveMillis)
             }
+            val rows = periodItems.map { it.toRow() }
+            val total = rows.sumOf { it.amountMinor }
+
+            // The trailing window's spend on THIS category ÷ its months. The denominator is capped at the
+            // category's own first transaction, so a young category isn't divided by the full 3/6 months.
+            val windowStart = window.monthsBack?.let {
+                DateUtils.startOfDayMillis(LocalDate.now(DateUtils.ZONE).minusMonths(it))
+            } ?: 0L
+            val windowItems = allItems.filter { it.expense.occurredAt in windowStart until now }
+            val windowTotal = windowItems.sumOf { it.allocatedToCategory() }
+            val earliestAll = allItems.minOfOrNull { it.expense.occurredAt }
+            val effectiveStart = maxOf(windowStart, earliestAll ?: now)
+            val months = if (now <= effectiveStart) 1.0 else ((now - effectiveStart).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
+
+            CategoryTxnsUiState(
+                loading = false,
+                categoryName = categoryName,
+                totalMinor = total,
+                count = rows.size,
+                monthlyAverageMinor = (windowTotal / months).toLong(),
+                avgWindow = window,
+                rows = rows,
+            )
+        }
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5_000),
                 CategoryTxnsUiState(categoryName = categoryName),
             )
+
+    /** The amount allocated to THIS category on a transaction (handles splits). */
+    private fun ExpenseWithAllocations.allocatedToCategory(): Long =
+        allocations.filter { it.allocation.categoryId == categoryId }.sumOf { it.allocation.amountMinor }
 
     private fun ExpenseWithAllocations.toRow(): CategoryTxnRow {
         // The amount belonging to this category specifically (a transaction may split across many).
