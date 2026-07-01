@@ -13,6 +13,7 @@ import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.cards.isCardInstrument
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -89,7 +90,11 @@ class CycleBreakdownViewModel @Inject constructor(
         }
         val byInstrument = expenses.groupBy { composite.instrumentIdFor(it.expense.paymentMethodId) }
 
-        val cardRows = cards.map { card ->
+        // Cards (own billing cycle) vs named banks (salary cycle) — split by instrument type (#2).
+        val cardEntities = cards.filter { it.isCardInstrument() }
+        val bankEntities = cards.filter { !it.isCardInstrument() }
+
+        val cardRows = cardEntities.map { card ->
             val its = byInstrument[card.id].orEmpty()
             InstrumentRowUi(
                 id = card.id,
@@ -101,25 +106,42 @@ class CycleBreakdownViewModel @Inject constructor(
             )
         }.sortedByDescending { it.amountMinor }
 
-        val bankItems = byInstrument[null].orEmpty()
-        val bankRow = InstrumentRowUi(
+        // Named banks first, then the generic "Bank / UPI" bucket (null-tagged spend) — shown when it has
+        // spend, or when there are no named banks at all (the original single-bucket behaviour).
+        val namedBankRows = bankEntities.map { bank ->
+            val its = byInstrument[bank.id].orEmpty()
+            InstrumentRowUi(
+                id = bank.id,
+                name = bank.label,
+                colorHex = bank.colorHex,
+                sub = bankSub(bank, its.size),
+                amountMinor = its.sumOf { it.expense.amountMinor },
+                isCard = false,
+            )
+        }
+        val genericItems = byInstrument[null].orEmpty()
+        val genericBankRow = InstrumentRowUi(
             id = null,
             name = "Bank / UPI",
             colorHex = BANK_COLOR,
-            sub = "Salary cycle · ${countLabel(bankItems.size)}",
-            amountMinor = bankItems.sumOf { it.expense.amountMinor },
+            sub = "Salary cycle · ${countLabel(genericItems.size)}",
+            amountMinor = genericItems.sumOf { it.expense.amountMinor },
             isCard = false,
         )
+        val bankRows = buildList {
+            addAll(namedBankRows)
+            if (genericItems.isNotEmpty() || bankEntities.isEmpty()) add(genericBankRow)
+        }.sortedByDescending { it.amountMinor }
 
         return CycleBreakdownUiState(
             loading = false,
             label = label,
             totalSpendMinor = expenses.sumOf { it.expense.amountMinor },
-            instrumentCount = cardRows.size + 1,
+            instrumentCount = cardRows.size + bankRows.size,
             cardCount = cardRows.size,
-            bankCount = 1,
+            bankCount = bankRows.size,
             cards = cardRows,
-            banks = listOf(bankRow),
+            banks = bankRows,
         )
     }
 
@@ -127,6 +149,15 @@ class CycleBreakdownViewModel @Inject constructor(
         val parts = buildList {
             card.last4?.let { add("·$it") }
             add(card.billingDay?.let { "Bills ${ordinal(it)}" } ?: "Salary cycle")
+            add(countLabel(txns))
+        }
+        return parts.joinToString("  ·  ")
+    }
+
+    private fun bankSub(bank: PaymentMethodEntity, txns: Int): String {
+        val parts = buildList {
+            bank.last4?.let { add("·$it") }
+            add("Salary cycle")
             add(countLabel(txns))
         }
         return parts.joinToString("  ·  ")

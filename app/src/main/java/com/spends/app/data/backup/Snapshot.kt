@@ -119,6 +119,9 @@ data class SnapshotRecurring(
     val updatedAt: Long,
     // Added in v4 (#8 occurrence cap). 0 = forever. Default keeps older backups valid.
     val occurrenceLimit: Int = 0,
+    // The paid-with instrument for generated transactions (#6). null = Bank. Default keeps older backups
+    // valid; payment-method ids are preserved on restore, so the reference stays correct.
+    val paymentMethodId: Long? = null,
 )
 
 @Serializable

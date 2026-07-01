@@ -165,10 +165,10 @@ class ExpenseRepository @Inject constructor(
      * transaction. Dates are deliberately left untouched (only the rule's schedule rolls forward). Recurring
      * rows always have exactly one allocation, so the single-allocation UPDATE is exact.
      */
-    suspend fun updateRecurringPast(ruleId: Long, amountMinor: Long, categoryId: Long, merchant: String?, note: String?) =
+    suspend fun updateRecurringPast(ruleId: Long, amountMinor: Long, categoryId: Long, merchant: String?, note: String?, paymentMethodId: Long?) =
         db.withTransaction {
             val now = DateUtils.nowMillis()
-            dao.updateRecurringExpenses(ruleId, amountMinor, merchant, note, now)
+            dao.updateRecurringExpenses(ruleId, amountMinor, merchant, note, paymentMethodId, now)
             dao.updateRecurringAllocations(ruleId, categoryId, amountMinor)
         }
 

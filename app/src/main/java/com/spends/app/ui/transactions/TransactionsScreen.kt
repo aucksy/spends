@@ -102,7 +102,6 @@ fun TransactionsScreen(
     searchActive: Boolean,
     onSearchActiveChange: (Boolean) -> Unit,
     searchInTopBar: Boolean = false,
-    onOpenBreakdown: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
@@ -242,7 +241,7 @@ fun TransactionsScreen(
             ) {
                 if (!searching) {
                     item(key = "summary") {
-                        SummaryHeader(state = state, onOpenBreakdown = onOpenBreakdown, modifier = Modifier.padding(top = 2.dp))
+                        SummaryHeader(state = state, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
                 state.groups.forEach { group ->

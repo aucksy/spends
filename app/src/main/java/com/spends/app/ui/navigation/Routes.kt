@@ -19,6 +19,8 @@ object Routes {
     const val RESTORE = "restore"
     // Smart Cycle per-instrument breakdown (Round B), reached from the composite summary header.
     const val CYCLE_BREAKDOWN = "cycle_breakdown"
+    // Banks & Cards management, reached from Settings when Smart Cycle is on (#3).
+    const val BANKS_CARDS = "banks_cards"
 
     const val IMPORT = "import"
     const val ARG_FROM_ONBOARDING = "fromOnboarding"

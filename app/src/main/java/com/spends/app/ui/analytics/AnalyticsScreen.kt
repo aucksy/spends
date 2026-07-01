@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Autorenew
@@ -63,6 +64,7 @@ fun AnalyticsScreen(
     onOpenRecurring: () -> Unit,
     onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenBreakdown: () -> Unit = {},
     viewModel: AnalyticsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -92,6 +94,12 @@ fun AnalyticsScreen(
         )
         Spacer(Modifier.height(8.dp))
 
+        // Smart Cycle composite (#4): the per-instrument breakdown lives here now (moved off the timeline).
+        if (state.isComposite) {
+            BreakdownLinkCard(onClick = onOpenBreakdown)
+            Spacer(Modifier.height(12.dp))
+        }
+
         if (state.isEmpty) {
             EmptyAnalytics()
         } else {
@@ -106,6 +114,27 @@ fun AnalyticsScreen(
 
         RecurringCard(state.recurring, onOpenRecurring)
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Tappable link to the Smart Cycle per-instrument breakdown (#4 — moved here from the timeline header). */
+@Composable
+private fun BreakdownLinkCard(onClick: () -> Unit) {
+    SpendsCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Per-instrument breakdown",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open breakdown", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

@@ -22,6 +22,7 @@ import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
+import com.spends.app.ui.cards.isCardInstrument
 import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,9 +72,11 @@ class TransactionsViewModel @Inject constructor(
     val smartCycleEnabled: StateFlow<Boolean> =
         settingsRepository.settings.map { it.smartCycleEnabled }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    // Only CARDS can be viewed as a single instrument (their own billing cycle); a "single bank" would just
+    // be the salary cycle, so banks are excluded here (#2).
     val cardChoices: StateFlow<List<CardChoice>> =
         paymentMethodRepository.observeConfirmed()
-            .map { cards -> cards.map { CardChoice(it.id, it.label, it.colorHex) } }
+            .map { cards -> cards.filter { it.isCardInstrument() }.map { CardChoice(it.id, it.label, it.colorHex) } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val searchQuery = MutableStateFlow("")

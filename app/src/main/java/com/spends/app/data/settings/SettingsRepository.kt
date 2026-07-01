@@ -56,6 +56,10 @@ data class SettingsState(
     // snapshot, so it never needs a snapshot-schema bump. ON at 09:00 by default = the prior behaviour.
     val recurringNotifyEnabled: Boolean = true,
     val recurringNotifyMinute: Int = 9 * 60,
+    // The instrument a NEW expense pre-selects in "Paid with" (#2). null = the generic Bank. Device-local
+    // (a payment-method id is meaningless across devices), so it's NOT in the backup snapshot. 0 in the
+    // store means "unset" → null here.
+    val defaultPaymentMethodId: Long? = null,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -88,6 +92,7 @@ class SettingsRepository @Inject constructor(
             smartCycleEnabled = prefs[Keys.SMART_CYCLE_ENABLED] ?: false,
             recurringNotifyEnabled = prefs[Keys.RECURRING_NOTIFY] ?: true,
             recurringNotifyMinute = prefs[Keys.RECURRING_NOTIFY_MINUTE] ?: (9 * 60),
+            defaultPaymentMethodId = prefs[Keys.DEFAULT_PAYMENT_METHOD]?.takeIf { it > 0 },
         )
     }
 
@@ -112,6 +117,8 @@ class SettingsRepository @Inject constructor(
     suspend fun setSmartCycleEnabled(value: Boolean) = edit { it[Keys.SMART_CYCLE_ENABLED] = value }
     suspend fun setRecurringNotifyEnabled(value: Boolean) = edit { it[Keys.RECURRING_NOTIFY] = value }
     suspend fun setRecurringNotifyTime(minuteOfDay: Int) = edit { it[Keys.RECURRING_NOTIFY_MINUTE] = minuteOfDay.coerceIn(0, 1439) }
+    /** Set the default "Paid with" instrument for new expenses (#2); null = generic Bank (stored as 0). */
+    suspend fun setDefaultPaymentMethodId(id: Long?) = edit { it[Keys.DEFAULT_PAYMENT_METHOD] = id ?: 0L }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -168,5 +175,6 @@ class SettingsRepository @Inject constructor(
         val SMART_CYCLE_ENABLED = booleanPreferencesKey("smart_cycle_enabled")
         val RECURRING_NOTIFY = booleanPreferencesKey("recurring_notify_enabled")
         val RECURRING_NOTIFY_MINUTE = intPreferencesKey("recurring_notify_minute")
+        val DEFAULT_PAYMENT_METHOD = longPreferencesKey("default_payment_method_id")
     }
 }

@@ -6,15 +6,19 @@ import androidx.lifecycle.viewModelScope
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.repo.CategoryRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.repo.RecurringInput
 import com.spends.app.data.repo.RecurringRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
+import com.spends.app.ui.cards.PaymentState
+import com.spends.app.ui.cards.toCardOption
 import com.spends.app.work.RecurringScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -24,6 +28,7 @@ class RecurringViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val recurringRepository: RecurringRepository,
     private val settingsRepository: SettingsRepository,
+    paymentMethodRepository: PaymentMethodRepository,
     categoryRepository: CategoryRepository,
 ) : ViewModel() {
 
@@ -32,6 +37,12 @@ class RecurringViewModel @Inject constructor(
 
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** "Paid with" for the recurring editor (#6) — the feature flag + the available instruments. */
+    val paymentState: StateFlow<PaymentState> =
+        combine(settingsRepository.settings, paymentMethodRepository.observeConfirmed()) { s, cards ->
+            PaymentState(s.smartCycleEnabled, cards.map { it.toCardOption() })
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentState())
 
     /** Recurring-notification prefs (#15): whether to notify when the daily worker adds rules, and at what time. */
     val settings: StateFlow<SettingsState> = settingsRepository.settings

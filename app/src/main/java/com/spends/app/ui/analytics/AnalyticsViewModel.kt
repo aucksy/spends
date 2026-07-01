@@ -22,6 +22,7 @@ import com.spends.app.data.repo.RecurringRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.ui.cards.isCardInstrument
 import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -67,6 +68,8 @@ data class AnalyticsUiState(
     // The selected period's epoch-millis bounds, so tapping a category drills into that exact window.
     val windowStartMillis: Long = 0,
     val windowEndExclusiveMillis: Long = 0,
+    // True for the Smart Cycle composite (Round B) — Analytics offers the "per-instrument breakdown" link (#4).
+    val isComposite: Boolean = false,
 ) {
     val netMinor: Long get() = incomeMinor - expenseMinor
     val isEmpty: Boolean get() = !loading && expenseMinor == 0L && incomeMinor == 0L
@@ -97,9 +100,11 @@ class AnalyticsViewModel @Inject constructor(
     val smartCycleEnabled: StateFlow<Boolean> =
         settingsRepository.settings.map { it.smartCycleEnabled }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    // Only CARDS can be viewed as a single instrument (their own billing cycle); banks ride the salary
+    // cycle, so they're excluded from the Single-Card picker (#2).
     val cardChoices: StateFlow<List<CardChoice>> =
         paymentMethodRepository.observeConfirmed()
-            .map { cards -> cards.map { CardChoice(it.id, it.label, it.colorHex) } }
+            .map { cards -> cards.filter { it.isCardInstrument() }.map { CardChoice(it.id, it.label, it.colorHex) } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val resolvedFlow: StateFlow<ResolvedB> =
@@ -193,7 +198,7 @@ class AnalyticsViewModel @Inject constructor(
             KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
             KindSum(TxnKind.TRANSFER, items.filter { it.expense.kind == TxnKind.TRANSFER }.sumOf { it.expense.amountMinor }),
         )
-        return buildState(resolved, catSpend, kindSums, items, rules)
+        return buildState(resolved, catSpend, kindSums, items, rules).copy(isComposite = true)
     }
 
     private fun buildState(

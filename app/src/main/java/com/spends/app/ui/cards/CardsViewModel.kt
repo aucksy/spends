@@ -47,7 +47,11 @@ data class CandidateUi(
 
 data class CardsUiState(
     val cards: List<CardUi> = emptyList(),
+    val banks: List<CardUi> = emptyList(),
     val candidates: List<CandidateUi> = emptyList(),
+    // The instrument new expenses pre-select (#2); null = generic Bank. [defaultLabel] is its display name.
+    val defaultId: Long? = null,
+    val defaultLabel: String = "Bank",
     val loading: Boolean = true,
     val scanning: Boolean = false,
     val message: String? = null,
@@ -77,30 +81,35 @@ class CardsViewModel @Inject constructor(
     ) { confirmed, candidates, cardExpenses, settings, b ->
         val today = LocalDate.now(DateUtils.ZONE)
         val salaryDay = settings.salaryCycleStartDay
+        fun toUi(pm: com.spends.app.data.db.entity.PaymentMethodEntity): CardUi {
+            val anchor = pm.billingDay ?: salaryDay
+            val window = CycleUtils.windowFor(today, anchor)
+            val start = window.startMillis()
+            val end = window.endExclusiveMillis()
+            val inWindow = cardExpenses.filter {
+                it.paymentMethodId == pm.id && it.occurredAt >= start && it.occurredAt < end
+            }
+            return CardUi(
+                id = pm.id,
+                label = pm.label,
+                institution = pm.institution,
+                last4 = pm.last4,
+                colorHex = pm.colorHex,
+                billingDay = pm.billingDay,
+                dueDay = pm.dueDay,
+                cycleSpendMinor = inWindow.sumOf { it.amountMinor },
+                txnCount = inWindow.size,
+                cycleLabel = "${dayFmt.format(window.start)} – ${dayFmt.format(window.endInclusive)}",
+                billsLabel = pm.billingDay?.let { "Bills ${ordinal(it)}" },
+            )
+        }
+        val defaultId = settings.defaultPaymentMethodId
         CardsUiState(
-            cards = confirmed.map { card ->
-                val anchor = card.billingDay ?: salaryDay
-                val window = CycleUtils.windowFor(today, anchor)
-                val start = window.startMillis()
-                val end = window.endExclusiveMillis()
-                val inWindow = cardExpenses.filter {
-                    it.paymentMethodId == card.id && it.occurredAt >= start && it.occurredAt < end
-                }
-                CardUi(
-                    id = card.id,
-                    label = card.label,
-                    institution = card.institution,
-                    last4 = card.last4,
-                    colorHex = card.colorHex,
-                    billingDay = card.billingDay,
-                    dueDay = card.dueDay,
-                    cycleSpendMinor = inWindow.sumOf { it.amountMinor },
-                    txnCount = inWindow.size,
-                    cycleLabel = "${dayFmt.format(window.start)} – ${dayFmt.format(window.endInclusive)}",
-                    billsLabel = card.billingDay?.let { "Bills ${ordinal(it)}" },
-                )
-            },
+            cards = confirmed.filter { it.isCardInstrument() }.map { toUi(it) },
+            banks = confirmed.filter { !it.isCardInstrument() }.map { toUi(it) },
             candidates = candidates.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex) },
+            defaultId = defaultId,
+            defaultLabel = confirmed.firstOrNull { it.id == defaultId }?.label ?: "Bank",
             loading = false,
             scanning = b.scanning,
             message = b.message,
@@ -113,10 +122,35 @@ class CardsViewModel @Inject constructor(
                 label = label,
                 institution = institution,
                 last4 = last4,
+                type = com.spends.app.domain.model.PaymentMethodType.CREDIT_CARD,
                 billingDay = billingDay,
                 dueDay = dueDay,
             )
         }
+
+    /** Add a bank / UPI account (#2) — no billing day; it rides the salary cycle. */
+    fun addBank(label: String, last4: String?, institution: String?) =
+        viewModelScope.launch {
+            paymentMethodRepository.addManual(
+                label = label,
+                institution = institution,
+                last4 = last4,
+                type = com.spends.app.domain.model.PaymentMethodType.BANK_ACCOUNT,
+                billingDay = null,
+                dueDay = null,
+            )
+        }
+
+    /** Set the default "Paid with" instrument for new expenses (#2); null = generic Bank. */
+    fun setDefaultInstrument(id: Long?) = viewModelScope.launch { settingsRepository.setDefaultPaymentMethodId(id) }
+
+    /** Apply one billing day to several cards at once (#10, replaces the old per-card Merge). */
+    fun setCommonBillingDay(cardIds: Set<Long>, billingDay: Int) = viewModelScope.launch {
+        cardIds.forEach { id ->
+            val card = paymentMethodRepository.getById(id) ?: return@forEach
+            paymentMethodRepository.updateCard(card.copy(billingDay = billingDay))
+        }
+    }
 
     fun updateCard(id: Long, label: String, last4: String?, institution: String?, billingDay: Int?, dueDay: Int?) =
         viewModelScope.launch {

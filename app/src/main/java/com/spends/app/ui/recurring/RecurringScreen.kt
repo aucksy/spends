@@ -92,6 +92,7 @@ fun RecurringScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
 
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val paymentState by viewModel.paymentState.collectAsStateWithLifecycle()
 
     // null = list view; non-null = editor. Editing(null rule) is "add new".
     var editing by remember { mutableStateOf(false) }
@@ -103,6 +104,7 @@ fun RecurringScreen(
         RecurringEditor(
             initial = editTarget,
             categories = categories,
+            paymentState = paymentState,
             onCancel = { editing = false },
             onDelete = editTarget?.let { target -> { viewModel.delete(target.id); editing = false } },
             onSave = { input, applyToPast -> viewModel.save(input, editTarget?.id, applyToPast); editing = false },
@@ -352,6 +354,7 @@ private fun RecurringRow(
 private fun RecurringEditor(
     initial: RecurringRuleEntity?,
     categories: List<CategoryEntity>,
+    paymentState: com.spends.app.ui.cards.PaymentState,
     onCancel: () -> Unit,
     onDelete: (() -> Unit)?,
     onSave: (RecurringInput, Boolean) -> Unit,
@@ -364,6 +367,8 @@ private fun RecurringEditor(
     var startDate by remember { mutableStateOf(initial?.startDate ?: DateUtils.nowMillis()) }
     var merchant by remember { mutableStateOf(initial?.merchant ?: "") }
     var note by remember { mutableStateOf(initial?.note ?: "") }
+    var paymentMethodId by remember { mutableStateOf(initial?.paymentMethodId) }
+    var showPaidWith by remember { mutableStateOf(false) }
     // #8 "repeat N times": occurrenceLimit 0 = forever; >0 = stop after N.
     var limited by remember { mutableStateOf((initial?.occurrenceLimit ?: 0) > 0) }
     var occurrenceCount by remember { mutableStateOf((initial?.occurrenceLimit ?: 0).takeIf { it > 0 } ?: 12) }
@@ -561,6 +566,15 @@ private fun RecurringEditor(
                 singleLine = true,
             )
 
+            // "Paid with" (#6) — only for expenses, and only when Smart Cycle is on (same rule as the editor).
+            if (paymentState.enabled && kind == TxnKind.EXPENSE) {
+                Spacer(Modifier.height(4.dp))
+                com.spends.app.ui.cards.PaidWithField(
+                    selected = paymentState.cards.firstOrNull { it.id == paymentMethodId },
+                    onClick = { showPaidWith = true },
+                )
+            }
+
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
@@ -576,6 +590,8 @@ private fun RecurringEditor(
                         intervalCount = intervalCount,
                         startDate = startDate,
                         occurrenceLimit = if (limited) occurrenceCount else 0,
+                        // Income has no instrument; only expenses carry a paid-with (#6).
+                        paymentMethodId = if (kind == TxnKind.EXPENSE) paymentMethodId else null,
                     )
                     // New rule → just save. Editing → ask whether to also rewrite past occurrences (#5).
                     if (initial == null) onSave(input, false) else pendingInput = input
@@ -635,12 +651,21 @@ private fun RecurringEditor(
         )
     }
 
+    if (showPaidWith) {
+        com.spends.app.ui.cards.PaidWithPickerSheet(
+            cards = paymentState.cards,
+            selectedId = paymentMethodId,
+            onSelect = { paymentMethodId = it; showPaidWith = false },
+            onDismiss = { showPaidWith = false },
+        )
+    }
+
     // #5 — on an edit, choose whether the change also rewrites the transactions already added by this rule.
     pendingInput?.let { input ->
         AlertDialog(
             onDismissRequest = { pendingInput = null },
             title = { Text("Apply changes to") },
-            text = { Text("Update only upcoming transactions, or also the ones this rule has already added? Amount, category, merchant and note are updated on past entries — their dates stay put.") },
+            text = { Text("Update only upcoming transactions, or also the ones this rule has already added? Amount, category, merchant, note and paid-with are updated on past entries — their dates stay put.") },
             confirmButton = {
                 TextButton(onClick = { pendingInput = null; onSave(input, true) }) { Text("All, incl. past") }
             },

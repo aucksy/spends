@@ -33,7 +33,7 @@ import com.spends.app.data.seed.CategorySeed
         PaymentMethodEntity::class,
         IgnoredPatternEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -250,6 +250,15 @@ abstract class SpendsDatabase : RoomDatabase() {
                         "`updatedAt` INTEGER NOT NULL, " +
                         "PRIMARY KEY(`patternKey`))",
                 )
+            }
+        }
+
+        /** v11 -> v12: a recurring rule can carry the instrument its generated transactions are paid with
+         *  (`recurring_rules.paymentMethodId`, nullable `Long?` → `INTEGER`, no NOT NULL, matching Room's
+         *  generated DDL) for the recurring "Paid with" picker (#6). Existing rules default to NULL = Bank. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE recurring_rules ADD COLUMN paymentMethodId INTEGER")
             }
         }
     }
