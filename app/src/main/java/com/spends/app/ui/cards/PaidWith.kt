@@ -141,6 +141,9 @@ fun PaidWithPickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val banks = cards.filter { !it.isCard }
     val creditCards = cards.filter { it.isCard }
+    // Group headers only earn their place once there are cards to separate from banks (#4); with banks
+    // alone the list stays flat.
+    val grouped = creditCards.isNotEmpty()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 24.dp)) {
             Text(
@@ -149,7 +152,8 @@ fun PaidWithPickerSheet(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 8.dp),
             )
-            // The generic Bank bucket + any named banks share the salary cycle; cards each have their own.
+            // Banks & UPI (salary cycle): the generic Bank bucket + any named banks.
+            if (grouped) PickerGroupHeader("Banks & UPI")
             PaidWithOptionRow(swatch = null, label = "Bank", caption = "Bank / UPI / cash · salary cycle", selected = selectedId == null) { onSelect(null) }
             banks.forEach { bank ->
                 PaidWithOptionRow(
@@ -159,6 +163,8 @@ fun PaidWithPickerSheet(
                     selected = selectedId == bank.id,
                 ) { onSelect(bank.id) }
             }
+            // Credit cards (own billing cycle).
+            if (grouped) PickerGroupHeader("Credit cards")
             creditCards.forEach { card ->
                 PaidWithOptionRow(
                     swatch = card.colorHex,
@@ -169,6 +175,17 @@ fun PaidWithPickerSheet(
             }
         }
     }
+}
+
+@Composable
+private fun PickerGroupHeader(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 4.dp),
+    )
 }
 
 @Composable

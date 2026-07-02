@@ -535,14 +535,16 @@ private fun RecurringEditor(
                 }
             }
 
-            // Live summary so the user can see exactly what they're scheduling.
+            // Live summary so the user can see exactly what they're scheduling — with the occurrence cap
+            // appended when "end after N" is on (#8), e.g. "…on the 1st for the next 12 months".
             Card(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
+                val base = RecurrenceMath.describe(frequency, intervalCount, RecurrenceMath.anchorFor(frequency, DateUtils.toLocalDate(startDate)))
                 Text(
-                    RecurrenceMath.describe(frequency, intervalCount, RecurrenceMath.anchorFor(frequency, DateUtils.toLocalDate(startDate))),
+                    if (limited) "$base for the next ${occurrencePhrase(occurrenceCount, frequency, intervalCount)}" else base,
                     modifier = Modifier.padding(14.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -674,6 +676,22 @@ private fun RecurringEditor(
             },
         )
     }
+}
+
+/**
+ * "12 months" / "8 weeks" / "6 occurrences" — used in the recurring live summary's "for the next …" tail (#8).
+ * Uses the frequency's own unit only when the interval is 1 (so it's exact); otherwise falls back to the
+ * unambiguous "occurrences" (e.g. "every 2 months … for the next 6 occurrences", not "6 months").
+ */
+private fun occurrencePhrase(count: Int, freq: RecurrenceFreq, interval: Int): String {
+    if (interval != 1) return "$count ${if (count == 1) "occurrence" else "occurrences"}"
+    val unit = when (freq) {
+        RecurrenceFreq.DAILY -> "day"
+        RecurrenceFreq.WEEKLY -> "week"
+        RecurrenceFreq.MONTHLY -> "month"
+        RecurrenceFreq.YEARLY -> "year"
+    }
+    return "$count $unit${if (count == 1) "" else "s"}"
 }
 
 private fun RecurrenceFreq.shortLabel(): String = when (this) {

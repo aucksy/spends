@@ -68,18 +68,22 @@ object Routes {
     const val ARG_CATEGORY_NAME = "categoryName"
     const val ARG_PERIOD_START = "periodStart"
     const val ARG_PERIOD_END = "periodEnd"
+    // The cycle the drill-down was opened for (#5), shown after the txn count so it's clear which period
+    // these numbers belong to. A query param (optional, blank-safe) rather than a path segment.
+    const val ARG_CYCLE_LABEL = "cycleLabel"
 
     /**
-     * Route to the per-category transaction list for one Analytics period. [name] is URL-encoded so
-     * categories with spaces or symbols (e.g. "Food & Drink") survive path/arg parsing.
+     * Route to the per-category transaction list for one Analytics period. [name] and [cycleLabel] are
+     * URL-encoded so spaces / symbols (e.g. "Food & Drink", "17 Jun – 16 Jul") survive path/arg parsing.
      */
-    fun categoryTxns(categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long): String {
+    fun categoryTxns(categoryId: Long, name: String, cycleLabel: String, startMillis: Long, endExclusiveMillis: Long): String {
         // URLEncoder emits '+' for spaces, but the nav path decoder (Uri.decode) only turns '%20'
-        // back into a space — swap so the category title renders cleanly.
+        // back into a space — swap so the text renders cleanly.
         val encoded = URLEncoder.encode(name, StandardCharsets.UTF_8.name()).replace("+", "%20")
-        return "$CATEGORY_TXNS/$categoryId/$encoded/$startMillis/$endExclusiveMillis"
+        val encodedCycle = URLEncoder.encode(cycleLabel, StandardCharsets.UTF_8.name()).replace("+", "%20")
+        return "$CATEGORY_TXNS/$categoryId/$encoded/$startMillis/$endExclusiveMillis?$ARG_CYCLE_LABEL=$encodedCycle"
     }
 
     const val CATEGORY_TXNS_PATTERN =
-        "$CATEGORY_TXNS/{$ARG_CATEGORY_ID}/{$ARG_CATEGORY_NAME}/{$ARG_PERIOD_START}/{$ARG_PERIOD_END}"
+        "$CATEGORY_TXNS/{$ARG_CATEGORY_ID}/{$ARG_CATEGORY_NAME}/{$ARG_PERIOD_START}/{$ARG_PERIOD_END}?$ARG_CYCLE_LABEL={$ARG_CYCLE_LABEL}"
 }

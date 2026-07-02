@@ -22,15 +22,16 @@ object RecurringScheduler {
 
     /**
      * (Re)schedule the daily recurring pass for [minuteOfDay] (local). [replace]=true when the user changes
-     * the time (UPDATE to the new time); false at launch (KEEP the persisted schedule so a process restart
-     * never disturbs the user's chosen time — the DEFAULT only applies on a first-ever creation). Mirrors
-     * [BackupScheduler]. The worker self-gates the *notification* on the recurring-notify toggle.
+     * the time — CANCEL_AND_REENQUEUE so the new time actually re-anchors the next run (UPDATE keeps a
+     * running periodic job on its old anchor, so the time change never takes effect). false at launch (KEEP
+     * the persisted schedule so a process restart never disturbs the user's chosen time — the DEFAULT only
+     * applies on a first-ever creation). Mirrors [BackupScheduler]. The worker self-gates the *notification*.
      */
     fun schedule(context: Context, minuteOfDay: Int = DEFAULT_MINUTE, replace: Boolean = false) {
         val request = PeriodicWorkRequestBuilder<RecurringWorker>(1, TimeUnit.DAYS)
             .setInitialDelay(initialDelayMinutes(minuteOfDay), TimeUnit.MINUTES)
             .build()
-        val policy = if (replace) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
+        val policy = if (replace) ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE else ExistingPeriodicWorkPolicy.KEEP
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(RecurringWorker.UNIQUE_NAME, policy, request)
     }
 

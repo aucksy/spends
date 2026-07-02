@@ -91,13 +91,16 @@ private fun CategoryHeader(state: CategoryTxnsUiState, onAvgWindow: (AvgWindow) 
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(2.dp))
+        // The txn count + the cycle these numbers are for (#5) — updates whenever a different cycle is chosen.
+        val cyclePart = state.cycleLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""
         Text(
-            "${state.count} ${if (state.count == 1) "transaction" else "transactions"}",
+            "${state.count} ${if (state.count == 1) "transaction" else "transactions"}$cyclePart",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(18.dp))
         // Monthly average with its own trailing window (#8): "Last" is static; 3M / 6M / All are tappable.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -129,6 +132,8 @@ private fun CategoryHeader(state: CategoryTxnsUiState, onAvgWindow: (AvgWindow) 
                 modifier = Modifier.weight(1f),
             )
         }
+        // Breathing room before the transaction list (#5).
+        Spacer(Modifier.height(14.dp))
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 }

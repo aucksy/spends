@@ -28,9 +28,11 @@ object BackupScheduler {
     /**
      * (Re)schedule the daily backup for [minuteOfDay].
      *
-     * @param replace when true, replace any existing schedule with this time (use when the user changes
-     *   the time or turns auto-backup on). When false, KEEP an existing schedule untouched — used at app
-     *   launch so a process restart never disturbs the persisted schedule or its timing.
+     * @param replace when true, the user changed the time (or turned auto-backup on) — CANCEL_AND_REENQUEUE
+     *   so the new initial delay actually re-anchors the next run to [minuteOfDay]. (UPDATE keeps a running
+     *   periodic job on its old anchor, so a time change silently never took effect — the reported bug.)
+     *   When false, KEEP an existing schedule untouched — used at app launch so a process restart never
+     *   disturbs the persisted schedule or its timing.
      */
     fun schedule(context: Context, minuteOfDay: Int, replace: Boolean) {
         val constraints = Constraints.Builder()
@@ -40,7 +42,7 @@ object BackupScheduler {
             .setConstraints(constraints)
             .setInitialDelay(initialDelayMinutes(minuteOfDay), TimeUnit.MINUTES)
             .build()
-        val policy = if (replace) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
+        val policy = if (replace) ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE else ExistingPeriodicWorkPolicy.KEEP
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(BackupWorker.UNIQUE_NAME, policy, request)
     }
 

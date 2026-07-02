@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,7 +56,7 @@ fun HomeScreen(
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenRecurring: () -> Unit,
-    onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+    onOpenCategory: (categoryId: Long, name: String, cycleLabel: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
     onOpenBreakdown: () -> Unit = {},
     openQuickAddSignal: Boolean = false,
     onQuickAddConsumed: () -> Unit = {},
@@ -87,10 +86,9 @@ fun HomeScreen(
     }
     // The + opens the fast half-screen quick-add sheet (calculator keypad). Editing still uses the full screen.
     var showQuickAdd by remember { mutableStateOf(false) }
-    // Search is driven from the bottom bar (#5) — lifted here so the "Search" tab can toggle it and
-    // reflect its active state; the Transactions screen owns the actual query text. Cards/Banks now live
-    // in Settings (#3), so the bottom nav is a fixed Transactions | Analytics | Search regardless of Smart
-    // Cycle. Search only makes sense on the timeline — clear it if we're on Analytics.
+    // Search is a compact icon in the timeline's period bar (#2), toggling this shared flag; the
+    // Transactions screen owns the actual query text. The bottom nav is just Transactions | Analytics.
+    // Search only makes sense on the timeline — clear it if we're on Analytics.
     var searchActive by rememberSaveable { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(tab) {
         if (tab != HomeTab.TRANSACTIONS && searchActive) searchActive = false
@@ -106,33 +104,20 @@ fun HomeScreen(
 
     Scaffold(
         bottomBar = {
+            // Two tabs only — Search moved back to a top icon on the timeline (#2), so the bottom bar stays
+            // clean and the cycle pill keeps its width for long names.
             NavigationBar {
                 NavigationBarItem(
-                    selected = tab == HomeTab.TRANSACTIONS && !searchActive,
-                    onClick = { tab = HomeTab.TRANSACTIONS; searchActive = false },
+                    selected = tab == HomeTab.TRANSACTIONS,
+                    onClick = { tab = HomeTab.TRANSACTIONS },
                     icon = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
                     label = { Text("Transactions") },
                 )
                 NavigationBarItem(
-                    selected = tab == HomeTab.ANALYTICS && !searchActive,
-                    onClick = { tab = HomeTab.ANALYTICS; searchActive = false },
+                    selected = tab == HomeTab.ANALYTICS,
+                    onClick = { tab = HomeTab.ANALYTICS },
                     icon = { Icon(Icons.Filled.PieChart, contentDescription = null) },
                     label = { Text("Analytics") },
-                )
-                // Search is a permanent bottom tab now (#3): from Analytics it jumps to the timeline and opens
-                // search; on the timeline it toggles. Highlights while searching.
-                NavigationBarItem(
-                    selected = searchActive,
-                    onClick = {
-                        if (tab != HomeTab.TRANSACTIONS) {
-                            tab = HomeTab.TRANSACTIONS
-                            searchActive = true
-                        } else {
-                            searchActive = !searchActive
-                        }
-                    },
-                    icon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    label = { Text("Search") },
                 )
             }
         },
@@ -155,6 +140,8 @@ fun HomeScreen(
                         onOpenSettings = onOpenSettings,
                         searchActive = searchActive,
                         onSearchActiveChange = { searchActive = it },
+                        // Search is a compact icon in the period bar (#2).
+                        searchInTopBar = true,
                     )
                     HomeTab.ANALYTICS -> AnalyticsScreen(
                         onOpenRecurring = onOpenRecurring,

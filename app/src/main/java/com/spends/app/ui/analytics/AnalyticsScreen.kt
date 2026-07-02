@@ -62,7 +62,7 @@ import com.spends.app.ui.components.rupeeText
 @Composable
 fun AnalyticsScreen(
     onOpenRecurring: () -> Unit,
-    onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+    onOpenCategory: (categoryId: Long, name: String, cycleLabel: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBreakdown: () -> Unit = {},
     viewModel: AnalyticsViewModel = hiltViewModel(),
@@ -72,6 +72,11 @@ fun AnalyticsScreen(
     val smartCycleEnabled by viewModel.smartCycleEnabled.collectAsStateWithLifecycle()
     val cardChoices by viewModel.cardChoices.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
+    // The cycle these numbers belong to (#5): the selection name, plus the concrete date range when it adds
+    // information (a composite's label already IS its name). Passed to the drill-down so it updates per cycle.
+    val cycleLabel = selection.describe().let { name ->
+        if (state.periodLabel.isNotBlank() && !state.periodLabel.equals(name, ignoreCase = true)) "$name · ${state.periodLabel}" else name
+    }
 
     Column(
         modifier = Modifier
@@ -106,7 +111,10 @@ fun AnalyticsScreen(
             Spacer(Modifier.height(4.dp))
             SummaryCard(state)
             Spacer(Modifier.height(14.dp))
-            CategoryDonutCard(state, semantic.dark, semantic.transfer, onOpenCategory)
+            // Inject the current cycle label (#5) so the drill-down shows which period these numbers are for.
+            CategoryDonutCard(state, semantic.dark, semantic.transfer) { catId, name, start, end ->
+                onOpenCategory(catId, name, cycleLabel, start, end)
+            }
             Spacer(Modifier.height(14.dp))
             SpendOverTimeCard(state)
             Spacer(Modifier.height(14.dp))

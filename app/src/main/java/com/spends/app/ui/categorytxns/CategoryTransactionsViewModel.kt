@@ -40,6 +40,8 @@ data class CategoryTxnRow(
 data class CategoryTxnsUiState(
     val loading: Boolean = true,
     val categoryName: String = "",
+    // The cycle these numbers are for (#5) — shown after the txn count; empty = show nothing.
+    val cycleLabel: String = "",
     val totalMinor: Long = 0,
     val count: Int = 0,
     // Average spend per month over the chosen trailing window (#8: Last 3M / 6M / All), independent of the
@@ -59,6 +61,7 @@ class CategoryTransactionsViewModel @Inject constructor(
     private val categoryName: String = savedStateHandle[Routes.ARG_CATEGORY_NAME] ?: ""
     private val startMillis: Long = savedStateHandle[Routes.ARG_PERIOD_START] ?: 0L
     private val endExclusiveMillis: Long = savedStateHandle[Routes.ARG_PERIOD_END] ?: 0L
+    private val cycleLabel: String = savedStateHandle[Routes.ARG_CYCLE_LABEL] ?: ""
 
     private val avgWindow = MutableStateFlow(AvgWindow.M6)
 
@@ -92,6 +95,7 @@ class CategoryTransactionsViewModel @Inject constructor(
             CategoryTxnsUiState(
                 loading = false,
                 categoryName = categoryName,
+                cycleLabel = cycleLabel,
                 totalMinor = total,
                 count = rows.size,
                 monthlyAverageMinor = (windowTotal / months).toLong(),
@@ -102,7 +106,7 @@ class CategoryTransactionsViewModel @Inject constructor(
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5_000),
-                CategoryTxnsUiState(categoryName = categoryName),
+                CategoryTxnsUiState(categoryName = categoryName, cycleLabel = cycleLabel),
             )
 
     /** The amount allocated to THIS category on a transaction (handles splits). */

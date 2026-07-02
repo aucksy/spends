@@ -85,8 +85,8 @@ fun SpendsNavHost(
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenRecurring = { navController.navigate(Routes.RECURRING) },
-                onOpenCategory = { categoryId, name, start, end ->
-                    navController.navigate(Routes.categoryTxns(categoryId, name, start, end))
+                onOpenCategory = { categoryId, name, cycleLabel, start, end ->
+                    navController.navigate(Routes.categoryTxns(categoryId, name, cycleLabel, start, end))
                 },
                 onOpenBreakdown = { navController.navigate(Routes.CYCLE_BREAKDOWN) },
                 openQuickAddSignal = pendingQuickAdd,
@@ -121,6 +121,7 @@ fun SpendsNavHost(
                 navArgument(Routes.ARG_CATEGORY_NAME) { type = NavType.StringType },
                 navArgument(Routes.ARG_PERIOD_START) { type = NavType.LongType },
                 navArgument(Routes.ARG_PERIOD_END) { type = NavType.LongType },
+                navArgument(Routes.ARG_CYCLE_LABEL) { type = NavType.StringType; defaultValue = "" },
             ),
         ) {
             CategoryTransactionsScreen(onBack = { navController.popBackStack() })
