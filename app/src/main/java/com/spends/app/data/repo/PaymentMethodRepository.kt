@@ -66,8 +66,9 @@ class PaymentMethodRepository @Inject constructor(
     /** Persist edits to an existing card (label / billing day / etc.). */
     suspend fun updateCard(card: PaymentMethodEntity) = dao.update(card)
 
-    /** Confirm a discovered candidate (carrying any edits the user made on the review card). */
-    suspend fun confirmCandidate(card: PaymentMethodEntity) = dao.update(card.copy(reviewed = true, dismissed = false))
+    /** Confirm a discovered candidate (carrying any edits the user made on the review card). The billing-day
+     *  proposal is consumed here — the reviewed billing day is now the real one (#9). */
+    suspend fun confirmCandidate(card: PaymentMethodEntity) = dao.update(card.copy(reviewed = true, dismissed = false, proposedBillingDay = null))
 
     /** "Not a card" — keep the row hidden so discovery never re-proposes this instrument. */
     suspend fun dismissCandidate(id: Long) = dao.dismiss(id)
@@ -132,24 +133,16 @@ class PaymentMethodRepository @Inject constructor(
     }
 
     /**
-     * Propose a billing day detected from a statement SMS (#13). Attaches to the non-dismissed card for
-     * [last4], but ONLY when it has no confirmed [billingDay] yet — never overwrites the user's own day, and
-     * never applies silently (the user confirms it on the Cards screen). No-op if there's no such card.
+     * Propose a billing day detected from a statement SMS (#13/#9). Attaches to the review CANDIDATE for
+     * [last4] so it pre-fills the "Review & Add" editor; confirmed cards are never touched (no later
+     * recommendation). No-op if there's no candidate for this last4.
      */
     suspend fun proposeBillingDay(last4: String?, day: Int) {
         val l4 = last4?.takeIf { it.isNotBlank() } ?: return
         if (day !in 1..31) return
-        val card = dao.findAnyByLast4(l4) ?: return
-        if (card.billingDay == null && card.proposedBillingDay != day) {
-            dao.update(card.copy(proposedBillingDay = day))
-        }
+        val card = dao.findCandidateByLast4(l4) ?: return
+        if (card.proposedBillingDay != day) dao.update(card.copy(proposedBillingDay = day))
     }
-
-    /** User accepts the detected day → it becomes the real billing day (#13). */
-    suspend fun confirmProposedBillingDay(id: Long) = dao.confirmProposedBillingDay(id)
-
-    /** User dismisses the detected day proposal (#13). */
-    suspend fun dismissProposedBillingDay(id: Long) = dao.clearProposedBillingDay(id)
 
     /** Bump a card's lastActivityAt when it's used (keeps the most-used cards near the top). */
     suspend fun touch(id: Long) = dao.touch(id, DateUtils.nowMillis())

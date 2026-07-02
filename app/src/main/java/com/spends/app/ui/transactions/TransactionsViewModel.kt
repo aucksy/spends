@@ -11,7 +11,9 @@ import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.period.ResolvedPeriod
+import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.DateUtils
+import kotlin.math.abs
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -58,6 +60,10 @@ class TransactionsViewModel @Inject constructor(
         val endExclusiveMillis: Long,
         val label: String,
         val composite: CompositePeriod? = null,
+        // Single-Card only (#7): the SALARY cycle window whose balance (income − all expenses) is shown as
+        // the headline, so a single card doesn't read as a bare negative. 0/0 = no override (use own totals).
+        val headlineStart: Long = 0,
+        val headlineEnd: Long = 0,
     )
 
     /** Categories (most-used first) for the quick swipe-to-change-category picker. */
@@ -125,11 +131,13 @@ class TransactionsViewModel @Inject constructor(
                 expenseRepository.observeKindSums(resolved.startMillis, resolved.endExclusiveMillis),
                 expenseRepository.observeBalanceBefore(resolved.startMillis),
                 expenseRepository.observeBalanceBefore(anchorMillis),
-            ) { items, kindSums, carryBeforePeriod, carryBeforeAnchor ->
+                // Single-Card headline (#7): the salary cycle's income/expense (0/0 window → empty otherwise).
+                expenseRepository.observeKindSums(resolved.headlineStart, resolved.headlineEnd),
+            ) { items, kindSums, carryBeforePeriod, carryBeforeAnchor, headlineKindSums ->
                 if (resolved.composite != null) {
                     // Composite: kindSums/balanceBefore (over the bounding range) don't apply — totals come
                     // from the per-instrument-filtered items, and carry-forward is off for the composite.
-                    buildStateComposite(resolved, settings, query, items)
+                    buildStateComposite(resolved, settings, query, items, headlineKindSums)
                 } else {
                     buildState(resolved, settings, query, items, kindSums, carryBeforePeriod, carryBeforeAnchor, anchorMillis)
                 }
@@ -149,6 +157,18 @@ class TransactionsViewModel @Inject constructor(
             CompositeCycleResolver.resolveSingleCard(card, salaryDay, today, sel.cycleOffset)
         } else {
             CompositeCycleResolver.resolveSmartCycle(infos, salaryDay, today, sel.cycleOffset)
+        }
+        // For a single card, also resolve the salary cycle window (same offset) — its balance is the headline
+        // so the card view reflects your remaining salary money, not just the card's charges (#7).
+        if (card != null) {
+            var salWin = CycleUtils.windowFor(today, salaryDay)
+            repeat(abs(sel.cycleOffset)) {
+                salWin = if (sel.cycleOffset < 0) CycleUtils.previousWindow(salWin, salaryDay) else CycleUtils.nextWindow(salWin, salaryDay)
+            }
+            return ResolvedB(
+                period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period,
+                headlineStart = salWin.startMillis(), headlineEnd = salWin.endExclusiveMillis(),
+            )
         }
         return ResolvedB(period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period)
     }
@@ -200,6 +220,7 @@ class TransactionsViewModel @Inject constructor(
         settings: SettingsState,
         query: String,
         boundingItems: List<ExpenseWithAllocations>,
+        headlineKindSums: List<KindSum>,
     ): TransactionsUiState {
         val composite = resolved.composite!!
         val items = boundingItems.filter { composite.contains(it.expense.occurredAt, it.expense.paymentMethodId) }
@@ -208,6 +229,15 @@ class TransactionsViewModel @Inject constructor(
             expense = items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
             transfer = items.filter { it.expense.kind == TxnKind.TRANSFER }.sumOf { it.expense.amountMinor },
         )
+        // Single-Card (#7): show the SALARY cycle's remaining balance as the headline (income − all expenses),
+        // so the card view reflects your money left, not the card's bare negative. Full composite = own balance.
+        val singleCard = resolved.headlineStart > 0L
+        val headlineBalance = if (singleCard) {
+            (headlineKindSums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0) -
+                (headlineKindSums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0)
+        } else {
+            null
+        }
         val trimmed = query.trim().lowercase()
         val searched = if (trimmed.isEmpty()) items else items.filter { it.matches(trimmed) }
         val filtered = if (settings.hideCapturedInLists) searched.filter { it.expense.source != TxnSource.SMS } else searched
@@ -221,6 +251,8 @@ class TransactionsViewModel @Inject constructor(
             carryForward = null, // carry-forward doesn't apply to a multi-instrument composite
             groups = buildGroups(items, filtered),
             isComposite = true,
+            headlineBalanceMinor = headlineBalance,
+            headlineLabel = if (singleCard) "Salary cycle" else null,
         )
     }
 

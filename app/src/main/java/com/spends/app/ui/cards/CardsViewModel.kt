@@ -35,7 +35,6 @@ data class CardUi(
     val txnCount: Int,
     val cycleLabel: String, // e.g. "17 Jun – 16 Jul"
     val billsLabel: String?, // e.g. "Bills 17th"; null when no billing day set yet
-    val proposedBillingDay: Int? = null, // a statement-SMS-detected day awaiting confirm (#13)
 )
 
 /** An auto-discovered card awaiting review ("Cards to review"). */
@@ -45,6 +44,8 @@ data class CandidateUi(
     val institution: String?,
     val last4: String?,
     val colorHex: String,
+    // A statement-SMS-detected billing day (#9) — pre-fills the "Review & Add" editor so the user confirms it.
+    val proposedBillingDay: Int? = null,
 )
 
 data class CardsUiState(
@@ -103,14 +104,13 @@ class CardsViewModel @Inject constructor(
                 txnCount = inWindow.size,
                 cycleLabel = "${dayFmt.format(window.start)} – ${dayFmt.format(window.endInclusive)}",
                 billsLabel = pm.billingDay?.let { "Bills ${ordinal(it)}" },
-                proposedBillingDay = pm.proposedBillingDay,
             )
         }
         val defaultId = settings.defaultPaymentMethodId
         CardsUiState(
             cards = confirmed.filter { it.isCardInstrument() }.map { toUi(it) },
             banks = confirmed.filter { !it.isCardInstrument() }.map { toUi(it) },
-            candidates = candidates.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex) },
+            candidates = candidates.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex, it.proposedBillingDay) },
             defaultId = defaultId,
             defaultLabel = confirmed.firstOrNull { it.id == defaultId }?.label ?: "Bank",
             loading = false,
@@ -151,12 +151,6 @@ class CardsViewModel @Inject constructor(
 
     /** Set the default "Paid with" instrument for new expenses (#2); null = generic Bank. */
     fun setDefaultInstrument(id: Long?) = viewModelScope.launch { settingsRepository.setDefaultPaymentMethodId(id) }
-
-    /** Accept a statement-SMS-detected billing day into the card's real billing day (#13). */
-    fun confirmProposedBillingDay(id: Long) = viewModelScope.launch { paymentMethodRepository.confirmProposedBillingDay(id) }
-
-    /** Dismiss a statement-SMS billing-day proposal without applying it (#13). */
-    fun dismissProposedBillingDay(id: Long) = viewModelScope.launch { paymentMethodRepository.dismissProposedBillingDay(id) }
 
     /** Apply one billing day to several cards at once (#10, replaces the old per-card Merge). */
     fun setCommonBillingDay(cardIds: Set<Long>, billingDay: Int) = viewModelScope.launch {

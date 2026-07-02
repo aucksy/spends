@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Sms
-import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -111,52 +110,13 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            SettingsSection("Appearance") {
-                Text("Theme", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    ThemeMode.entries.forEachIndexed { index, mode ->
-                        SegmentedButton(
-                            selected = state.themeMode == mode,
-                            onClick = { viewModel.setTheme(mode) },
-                            shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
-                            // No check-icon slot — the filled segment already shows selection, and the icon
-                            // stole the width that made "System" wrap to two lines (#3).
-                            icon = {},
-                            label = {
-                                Text(mode.label(), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
-                            },
-                        )
-                    }
-                }
-                // Auto = dark inside a daily window the user sets (default 8 PM–6 AM).
-                if (state.themeMode == ThemeMode.AUTO) {
-                    ClickableRow(
-                        title = "Dark from",
-                        value = formatMinuteOfDay(state.autoDarkStartMinute),
-                        onClick = { showDarkStartPicker = true },
-                    )
-                    ClickableRow(
-                        title = "Dark until",
-                        value = formatMinuteOfDay(state.autoDarkEndMinute),
-                        onClick = { showDarkEndPicker = true },
-                    )
-                    Text(
-                        "Dark mode turns on between these times each day.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                }
-            }
-
-            SettingsSection("Spending cycle") {
+            // ── The money model first (#3): period, carry-forward, and the Smart Cycle + instruments. ──
+            SettingsSection("Cycle & cards") {
                 ClickableRow(
                     title = "Salary day",
                     value = ordinal(state.salaryCycleStartDay),
                     onClick = { showSalaryDialog = true },
                 )
-                // Carry forward lives WITH the cycle settings (it rolls a cycle's leftover into the next) —
-                // it was mis-filed under Display (#4).
                 SwitchRow(
                     title = "Carry forward",
                     subtitle = "Roll each period's leftover into the next.",
@@ -186,9 +146,6 @@ fun SettingsScreen(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-            }
-
-            SettingsSection("Cards & Smart Cycle") {
                 SwitchRow(
                     title = "Smart Cycle",
                     subtitle = "Group each credit card's spending by its own billing date, and your bank/UPI by your salary date — so \"this period\" is what you're actually about to pay, not a calendar month.",
@@ -211,7 +168,69 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection("Startup screen") {
+            // ── How transactions get added without typing (#3: was two separate sections). ──
+            SettingsSection("Automatic entries") {
+                ClickableRow(
+                    title = "Detect from SMS",
+                    value = "Review & add bank transactions from your texts",
+                    onClick = onOpenCapture,
+                    leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
+                )
+                ClickableRow(
+                    title = "Recurring transactions",
+                    value = "Rent, salary, EMIs & subscriptions on a schedule",
+                    onClick = onOpenRecurring,
+                    leading = { Icon(Icons.Filled.Autorenew, contentDescription = null) },
+                )
+            }
+
+            SettingsSection("Categories") {
+                ClickableRow(
+                    title = "Manage categories",
+                    value = "Add, rename, archive or delete",
+                    onClick = onOpenCategories,
+                    leading = { Icon(Icons.Filled.Category, contentDescription = null) },
+                )
+            }
+
+            // ── Look & feel — theme, the screen the app opens on, and the widget (#3: merged three). ──
+            SettingsSection("Appearance") {
+                Text("Theme", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ThemeMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(
+                            selected = state.themeMode == mode,
+                            onClick = { viewModel.setTheme(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
+                            // No check-icon slot — the filled segment already shows selection, and the icon
+                            // stole the width that made "System" wrap to two lines.
+                            icon = {},
+                            label = {
+                                Text(mode.label(), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+                            },
+                        )
+                    }
+                }
+                // Auto = dark inside a daily window the user sets (default 8 PM–6 AM).
+                if (state.themeMode == ThemeMode.AUTO) {
+                    ClickableRow(
+                        title = "Dark from",
+                        value = formatMinuteOfDay(state.autoDarkStartMinute),
+                        onClick = { showDarkStartPicker = true },
+                    )
+                    ClickableRow(
+                        title = "Dark until",
+                        value = formatMinuteOfDay(state.autoDarkEndMinute),
+                        onClick = { showDarkEndPicker = true },
+                    )
+                    Text(
+                        "Dark mode turns on between these times each day.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
                 Text("Open on", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     DefaultLanding.entries.forEachIndexed { index, landing ->
@@ -226,54 +245,26 @@ fun SettingsScreen(
                         )
                     }
                 }
-            }
-
-            SettingsSection("Categories") {
-                ClickableRow(
-                    title = "Manage categories",
-                    value = "Add, rename, archive or delete",
-                    onClick = onOpenCategories,
-                    leading = { Icon(Icons.Filled.Category, contentDescription = null) },
-                )
-            }
-
-            SettingsSection("Detection") {
-                ClickableRow(
-                    title = "Detect from SMS",
-                    value = "Review & add bank transactions from your texts",
-                    onClick = onOpenCapture,
-                    leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
-                )
-            }
-
-            SettingsSection("Widget") {
+                Spacer(Modifier.height(2.dp))
                 SwitchRow(
                     title = "Hide the widget's reveal button",
                     subtitle = "The eye on the home-screen summary widget becomes invisible (but still tappable), so someone holding your phone can't tell there's a way to reveal the figures.",
                     checked = state.widgetEyeHidden,
                     onChange = { hidden ->
                         // Refresh the widget only AFTER the value is persisted, so it re-renders with the
-                        // new state immediately instead of needing a tap to force a fresh read (#2).
+                        // new state immediately instead of needing a tap to force a fresh read.
                         viewModel.setWidgetEyeHidden(hidden) { com.spends.app.widget.SummaryWidget.refresh(context) }
                     },
                 )
             }
 
-            SettingsSection("Automation") {
-                ClickableRow(
-                    title = "Recurring transactions",
-                    value = "Rent, salary, EMIs & subscriptions on a schedule",
-                    onClick = onOpenRecurring,
-                    leading = { Icon(Icons.Filled.Autorenew, contentDescription = null) },
-                )
+            // ── Export / restore / cleanup last — rarely touched (#3). ──
+            SettingsSection("Backup") {
+                BackupSection()
             }
 
             SettingsSection("Spreadsheet (Excel / CSV)") {
                 SpreadsheetSection(onImport = onOpenImport)
-            }
-
-            SettingsSection("Backup") {
-                BackupSection()
             }
 
             SettingsSection("Data") {

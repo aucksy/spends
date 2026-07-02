@@ -57,8 +57,14 @@ fun SummaryHeader(
         }
     }
 
-    // The headline balance: with carry-forward on, the meaningful figure is the rolled-in balance.
-    val heroBalance = if (state.carryForward != null) (state.balanceWithCarry ?: 0) else state.totals.balance
+    // The headline balance: Single-Card shows the SALARY cycle's remaining balance (#7); else carry-forward's
+    // rolled-in balance when on; else the period's own balance.
+    val heroBalance = when {
+        state.headlineBalanceMinor != null -> state.headlineBalanceMinor
+        state.carryForward != null -> (state.balanceWithCarry ?: 0)
+        else -> state.totals.balance
+    }
+    val heroLabel = state.headlineLabel ?: state.periodLabel
     val negative = heroBalance < 0
 
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -104,7 +110,7 @@ fun SummaryHeader(
         ) {
             Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
                 Text(
-                    text = "BALANCE · ${state.periodLabel}",
+                    text = "BALANCE · $heroLabel",
                     style = MaterialTheme.typography.labelMedium,
                     color = heroOn.copy(alpha = 0.85f),
                 )

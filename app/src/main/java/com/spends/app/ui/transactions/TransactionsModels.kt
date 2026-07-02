@@ -65,6 +65,10 @@ data class TransactionsUiState(
     val groups: List<DayGroupUi> = emptyList(),
     // True for the Smart Cycle composite (Round B) — the header offers a "per-instrument breakdown" link.
     val isComposite: Boolean = false,
+    // Single-Card (#7): overrides the balance hero with the SALARY cycle's remaining balance (income − all
+    // expenses) + its label, so a single card doesn't read as a bare negative. null = use totals.balance.
+    val headlineBalanceMinor: Long? = null,
+    val headlineLabel: String? = null,
 ) {
     val isEmpty: Boolean get() = !loading && groups.isEmpty()
     val balanceWithCarry: Long? get() = carryForward?.let { it + totals.balance }

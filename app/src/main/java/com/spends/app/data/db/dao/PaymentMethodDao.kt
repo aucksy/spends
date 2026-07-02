@@ -37,18 +37,10 @@ interface PaymentMethodDao {
     @Query("SELECT * FROM payment_methods WHERE reviewed = 1 AND dismissed = 0 AND last4 = :last4 ORDER BY lastActivityAt DESC LIMIT 1")
     suspend fun findConfirmedByLast4(last4: String): PaymentMethodEntity?
 
-    /** Any non-dismissed instrument (confirmed preferred, else candidate) for this last4 — used to attach a
-     *  statement-detected billing-day proposal (#13). */
-    @Query("SELECT * FROM payment_methods WHERE dismissed = 0 AND last4 = :last4 ORDER BY reviewed DESC, lastActivityAt DESC LIMIT 1")
-    suspend fun findAnyByLast4(last4: String): PaymentMethodEntity?
-
-    /** Confirm a statement-detected billing day into the real [billingDay], clearing the proposal (#13). */
-    @Query("UPDATE payment_methods SET billingDay = proposedBillingDay, proposedBillingDay = NULL WHERE id = :id")
-    suspend fun confirmProposedBillingDay(id: Long)
-
-    /** Dismiss a billing-day proposal without applying it (#13). */
-    @Query("UPDATE payment_methods SET proposedBillingDay = NULL WHERE id = :id")
-    suspend fun clearProposedBillingDay(id: Long)
+    /** The review CANDIDATE for this last4 — used to attach a statement-detected billing-day proposal so it
+     *  pre-fills the "Review & Add" editor (#13/#9). Confirmed cards are left alone (no later nagging). */
+    @Query("SELECT * FROM payment_methods WHERE reviewed = 0 AND dismissed = 0 AND last4 = :last4 ORDER BY lastActivityAt DESC LIMIT 1")
+    suspend fun findCandidateByLast4(last4: String): PaymentMethodEntity?
 
     @Insert
     suspend fun insert(card: PaymentMethodEntity): Long
