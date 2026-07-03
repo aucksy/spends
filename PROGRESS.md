@@ -4,13 +4,17 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.38.0** — versionCode **40**, versionName **"0.38.0"**
+- **Shipped: v0.39.0** — versionCode **41**, versionName **"0.39.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.38.0/Spends-v0.38.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.39.0/Spends-v0.39.0.apk
 
 ## Recent tags
+- **v0.39.0** — accidental-swipe protection done the freeze-free way: a DISCARD CONFIRMATION on the
+  quick-add sheet. Swipe-down / tap-outside / back / ✕ with unsaved work (amount, category, note, or a
+  split in progress) now asks "Discard this entry?" (Keep editing / Discard) instead of silently losing
+  it — covers every exit route, no confirmValueChange veto (that froze the app). No DB change.
 - **v0.38.0** — FREEZE FIX (final): removed the LAST swipe-dismiss veto (on the main quick-add
   sheet). v0.37 removed it only from the nested keypad, but the freeze recurred on the MAIN
   home-screen keypad — a confirmValueChange veto on a skipPartiallyExpanded sheet freezes on drag

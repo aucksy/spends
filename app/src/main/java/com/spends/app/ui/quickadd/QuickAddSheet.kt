@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -133,6 +134,7 @@ fun QuickAddSheet(
         }
     }
     var showPaidWith by remember { mutableStateOf(false) }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
     // #6: the "pick a category" warning + a gentle shake only fire when the user actually tries to save
     // without one — never reactively while typing the amount (which used to shove the keypad).
     var categoryError by remember { mutableStateOf(false) }
@@ -163,6 +165,11 @@ fun QuickAddSheet(
     val splitReady = splitMode && amountMinor != null && splits.isNotEmpty() &&
         splits.all { it.amountMinor > 0L } && splitRemainder == 0L && !saving
     val accent = if (kind == TxnKind.INCOME) LocalSemanticColors.current.income else LocalSemanticColors.current.expense
+
+    // Anything a swipe / tap-outside / back / ✕ would throw away. When present, dismissal is confirmed first
+    // so an accidental swipe can't silently wipe a half-built entry or split (the swipe-block veto froze the
+    // UI, so we guard at dismiss time instead — the freeze-free way to protect the work).
+    val hasWork = expr.isNotBlank() || selectedCategoryId != null || note.isNotBlank() || splits.isNotEmpty()
 
     /** Reset everything category-related when the kind flips (an expense slice makes no sense under Income). */
     fun onKindChange(newKind: TxnKind) {
@@ -209,7 +216,19 @@ fun QuickAddSheet(
         ) { onSaved(); dismiss() }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(
+        // Swipe-down / tap-outside / back all land here (once the sheet has settled to hidden). If there's
+        // unsaved work, re-show the sheet and confirm before discarding; otherwise just close.
+        onDismissRequest = {
+            if (hasWork) {
+                scope.launch { sheetState.show() }
+                showDiscardConfirm = true
+            } else {
+                onDismiss()
+            }
+        },
+        sheetState = sheetState,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -218,9 +237,12 @@ fun QuickAddSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 12.dp),
         ) {
-            // Dedicated close button (a clear, deliberate way out alongside swipe / back).
+            // Dedicated close button — confirms first if there's unsaved work (like the swipe/back path).
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = { dismiss() }, modifier = Modifier.size(32.dp)) {
+                IconButton(
+                    onClick = { if (hasWork) showDiscardConfirm = true else dismiss() },
+                    modifier = Modifier.size(32.dp),
+                ) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                 }
             }
@@ -318,7 +340,8 @@ fun QuickAddSheet(
                     },
                     onRemove = { index -> splits = splits.filterIndexed { i, _ -> i != index } },
                     onAdd = { editingRowIndex = null; showSplitCategoryPicker = true },
-                    onCancelSplit = { splitMode = false },
+                    // Clear the rows too (matches onKindChange) so a "cleared" sheet doesn't read as unsaved work.
+                    onCancelSplit = { splitMode = false; splits = emptyList() },
                 )
             }
 
@@ -332,6 +355,16 @@ fun QuickAddSheet(
                 onSave = { if (splitMode) saveSplit() else saveSingle() },
             )
         }
+    }
+
+    if (showDiscardConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text("Discard this entry?") },
+            text = { Text("The amount, category and any split you've entered will be lost.") },
+            confirmButton = { TextButton(onClick = { showDiscardConfirm = false; dismiss() }) { Text("Discard") } },
+            dismissButton = { TextButton(onClick = { showDiscardConfirm = false }) { Text("Keep editing") } },
+        )
     }
 
     if (showDatePicker) {
