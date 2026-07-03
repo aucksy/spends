@@ -4,13 +4,20 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.40.0** — versionCode **42**, versionName **"0.40.0"**
+- **Shipped: v0.41.0** — versionCode **43**, versionName **"0.41.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.40.0/Spends-v0.40.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.41.0/Spends-v0.41.0.apk
 
 ## Recent tags
+- **v0.41.0** — REAL swipe fix, new mechanism: the confirm-on-swipe (v0.39/v0.40) never fired on
+  device. So the popup keypad `AmountKeypadSheet` (the "Split amount" popup + the AddEdit & Recurring
+  amount keypads) was moved OFF `ModalBottomSheet` onto a plain `Dialog` (new `DraglessBottomSheet`) —
+  a Dialog has NO swipe-to-dismiss gesture at all, so a stray swipe can never discard the amount; it
+  closes only via ✕ or back. No confirmValueChange veto → no freeze. **STILL TODO:** the main
+  quick-add sheet (QuickAddSheet) is still a ModalBottomSheet — convert it the same way (it's tall +
+  scrollable + has a note text field, so needs heightIn + decorFitsSystemWindows=false care). No DB change.
 - **v0.40.0** — discard-confirmation now on ALL half-screen keypads: v0.39 only guarded the quick-add
   sheet; the shared AmountKeypadSheet (AddEdit editor, Recurring editor, split-slice amount) had no
   guard, so swiping those still lost work with no prompt. Added the same "Discard this amount?" guard

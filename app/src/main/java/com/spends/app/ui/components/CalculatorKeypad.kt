@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,23 +19,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import com.spends.app.core.calc.CalculatorEngine
 import com.spends.app.core.money.Money
 import com.spends.app.core.theme.Numerals
-import kotlinx.coroutines.launch
 
 /**
  * The shared on-screen calculator keypad used for amount entry — quick-add and the recurring editor use
@@ -125,12 +117,10 @@ fun CalculatorAmountDisplay(expr: String, currentMinor: Long, accent: Color) {
  * When set, a live "₹X left" figure shows beside the title; entering more than it disables Done and shakes
  * the figure red — so a slice can never over-assign the total. Null (default) = a plain amount entry.
  *
- * A dedicated X (and the system back gesture) dismiss the sheet. NOTE: this sheet deliberately does NOT
- * veto swipe-to-dismiss. When it is opened nested inside another ModalBottomSheet (the quick-add split
- * flow), a second vetoing sheet deadlocked touch handling (froze the UI). The swipe-veto therefore lives
- * only on the single outer quick-add sheet, which still protects the overall split work.
+ * Built on [DraglessBottomSheet] (a plain Dialog), NOT a ModalBottomSheet — so there is NO swipe-to-dismiss
+ * gesture at all: a stray downward swipe can never discard the typed amount. It closes only via the ✕ or the
+ * back gesture. (Earlier ModalBottomSheet attempts either froze on a swipe-veto or dismissed silently.)
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AmountKeypadSheet(
     initialMinor: Long,
@@ -140,15 +130,9 @@ fun AmountKeypadSheet(
     onDismiss: () -> Unit,
     referenceRemaining: Long? = null,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
     val view = LocalView.current
     val startExpr = remember(initialMinor) { if (initialMinor > 0) Money.toEditString(initialMinor) else "" }
     var expr by rememberSaveable { mutableStateOf(startExpr) }
-    var showDiscardConfirm by remember { mutableStateOf(false) }
-    // Unsaved work = a non-blank amount the user has actually changed from what the field opened with, so an
-    // accidental swipe / ✕ can't silently throw away a typed amount (confirmed first, like the quick-add sheet).
-    val hasWork = expr.isNotBlank() && expr != startExpr
 
     val result = CalculatorEngine.evaluate(expr)
     val amountMinor = CalculatorEngine.toPositiveMinor(result)
@@ -160,25 +144,11 @@ fun AmountKeypadSheet(
     val remainderShake = remember { Animatable(0f) }
     LaunchedEffect(over) { if (over) shakeAmount(remainderShake) }
 
-    fun dismiss() {
-        scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
-    }
-
-    ModalBottomSheet(
-        // Guard an accidental swipe / tap-outside / back: if the amount was changed, re-show the sheet and
-        // confirm before discarding (no confirmValueChange veto — that deadlocks touch).
-        onDismissRequest = {
-            if (hasWork) {
-                scope.launch { sheetState.show() }
-                showDiscardConfirm = true
-            } else {
-                onDismiss()
-            }
-        },
-        sheetState = sheetState,
-    ) {
+    // Dragless panel: no swipe-to-dismiss, so a stray swipe can NEVER discard the typed amount. Closes only
+    // via the ✕ or the back gesture. No confirmValueChange veto → no touch freeze.
+    DraglessBottomSheet(onDismissRequest = onDismiss) {
         Column(
-            modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp).padding(bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -196,10 +166,7 @@ fun AmountKeypadSheet(
                     )
                     Spacer(Modifier.width(8.dp))
                 }
-                IconButton(
-                    onClick = { if (hasWork) showDiscardConfirm = true else dismiss() },
-                    modifier = Modifier.size(32.dp),
-                ) {
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                 }
             }
@@ -215,26 +182,13 @@ fun AmountKeypadSheet(
                     if (a != null && !over) {
                         view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                         onConfirm(a)
-                        dismiss()
+                        onDismiss()
                     }
                 },
                 saveLabel = "Done",
             )
             Spacer(Modifier.height(8.dp))
         }
-    }
-
-    if (showDiscardConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDiscardConfirm = false },
-            title = { Text("Discard this amount?") },
-            text = { Text("The amount you've entered will be lost.") },
-            confirmButton = { TextButton(onClick = { showDiscardConfirm = false; dismiss() }) { Text("Discard") } },
-            // Bring the sheet back if a swipe had slid it away — recovers even if the onDismiss re-show didn't take.
-            dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false; scope.launch { sheetState.show() } }) { Text("Keep editing") }
-            },
-        )
     }
 }
 
