@@ -117,6 +117,15 @@ class ExpenseRepository @Inject constructor(
     private fun directionFor(kind: TxnKind): Direction =
         if (kind == TxnKind.INCOME) Direction.CREDIT else Direction.DEBIT
 
+    /**
+     * Create several transactions atomically — used by "split one amount across categories" (each slice is a
+     * normal, independent transaction in the timeline, per the user's BAU request). All-or-nothing in one DB
+     * transaction so a partial split can never land. Returns the new ids in order.
+     */
+    suspend fun createAll(inputs: List<TransactionInput>): List<Long> = db.withTransaction {
+        inputs.map { create(it) }
+    }
+
     suspend fun create(input: TransactionInput): Long = db.withTransaction {
         val now = DateUtils.nowMillis()
         val expenseId = dao.insertExpense(

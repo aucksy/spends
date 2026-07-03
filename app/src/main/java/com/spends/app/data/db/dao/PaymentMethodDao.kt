@@ -37,6 +37,10 @@ interface PaymentMethodDao {
     @Query("SELECT * FROM payment_methods WHERE reviewed = 1 AND dismissed = 0 AND last4 = :last4 ORDER BY lastActivityAt DESC LIMIT 1")
     suspend fun findConfirmedByLast4(last4: String): PaymentMethodEntity?
 
+    /** All confirmed instruments — for institution-name matching when a captured SMS has no last4 match (#3). */
+    @Query("SELECT * FROM payment_methods WHERE reviewed = 1 AND dismissed = 0")
+    suspend fun getConfirmedOnce(): List<PaymentMethodEntity>
+
     /** The review CANDIDATE for this last4 — used to attach a statement-detected billing-day proposal so it
      *  pre-fills the "Review & Add" editor (#13/#9). Confirmed cards are left alone (no later nagging). */
     @Query("SELECT * FROM payment_methods WHERE reviewed = 0 AND dismissed = 0 AND last4 = :last4 ORDER BY lastActivityAt DESC LIMIT 1")

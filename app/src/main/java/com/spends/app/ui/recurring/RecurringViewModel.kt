@@ -13,7 +13,7 @@ import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.ui.cards.PaymentState
 import com.spends.app.ui.cards.toCardOption
-import com.spends.app.work.RecurringScheduler
+import com.spends.app.work.RecurringAlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
@@ -52,10 +52,10 @@ class RecurringViewModel @Inject constructor(
         settingsRepository.setRecurringNotifyEnabled(value)
     }
 
-    /** Change the daily recurring-add/notify time and reschedule the worker to the next occurrence of it. */
+    /** Change the daily recurring-add/notify time and re-arm the exact alarm to the next occurrence of it. */
     fun setNotifyTime(minuteOfDay: Int) = viewModelScope.launch {
         settingsRepository.setRecurringNotifyTime(minuteOfDay)
-        RecurringScheduler.schedule(context, minuteOfDay, replace = true)
+        RecurringAlarmScheduler.schedule(context, minuteOfDay)
     }
 
     fun save(input: RecurringInput, editingId: Long?, applyToPast: Boolean = false) {

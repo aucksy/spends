@@ -89,8 +89,12 @@ class AddEditViewModel @Inject constructor(
             PaymentState(s.smartCycleEnabled, cards.map { it.toCardOption() })
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentState())
 
-    /** The editor offers "Paid with" for a normal add/edit; capture reviews auto-tag from the SMS last4. */
-    val showPaidWith: Boolean = !isCapture
+    /**
+     * The editor always offers "Paid with" (subject to Smart Cycle being on + an expense). For a capture
+     * review it's pre-filled with the instrument auto-matched from the SMS (last4, then bank name) so the
+     * user can confirm or correct it before saving (#3).
+     */
+    val showPaidWith: Boolean = true
 
     /** Null until the initial form is ready (immediately for new, after load for edit). */
     private val _initial = MutableStateFlow<AddEditInitial?>(null)
@@ -132,12 +136,14 @@ class AddEditViewModel @Inject constructor(
                         merchant = p.merchant.orEmpty(),
                         note = "",
                         occurredAt = p.occurredAt,
+                        // Auto-match the instrument from the SMS so "Paid with" is pre-filled for review (#3).
+                        paymentMethodId = paymentMethodRepository.matchInstrument(p.last4, p.institution),
                     )
                 } else {
                     newInitial() // the row was confirmed/rejected elsewhere — fall back to a blank add
                 }
             }
-            // Seed from the unsaved live-capture draft (#4).
+            // Seed from the unsaved live-capture draft (#4); the draft already carries the matched instrument (#3).
             isDraft -> _initial.value = draft!!.let {
                 AddEditInitial(
                     amountText = Money.toEditString(it.amountMinor),
@@ -146,6 +152,7 @@ class AddEditViewModel @Inject constructor(
                     merchant = it.merchant.orEmpty(),
                     note = "",
                     occurredAt = it.occurredAt,
+                    paymentMethodId = it.paymentMethodId,
                 )
             }
             // A fresh manual add pre-selects the user's default instrument (#2) when Smart Cycle is on.
@@ -186,15 +193,17 @@ class AddEditViewModel @Inject constructor(
         if (_saving.value) return
         _saving.value = true
         viewModelScope.launch {
+            // The instrument the user confirmed/corrected (#3) — only meaningful for an expense.
+            val pmId = if (kind == TxnKind.EXPENSE) paymentMethodId else null
             when {
                 // Confirm a queued capture (#9): keeps TxnSource.SMS + dedupe hash + merchant learning,
                 // then removes the pending row. The ledger write happens HERE, on explicit Save only.
                 isPending -> captureRepository.confirmPendingEdited(
-                    pendingId, amountMinor, kind, categoryId, merchant, note, occurredAt,
+                    pendingId, amountMinor, kind, categoryId, merchant, note, occurredAt, pmId,
                 )
                 // Save an unsaved live-capture draft (#4): tags TxnSource.NOTIFICATION + the dedupe hash.
                 isDraft -> captureRepository.commitDraft(
-                    amountMinor, kind, categoryId, merchant, note, occurredAt, draft!!.dedupeHash,
+                    amountMinor, kind, categoryId, merchant, note, occurredAt, draft!!.dedupeHash, pmId,
                 )
                 else -> {
                     val input = TransactionInput(

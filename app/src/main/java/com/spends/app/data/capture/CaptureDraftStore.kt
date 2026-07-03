@@ -17,6 +17,8 @@ data class CaptureDraft(
     val merchant: String?,
     val occurredAt: Long,
     val dedupeHash: String,
+    // Instrument auto-matched from the SMS (last4, then bank name) so the editor pre-fills "Paid with" (#3).
+    val paymentMethodId: Long? = null,
 )
 
 /**

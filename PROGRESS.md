@@ -4,13 +4,21 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.33.0** — versionCode **35**, versionName **"0.33.0"**
-  (`app/build.gradle.kts` lines 41–42). CI green, APK posted.
-- **DB schema: v13.**
+- **Shipped: v0.34.0** — versionCode **36**, versionName **"0.34.0"**
+  (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
+- **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.33.0/Spends-v0.33.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.34.0/Spends-v0.34.0.apk
 
 ## Recent tags
+- **v0.34.0** — 4-item round: removed the "Analytics" screen heading (#1); split-one-amount
+  across categories in quick-add (total-first, each slice saved as its own BAU transaction via
+  `ExpenseRepository.createAll`, #2); bank-name → instrument auto-match in the SMS **review
+  editor** (last4 first, then a *unique* institution match; silent one-tap-Add / Confirm-all stay
+  last4-only), "Paid with" now shown + pre-filled in capture review (#3); recurring 9 AM reminder
+  moved off inexact WorkManager onto an **exact AlarmManager alarm** (#4 — `RecurringAlarmScheduler`
+  + `RecurringAlarmReceiver` + `BootReceiver`; deleted `RecurringScheduler`/`RecurringWorker`; added
+  USE_EXACT_ALARM/SCHEDULE_EXACT_ALARM/RECEIVE_BOOT_COMPLETED). No DB change.
 - **v0.33.0** — Batch 2: single-card = remaining SALARY balance (#7), card
   "Review & Add" pre-fill flow (#9), Settings reorg 11→6 groups (#3). No DB change.
 - **v0.32.0** — Batch 1: backup reschedule fix (CANCEL_AND_REENQUEUE), search back in top

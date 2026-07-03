@@ -133,6 +133,35 @@ class PaymentMethodRepository @Inject constructor(
     }
 
     /**
+     * Pick the instrument for a captured SMS (#3). Precise first: a confirmed card whose [last4] matches.
+     * If none, fall back to the bank/institution name — but ONLY when exactly ONE confirmed instrument
+     * belongs to that institution (e.g. the user has a single ICICI card). Two-or-more matches (an ICICI
+     * card AND an ICICI account) are ambiguous, so we return null and leave the choice to the user in the
+     * review editor. Also null when the SMS carries no usable institution.
+     */
+    suspend fun matchInstrument(last4: String?, institution: String?): Long? {
+        matchConfirmedByLast4(last4)?.let { return it }
+        val target = normalizeInstitution(institution)
+        if (target.isBlank()) return null
+        val matches = dao.getConfirmedOnce().filter { normalizeInstitution(it.institution) == target }
+        return matches.singleOrNull()?.id
+    }
+
+    /**
+     * Reduce an institution string to a comparable core token so "ICICI Bank", "ICICI", and "icici bank"
+     * all match: lowercase, drop punctuation, and strip the generic words (bank/card/credit/…) that don't
+     * distinguish one issuer from another. Returns "" for a blank/unusable value (never matches).
+     */
+    private fun normalizeInstitution(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        return raw.lowercase()
+            .replace(Regex("[^a-z0-9 ]"), " ")
+            .split(" ")
+            .filter { it.isNotBlank() && it !in GENERIC_INSTITUTION_WORDS }
+            .joinToString("")
+    }
+
+    /**
      * Propose a billing day detected from a statement SMS (#13/#9). Attaches to the review CANDIDATE for
      * [last4] so it pre-fills the "Review & Add" editor; confirmed cards are never touched (no later
      * recommendation). No-op if there's no candidate for this last4.
@@ -160,5 +189,10 @@ class PaymentMethodRepository @Inject constructor(
     suspend fun replaceAll(cards: List<PaymentMethodEntity>) {
         dao.deleteAll()
         dao.insertAll(cards)
+    }
+
+    private companion object {
+        /** Generic tokens stripped before comparing institution names (#3) — they don't identify an issuer. */
+        val GENERIC_INSTITUTION_WORDS = setOf("bank", "card", "cards", "credit", "debit", "cc", "the", "ltd", "limited")
     }
 }

@@ -27,6 +27,14 @@
          notification capture isn't killed on aggressive OEMs. Optional; the user can decline. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Recurring reminder (#4): fire the daily "recurring added" pass on an EXACT alarm so it lands at the
+         chosen time instead of drifting under Doze. USE_EXACT_ALARM auto-grants on Android 13+ (reminder is
+         the feature's core function); SCHEDULE_EXACT_ALARM covers Android 12. RECEIVE_BOOT_COMPLETED re-arms
+         the alarm after a reboot (exact alarms don't survive a restart). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Light haptic "tick" confirming taps on the home-screen widget buttons (eye / quick-add "+"),
          whose taps fire a PendingIntent so there's no View to drive performHapticFeedback. -->
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -96,6 +104,23 @@
         <receiver
             android:name=".receiver.CaptureActionReceiver"
             android:exported="false" />
+
+        <!-- Exact-alarm target for the daily recurring pass (#4). Not exported: it's only ever triggered by
+             our own explicit-component PendingIntent via AlarmManager. -->
+        <receiver
+            android:name=".receiver.RecurringAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Re-arm the recurring exact alarm after a reboot (#4). Exported so the system can deliver
+             BOOT_COMPLETED; guarded by RECEIVE_BOOT_COMPLETED. -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <!-- Home-screen quick-add widget (#14): a tap opens the quick-add sheet. Exported so the system
              AppWidgetService can deliver APPWIDGET_UPDATE; it only fires an immutable PendingIntent to

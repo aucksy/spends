@@ -80,7 +80,9 @@ class SmsCaptureRepository @Inject constructor(
         val hash = hashFor(parsed, occurredAt, amount, kind)
         if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null // already in the ledger
         val categoryId = resolveCategory(parsed, kind)
-        // Tag the instrument when this card's last4 matches a confirmed card (null = Bank otherwise).
+        // Silent one-tap "Add" (no editor): tag by last4 only — the PRECISE match. The looser bank-name
+        // fallback is deliberately confined to the review editor (#3), where the user can see + correct it,
+        // so a same-bank non-card debit is never silently mis-attributed to a card here.
         val pmId = paymentMethodRepository.matchConfirmedByLast4(parsed.last4)
         // Live, user-confirmed captures are tagged NOTIFICATION (a deliberate add) — distinct from the
         // bulk historical scan (SMS) so the hide/delete-bulk controls never touch these (#11).
@@ -104,6 +106,8 @@ class SmsCaptureRepository @Inject constructor(
             merchant = parsed.merchant?.ifBlank { null },
             occurredAt = occurredAt,
             dedupeHash = hashFor(parsed, occurredAt, amount, kind),
+            // Pre-match the instrument so the editor's "Paid with" is filled in for review (#3).
+            paymentMethodId = paymentMethodRepository.matchInstrument(parsed.last4, parsed.institution),
         )
     }
 
@@ -116,6 +120,7 @@ class SmsCaptureRepository @Inject constructor(
         note: String?,
         occurredAt: Long,
         dedupeHash: String,
+        paymentMethodId: Long? = null,
     ): Long = captureMutex.withLock {
         // Same guard the silent "Add" path has: never double-count an SMS already in the ledger (e.g. a
         // re-delivered alert, or one the user already added). Returns a sentinel; the editor only needs
@@ -129,6 +134,7 @@ class SmsCaptureRepository @Inject constructor(
                 merchantRaw = merchant?.ifBlank { null },
                 note = note?.ifBlank { null },
                 allocations = listOf(AllocationInput(categoryId, amountMinor)),
+                paymentMethodId = paymentMethodId,
                 source = TxnSource.NOTIFICATION,
                 dedupeHash = dedupeHash,
                 parseConfidence = 100,
@@ -350,6 +356,7 @@ class SmsCaptureRepository @Inject constructor(
     suspend fun confirmPending(id: Long, categoryId: Long? = null): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
         val finalCategory = categoryId ?: p.categoryId
+        // Quick-confirm (no editor) → precise last4 match only; bank-name fallback is editor-only (#3).
         val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
         // Bulk-scanned confirmations stay TxnSource.SMS so the "hide / delete bulk-captured" controls
         // target exactly these (and not the live NOTIFICATION ones).
@@ -371,6 +378,10 @@ class SmsCaptureRepository @Inject constructor(
      * from the EDITED values while preserving the capture's TxnSource.SMS tag, its dedupe hash (so a
      * re-scan won't re-queue it), and the merchant→category learning — the three things a plain editor
      * save would drop — then removes the queued row. No-op (null) if the row is already gone.
+     *
+     * [paymentMethodId] is the instrument the user confirmed/corrected in the review editor (#3): the editor
+     * seeds it from the auto-match, so whatever it passes here (including a deliberate null = Bank) wins —
+     * we do NOT re-match and override the user's choice.
      */
     suspend fun confirmPendingEdited(
         id: Long,
@@ -380,9 +391,9 @@ class SmsCaptureRepository @Inject constructor(
         merchant: String?,
         note: String?,
         occurredAt: Long,
+        paymentMethodId: Long? = null,
     ): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
-        val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
         val newId = expenseRepository.create(
             TransactionInput(
                 amountMinor = amountMinor,
@@ -391,7 +402,7 @@ class SmsCaptureRepository @Inject constructor(
                 merchantRaw = merchant?.ifBlank { null },
                 note = note?.ifBlank { null },
                 allocations = listOf(AllocationInput(categoryId, amountMinor)),
-                paymentMethodId = pmId,
+                paymentMethodId = paymentMethodId,
                 source = TxnSource.SMS,
                 dedupeHash = p.dedupeHash,
                 parseConfidence = 100,
@@ -406,6 +417,8 @@ class SmsCaptureRepository @Inject constructor(
     suspend fun confirmAllPending(): Int = captureMutex.withLock {
         val all = pendingDao.getAllOnce()
         for (p in all) {
+            // Bulk "Confirm all" (no per-item editor) → precise last4 match only; bank-name fallback is
+            // editor-only (#3) so this never silently mis-attributes a same-bank non-card debit to a card.
             val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
             createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS, pmId)
             learnMerchantCategory(p.merchant, p.categoryId)

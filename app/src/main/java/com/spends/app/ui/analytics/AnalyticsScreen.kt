@@ -84,9 +84,7 @@ fun AnalyticsScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
     ) {
-        Spacer(Modifier.height(4.dp))
-        Text("Analytics", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
 
         PeriodSelectorBar(
             selection = selection,

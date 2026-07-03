@@ -85,5 +85,41 @@ class QuickAddViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persist a split: each slice becomes its own normal transaction in the timeline (BAU), sharing the same
+     * kind / date / note / instrument. Written atomically (all-or-nothing). The UI guarantees the slices sum
+     * to the entered total and every slice is valid; we re-check defensively and drop any zero/negative slice.
+     */
+    fun saveSplit(
+        kind: TxnKind,
+        note: String,
+        occurredAt: Long,
+        paymentMethodId: Long?,
+        slices: List<AllocationInput>,
+        onSaved: () -> Unit,
+    ) {
+        if (_saving.value) return
+        val valid = slices.filter { it.amountMinor > 0 }
+        if (valid.isEmpty()) return
+        _saving.value = true
+        viewModelScope.launch {
+            expenseRepository.createAll(
+                valid.map { slice ->
+                    TransactionInput(
+                        amountMinor = slice.amountMinor,
+                        kind = kind,
+                        occurredAt = occurredAt,
+                        merchantRaw = null,
+                        note = note.ifBlank { null },
+                        allocations = listOf(AllocationInput(slice.categoryId, slice.amountMinor)),
+                        paymentMethodId = paymentMethodId,
+                    )
+                },
+            )
+            _saving.value = false
+            onSaved()
+        }
+    }
+
     fun nowMillis(): Long = DateUtils.nowMillis()
 }
