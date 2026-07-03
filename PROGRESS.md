@@ -4,13 +4,19 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.37.0** — versionCode **39**, versionName **"0.37.0"**
+- **Shipped: v0.38.0** — versionCode **40**, versionName **"0.38.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.37.0/Spends-v0.37.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.38.0/Spends-v0.38.0.apk
 
 ## Recent tags
+- **v0.38.0** — FREEZE FIX (final): removed the LAST swipe-dismiss veto (on the main quick-add
+  sheet). v0.37 removed it only from the nested keypad, but the freeze recurred on the MAIN
+  home-screen keypad — a confirmValueChange veto on a skipPartiallyExpanded sheet freezes on drag
+  even without nesting. Now NO ModalBottomSheet in the app vetoes dismissal (v0.35-equivalent);
+  the swipe-block feature is gone (it was fundamentally causing the freeze). ✕ / back / swipe all
+  close the sheet. No DB change.
 - **v0.37.0** — split fixes: (#3, SEVERE) fixed a touch-freeze in the split flow — the per-slice
   amount keypad was a ModalBottomSheet nested inside the quick-add sheet, and BOTH vetoed swipe-
   dismiss; two stacked vetoing sheets deadlocked touch handling. Removed the veto from the inner

@@ -33,7 +33,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -106,11 +105,10 @@ fun QuickAddSheet(
     onSaved: () -> Unit,
     viewModel: QuickAddViewModel = hiltViewModel(),
 ) {
-    // Resist an accidental swipe-down discarding a half-built split (#2): dismiss only via the X or back.
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { it != SheetValue.Hidden },
-    )
+    // NOTE: no swipe-dismiss veto. A confirmValueChange that blocks Hidden on a skipPartiallyExpanded sheet
+    // leaves the sheet's only dismiss anchor un-settleable, which deadlocked touch handling (froze the app)
+    // as soon as the keypad was dragged. Dismissal is via the dedicated X, the back gesture, or a swipe.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     val categories by viewModel.categories.collectAsStateWithLifecycle()
@@ -220,7 +218,7 @@ fun QuickAddSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 12.dp),
         ) {
-            // Dedicated close (#2) — the reliable way out now that a stray swipe-down won't dismiss.
+            // Dedicated close button (a clear, deliberate way out alongside swipe / back).
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = { dismiss() }, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
