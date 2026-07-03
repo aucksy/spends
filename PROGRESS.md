@@ -4,13 +4,20 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.36.0** — versionCode **38**, versionName **"0.36.0"**
+- **Shipped: v0.37.0** — versionCode **39**, versionName **"0.37.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.36.0/Spends-v0.36.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.37.0/Spends-v0.37.0.apk
 
 ## Recent tags
+- **v0.37.0** — split fixes: (#3, SEVERE) fixed a touch-freeze in the split flow — the per-slice
+  amount keypad was a ModalBottomSheet nested inside the quick-add sheet, and BOTH vetoed swipe-
+  dismiss; two stacked vetoing sheets deadlocked touch handling. Removed the veto from the inner
+  keypad (kept it on the outer sheet), matching the working category-picker pattern. (#2) The slice
+  amount keypad now opens blank (default 0) with the remaining shown as "₹X left" instead of pre-
+  loading the amount. FUTURE cleanup logged: make the split-slice keypad inline/non-modal to drop
+  nested dialogs entirely. No DB change.
 - **v0.36.0** — split hardening (5 items): fixed the split-picker header wrap (#1); quick-add +
   amount keypad sheets now resist accidental swipe-dismiss and have a dedicated X — only X/back close
   (#2); live "₹X left to assign" shown beside the Split Amount title (#3); a slice can't over-assign —

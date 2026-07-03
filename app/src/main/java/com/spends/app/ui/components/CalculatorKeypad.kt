@@ -26,7 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -124,8 +123,10 @@ fun CalculatorAmountDisplay(expr: String, currentMinor: Long, accent: Color) {
  * When set, a live "₹X left" figure shows beside the title; entering more than it disables Done and shakes
  * the figure red — so a slice can never over-assign the total. Null (default) = a plain amount entry.
  *
- * The sheet resists an accidental swipe-down that would discard the entry (#2) — it dismisses only via the
- * X button or the system back gesture, not a downward drag.
+ * A dedicated X (and the system back gesture) dismiss the sheet. NOTE: this sheet deliberately does NOT
+ * veto swipe-to-dismiss. When it is opened nested inside another ModalBottomSheet (the quick-add split
+ * flow), a second vetoing sheet deadlocked touch handling (froze the UI). The swipe-veto therefore lives
+ * only on the single outer quick-add sheet, which still protects the overall split work.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,12 +138,7 @@ fun AmountKeypadSheet(
     onDismiss: () -> Unit,
     referenceRemaining: Long? = null,
 ) {
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        // Veto a drag settling to Hidden → a stray swipe-down can't discard the entry (#2). Programmatic
-        // hide() (the X / back) bypasses this, so those still dismiss.
-        confirmValueChange = { it != SheetValue.Hidden },
-    )
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     var expr by rememberSaveable { mutableStateOf(if (initialMinor > 0) Money.toEditString(initialMinor) else "") }

@@ -399,8 +399,10 @@ fun QuickAddSheet(
         // What THIS slice may take to hit exactly zero remainder = total − every OTHER slice (#3/#4).
         val otherSum = splitAssigned - existingAmt
         val reference = amountMinor?.let { (it - otherSum).coerceAtLeast(0L) }
-        // Pre-fill a not-yet-set (₹0) slice with the remainder; keep an already-set slice's own value.
-        val initial = if (existingAmt > 0L) existingAmt else (reference ?: 0L)
+        // #2: a not-yet-set slice opens BLANK (default 0) — the amount to spend is shown as "left" (= the
+        // remaining, which is the full total when nothing else is assigned), not pre-loaded into the field.
+        // An already-set slice keeps its own value for editing.
+        val initial = if (existingAmt > 0L) existingAmt else 0L
         AmountKeypadSheet(
             initialMinor = initial,
             accent = accent,
