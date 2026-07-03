@@ -27,6 +27,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -103,6 +104,10 @@ fun CategoryPickerField(
 /**
  * A searchable category chooser as a bottom sheet: a search box plus a grid of large-icon
  * categories. [categories] should already be ordered most-used-first; search filters by name.
+ *
+ * When [onSplit] is provided, a small "Split" affordance lets the user flip the grid into
+ * MULTI-SELECT mode, pick several categories, and confirm — the entry point for splitting one amount
+ * across categories (#1). Single-select behaviour is unchanged when the user doesn't enter split mode.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,6 +117,7 @@ fun CategoryPickerSheet(
     onSelect: (Long) -> Unit,
     onDismiss: () -> Unit,
     onAddNew: (() -> Unit)? = null,
+    onSplit: ((List<Long>) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // Local snapshot state so the cursor never jumps while typing.
@@ -119,9 +125,43 @@ fun CategoryPickerSheet(
     val trimmed = query.trim().lowercase()
     val filtered = if (trimmed.isEmpty()) categories else categories.filter { it.name.lowercase().contains(trimmed) }
 
+    // Multi-select "split" mode (only reachable when onSplit != null). Seeds with the already-chosen
+    // single category so it carries over into the split.
+    var splitting by remember { mutableStateOf(false) }
+    var picked by remember { mutableStateOf(selectedId?.let { setOf(it) } ?: emptySet()) }
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            Text("Choose category", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    if (splitting) "Select categories to split" else "Choose category",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (onSplit != null) {
+                    if (!splitting) {
+                        TextButton(onClick = { splitting = true }) { Text("Split") }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            TextButton(onClick = { splitting = false; picked = emptySet() }) { Text("Cancel") }
+                            TextButton(
+                                enabled = picked.size >= 2,
+                                onClick = { onSplit(picked.toList()) },
+                            ) { Text("Split ${picked.size}") }
+                        }
+                    }
+                }
+            }
+            if (splitting) {
+                Text(
+                    "Pick 2 or more, then set each amount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.size(12.dp))
             OutlinedTextField(
                 value = query,
@@ -146,7 +186,8 @@ fun CategoryPickerSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (onAddNew != null) {
+                // "New" isn't offered while multi-selecting for a split — the user is choosing from existing ones.
+                if (onAddNew != null && !splitting) {
                     item(key = "__add_new__") {
                         AddNewCell(onClick = onAddNew)
                     }
@@ -154,8 +195,14 @@ fun CategoryPickerSheet(
                 items(filtered, key = { it.id }) { category ->
                     CategoryCell(
                         category = category,
-                        selected = category.id == selectedId,
-                        onClick = { onSelect(category.id) },
+                        selected = if (splitting) category.id in picked else category.id == selectedId,
+                        onClick = {
+                            if (splitting) {
+                                picked = if (category.id in picked) picked - category.id else picked + category.id
+                            } else {
+                                onSelect(category.id)
+                            }
+                        },
                     )
                 }
             }

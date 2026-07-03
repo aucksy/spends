@@ -4,13 +4,18 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.34.0** — versionCode **36**, versionName **"0.34.0"**
+- **Shipped: v0.35.0** — versionCode **37**, versionName **"0.35.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.34.0/Spends-v0.34.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.35.0/Spends-v0.35.0.apk
 
 ## Recent tags
+- **v0.35.0** — 3-item UX round: split entry reworked — tap a category → "Split" → multi-select
+  categories → each gets a keypad amount with a live remainder; Save requires every slice > 0 and
+  sum = total (#1). Settings decluttered: subtle divider lines between logical rows, shortened
+  descriptions, rewritten Smart Cycle copy (remaining-salary framing), removed the cards paragraph
+  (#2/#3). No DB change.
 - **v0.34.0** — 4-item round: removed the "Analytics" screen heading (#1); split-one-amount
   across categories in quick-add (total-first, each slice saved as its own BAU transaction via
   `ExpenseRepository.createAll`, #2); bank-name → instrument auto-match in the SMS **review

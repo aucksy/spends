@@ -147,7 +147,10 @@ fun QuickAddSheet(
 
     val splitAssigned = splits.sumOf { it.amountMinor }
     val splitRemainder = (amountMinor ?: 0L) - splitAssigned
-    val splitReady = splitMode && amountMinor != null && splits.isNotEmpty() && splitRemainder == 0L && !saving
+    // Ready only when a total exists, every chosen category has a POSITIVE amount, and they sum to the total.
+    // Requiring all-positive stops a seeded ₹0 slice being silently dropped (Save N would create < N, #1).
+    val splitReady = splitMode && amountMinor != null && splits.isNotEmpty() &&
+        splits.all { it.amountMinor > 0L } && splitRemainder == 0L && !saving
     val accent = if (kind == TxnKind.INCOME) LocalSemanticColors.current.income else LocalSemanticColors.current.expense
 
     /** Reset everything category-related when the kind flips (an expense slice makes no sense under Income). */
@@ -278,26 +281,15 @@ fun QuickAddSheet(
                 singleLine = true,
             )
 
-            Spacer(Modifier.height(12.dp))
-
-            if (!splitMode) {
-                // Enter split mode; seed the first slice from any category already chosen so there's a head start.
-                TextButton(
-                    enabled = amountMinor != null,
-                    onClick = {
-                        splits = selectedCategoryId?.let { listOf(SplitRow(it, amountMinor ?: 0L)) } ?: emptyList()
-                        splitMode = true
-                    },
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Split across categories")
-                }
-            } else {
+            // Split mode is entered from the category picker's "Split" multi-select (#1); it seeds the chosen
+            // categories as slices (₹0 each) which the user then assigns from the total.
+            if (splitMode) {
+                Spacer(Modifier.height(12.dp))
                 SplitSection(
                     splits = splits,
                     categoriesById = { id -> visibleCategories.firstOrNull { it.id == id } },
                     remainder = splitRemainder,
+                    hasTotal = amountMinor != null,
                     accent = accent,
                     onEditCategory = { index -> editingRowIndex = index; showSplitCategoryPicker = true },
                     onEditAmount = { index -> editingRowIndex = index; showSplitAmountKeypad = true },
@@ -343,6 +335,13 @@ fun QuickAddSheet(
                 showCategoryPicker = false
             },
             onAddNew = { showCategoryPicker = false; showAddCategory = true },
+            // "Split" in the picker → enter split mode seeded with the chosen categories (₹0 each), #1.
+            onSplit = { ids ->
+                splits = ids.map { SplitRow(it, 0L) }
+                splitMode = true
+                categoryError = false
+                showCategoryPicker = false
+            },
             onDismiss = { showCategoryPicker = false },
         )
     }
@@ -424,6 +423,7 @@ private fun SplitSection(
     splits: List<SplitRow>,
     categoriesById: (Long) -> com.spends.app.data.db.entity.CategoryEntity?,
     remainder: Long,
+    hasTotal: Boolean,
     accent: androidx.compose.ui.graphics.Color,
     onEditCategory: (Int) -> Unit,
     onEditAmount: (Int) -> Unit,
@@ -464,11 +464,20 @@ private fun SplitSection(
                         Text("Category", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Text(
-                    Money.formatRupees(row.amountMinor),
-                    style = Numerals.amountRow,
-                    modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
-                )
+                if (row.amountMinor > 0) {
+                    Text(
+                        Money.formatRupees(row.amountMinor),
+                        style = Numerals.amountRow,
+                        modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
+                    )
+                } else {
+                    Text(
+                        "Set amount",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
+                    )
+                }
                 IconButton(onClick = { onRemove(index) }, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Remove", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -483,16 +492,21 @@ private fun SplitSection(
         Text("Add category")
     }
 
-    // Remainder line — the guardrail: Save stays disabled until this reaches zero.
+    // Remainder line — the guardrail. Save stays disabled until a total exists, every category has a
+    // positive amount, and they sum exactly to the total.
+    val hasUnset = splits.any { it.amountMinor <= 0L }
     val remainderColor = when {
-        remainder == 0L -> LocalSemanticColors.current.income
+        !hasTotal -> MaterialTheme.colorScheme.onSurfaceVariant
         remainder < 0L -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+        remainder > 0L || hasUnset -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> LocalSemanticColors.current.income
     }
     val remainderText = when {
-        remainder == 0L -> "All assigned"
+        !hasTotal -> "Enter the total above to split"
         remainder < 0L -> "Over by ${Money.formatRupees(-remainder)}"
-        else -> "${Money.formatRupees(remainder)} left to assign"
+        remainder > 0L -> "${Money.formatRupees(remainder)} left to assign"
+        hasUnset -> "Set an amount for every category"
+        else -> "All assigned"
     }
     Text(remainderText, style = MaterialTheme.typography.bodySmall, color = remainderColor, fontWeight = FontWeight.SemiBold)
 }

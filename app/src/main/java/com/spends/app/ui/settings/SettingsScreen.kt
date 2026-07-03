@@ -29,6 +29,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -117,6 +118,7 @@ fun SettingsScreen(
                     value = ordinal(state.salaryCycleStartDay),
                     onClick = { showSalaryDialog = true },
                 )
+                RowDivider()
                 SwitchRow(
                     title = "Carry forward",
                     subtitle = "Roll each period's leftover into the next.",
@@ -139,29 +141,24 @@ fun SettingsScreen(
                         onClick = { showOpeningDialog = true },
                     )
                     Text(
-                        "Your balance was the opening amount on this date; only transactions on/after it count, so " +
-                            "incomplete older months can't drag the balance negative.",
+                        "Only counts transactions on/after this date, so incomplete older months can't drag the balance negative.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
+                RowDivider()
                 SwitchRow(
                     title = "Smart Cycle",
-                    subtitle = "Group each credit card's spending by its own billing date, and your bank/UPI by your salary date — so \"this period\" is what you're actually about to pay, not a calendar month.",
+                    subtitle = "Shows your true remaining salary — what's already left your bank, plus card spends you'll owe when each card's bill generates. Every card is tracked on its own billing cycle.",
                     checked = state.smartCycleEnabled,
                     onChange = viewModel::setSmartCycle,
                 )
                 if (state.smartCycleEnabled) {
-                    Text(
-                        "Manage your cards and banks below (or scan your SMS to find cards) and set each card's billing day. Tag spending with \"Paid with\" when you add it. Turn this off any time to return to the simple salary / month view.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
+                    RowDivider()
                     ClickableRow(
                         title = "Banks & Cards",
-                        value = "Manage cards, banks & default instrument",
+                        value = "Cards, banks & default instrument",
                         onClick = onOpenBanksCards,
                         leading = { Icon(Icons.Filled.CreditCard, contentDescription = null) },
                     )
@@ -172,13 +169,14 @@ fun SettingsScreen(
             SettingsSection("Automatic entries") {
                 ClickableRow(
                     title = "Detect from SMS",
-                    value = "Review & add bank transactions from your texts",
+                    value = "Review & add from bank SMS",
                     onClick = onOpenCapture,
                     leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
                 )
+                RowDivider()
                 ClickableRow(
                     title = "Recurring transactions",
-                    value = "Rent, salary, EMIs & subscriptions on a schedule",
+                    value = "Scheduled rent, EMIs & subscriptions",
                     onClick = onOpenRecurring,
                     leading = { Icon(Icons.Filled.Autorenew, contentDescription = null) },
                 )
@@ -230,7 +228,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-                Spacer(Modifier.height(6.dp))
+                RowDivider()
                 Text("Open on", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     DefaultLanding.entries.forEachIndexed { index, landing ->
@@ -245,10 +243,10 @@ fun SettingsScreen(
                         )
                     }
                 }
-                Spacer(Modifier.height(2.dp))
+                RowDivider()
                 SwitchRow(
                     title = "Hide the widget's reveal button",
-                    subtitle = "The eye on the home-screen summary widget becomes invisible (but still tappable), so someone holding your phone can't tell there's a way to reveal the figures.",
+                    subtitle = "Makes the widget's eye invisible but still tappable, so no one can tell the figures can be revealed.",
                     checked = state.widgetEyeHidden,
                     onChange = { hidden ->
                         // Refresh the widget only AFTER the value is persisted, so it re-renders with the
@@ -435,6 +433,15 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
         // 12dp inner padding (not 16) so a 4-way control like the Theme picker has room and doesn't wrap (#3).
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), content = content)
     }
+}
+
+/** A hairline separator between logically-different rows inside a settings card (subtle, inset by the card). */
+@Composable
+private fun RowDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = 2.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+    )
 }
 
 @Composable
