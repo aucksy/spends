@@ -11,14 +11,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -30,7 +27,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -39,7 +35,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +60,7 @@ import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.AmountKeypadSheet
 import com.spends.app.ui.components.CalculatorKeypad
 import com.spends.app.ui.components.CategoryAvatar
+import com.spends.app.ui.components.DraglessBottomSheet
 import com.spends.app.ui.components.CategoryEditorSheet
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
@@ -106,10 +102,8 @@ fun QuickAddSheet(
     onSaved: () -> Unit,
     viewModel: QuickAddViewModel = hiltViewModel(),
 ) {
-    // NOTE: no swipe-dismiss veto. A confirmValueChange that blocks Hidden on a skipPartiallyExpanded sheet
-    // leaves the sheet's only dismiss anchor un-settleable, which deadlocked touch handling (froze the app)
-    // as soon as the keypad was dragged. Dismissal is via the dedicated X, the back gesture, or a swipe.
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Built on DraglessBottomSheet (a plain Dialog), NOT a ModalBottomSheet — there is NO swipe-to-dismiss
+    // gesture, so a stray swipe can never wipe the entry, and no confirmValueChange veto (which froze touch).
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     val categories by viewModel.categories.collectAsStateWithLifecycle()
@@ -182,10 +176,8 @@ fun QuickAddSheet(
         splitMode = false
     }
 
-    fun dismiss() {
-        // Animate the sheet away, then fire onDismiss once (guarded so an interrupted hide doesn't).
-        scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
-    }
+    // The panel is a plain Dialog now (no sheet state) — closing just removes it via the host's onDismiss.
+    fun dismiss() = onDismiss()
 
     fun saveSingle() {
         val a = amountMinor
@@ -216,24 +208,14 @@ fun QuickAddSheet(
         ) { onSaved(); dismiss() }
     }
 
-    ModalBottomSheet(
-        // Swipe-down / tap-outside / back all land here (once the sheet has settled to hidden). If there's
-        // unsaved work, re-show the sheet and confirm before discarding; otherwise just close.
-        onDismissRequest = {
-            if (hasWork) {
-                scope.launch { sheetState.show() }
-                showDiscardConfirm = true
-            } else {
-                onDismiss()
-            }
-        },
-        sheetState = sheetState,
+    DraglessBottomSheet(
+        // A plain Dialog: NO swipe-to-dismiss, so a stray swipe can never wipe a half-built entry/split.
+        // Back (onDismissRequest) confirms first when there's unsaved work; otherwise it just closes.
+        onDismissRequest = { if (hasWork) showDiscardConfirm = true else onDismiss() },
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 12.dp),
         ) {
@@ -363,10 +345,7 @@ fun QuickAddSheet(
             title = { Text("Discard this entry?") },
             text = { Text("The amount, category and any split you've entered will be lost.") },
             confirmButton = { TextButton(onClick = { showDiscardConfirm = false; dismiss() }) { Text("Discard") } },
-            // Bring the sheet back if a swipe had slid it away — recovers even if the onDismiss re-show didn't take.
-            dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false; scope.launch { sheetState.show() } }) { Text("Keep editing") }
-            },
+            dismissButton = { TextButton(onClick = { showDiscardConfirm = false }) { Text("Keep editing") } },
         )
     }
 

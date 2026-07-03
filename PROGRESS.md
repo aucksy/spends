@@ -4,13 +4,19 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.41.0** — versionCode **43**, versionName **"0.41.0"**
+- **Shipped: v0.42.0** — versionCode **44**, versionName **"0.42.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.41.0/Spends-v0.41.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.42.0/Spends-v0.42.0.apk
 
 ## Recent tags
+- **v0.42.0** — main quick-add sheet ALSO moved to the swipe-proof Dialog (DraglessBottomSheet), so
+  the home + button AND the widget quick-add can no longer be swiped away (closes only via ✕/back;
+  back confirms if there's unsaved work). Fixed the popup panel color: it was tinted teal by a tonal-
+  elevation overlay — now surfaceContainerLow + tonalElevation 0, matching the app's other sheets.
+  DraglessBottomSheet now caps at 94% height + scrolls internally + lifts above the keyboard
+  (decorFitsSystemWindows=false + imePadding). ALL keypad surfaces are now swipe-proof. No DB change.
 - **v0.41.0** — REAL swipe fix, new mechanism: the confirm-on-swipe (v0.39/v0.40) never fired on
   device. So the popup keypad `AmountKeypadSheet` (the "Split amount" popup + the AddEdit & Recurring
   amount keypads) was moved OFF `ModalBottomSheet` onto a plain `Dialog` (new `DraglessBottomSheet`) —
