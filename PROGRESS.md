@@ -4,13 +4,18 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.39.0** — versionCode **41**, versionName **"0.39.0"**
+- **Shipped: v0.40.0** — versionCode **42**, versionName **"0.40.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.39.0/Spends-v0.39.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.40.0/Spends-v0.40.0.apk
 
 ## Recent tags
+- **v0.40.0** — discard-confirmation now on ALL half-screen keypads: v0.39 only guarded the quick-add
+  sheet; the shared AmountKeypadSheet (AddEdit editor, Recurring editor, split-slice amount) had no
+  guard, so swiping those still lost work with no prompt. Added the same "Discard this amount?" guard
+  there (hasWork = amount changed from what it opened with). "Keep editing" now also re-shows the sheet
+  (recovers even if the onDismiss re-show didn't take). Still no confirmValueChange veto → no freeze.
 - **v0.39.0** — accidental-swipe protection done the freeze-free way: a DISCARD CONFIRMATION on the
   quick-add sheet. Swipe-down / tap-outside / back / ✕ with unsaved work (amount, category, note, or a
   split in progress) now asks "Discard this entry?" (Keep editing / Discard) instead of silently losing

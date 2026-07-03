@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -141,7 +143,12 @@ fun AmountKeypadSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val view = LocalView.current
-    var expr by rememberSaveable { mutableStateOf(if (initialMinor > 0) Money.toEditString(initialMinor) else "") }
+    val startExpr = remember(initialMinor) { if (initialMinor > 0) Money.toEditString(initialMinor) else "" }
+    var expr by rememberSaveable { mutableStateOf(startExpr) }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
+    // Unsaved work = a non-blank amount the user has actually changed from what the field opened with, so an
+    // accidental swipe / ✕ can't silently throw away a typed amount (confirmed first, like the quick-add sheet).
+    val hasWork = expr.isNotBlank() && expr != startExpr
 
     val result = CalculatorEngine.evaluate(expr)
     val amountMinor = CalculatorEngine.toPositiveMinor(result)
@@ -157,7 +164,19 @@ fun AmountKeypadSheet(
         scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(
+        // Guard an accidental swipe / tap-outside / back: if the amount was changed, re-show the sheet and
+        // confirm before discarding (no confirmValueChange veto — that deadlocks touch).
+        onDismissRequest = {
+            if (hasWork) {
+                scope.launch { sheetState.show() }
+                showDiscardConfirm = true
+            } else {
+                onDismiss()
+            }
+        },
+        sheetState = sheetState,
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp).padding(bottom = 12.dp),
         ) {
@@ -177,7 +196,10 @@ fun AmountKeypadSheet(
                     )
                     Spacer(Modifier.width(8.dp))
                 }
-                IconButton(onClick = { dismiss() }, modifier = Modifier.size(32.dp)) {
+                IconButton(
+                    onClick = { if (hasWork) showDiscardConfirm = true else dismiss() },
+                    modifier = Modifier.size(32.dp),
+                ) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                 }
             }
@@ -200,6 +222,19 @@ fun AmountKeypadSheet(
             )
             Spacer(Modifier.height(8.dp))
         }
+    }
+
+    if (showDiscardConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text("Discard this amount?") },
+            text = { Text("The amount you've entered will be lost.") },
+            confirmButton = { TextButton(onClick = { showDiscardConfirm = false; dismiss() }) { Text("Discard") } },
+            // Bring the sheet back if a swipe had slid it away — recovers even if the onDismiss re-show didn't take.
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirm = false; scope.launch { sheetState.show() } }) { Text("Keep editing") }
+            },
+        )
     }
 }
 

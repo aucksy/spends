@@ -363,7 +363,10 @@ fun QuickAddSheet(
             title = { Text("Discard this entry?") },
             text = { Text("The amount, category and any split you've entered will be lost.") },
             confirmButton = { TextButton(onClick = { showDiscardConfirm = false; dismiss() }) { Text("Discard") } },
-            dismissButton = { TextButton(onClick = { showDiscardConfirm = false }) { Text("Keep editing") } },
+            // Bring the sheet back if a swipe had slid it away — recovers even if the onDismiss re-show didn't take.
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirm = false; scope.launch { sheetState.show() } }) { Text("Keep editing") }
+            },
         )
     }
 
