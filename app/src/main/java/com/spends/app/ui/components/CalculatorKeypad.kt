@@ -1,6 +1,8 @@
 package com.spends.app.ui.components
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,19 +13,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -108,6 +119,13 @@ fun CalculatorAmountDisplay(expr: String, currentMinor: Long, accent: Color) {
 /**
  * A bottom sheet for entering an amount on the calculator keypad, returning paise via [onConfirm].
  * Used by forms (e.g. recurring) that want the same keypad as quick-add without embedding it inline.
+ *
+ * [referenceRemaining] (split use, #3/#4): how much this slice may take to hit exactly zero remainder.
+ * When set, a live "₹X left" figure shows beside the title; entering more than it disables Done and shakes
+ * the figure red — so a slice can never over-assign the total. Null (default) = a plain amount entry.
+ *
+ * The sheet resists an accidental swipe-down that would discard the entry (#2) — it dismisses only via the
+ * X button or the system back gesture, not a downward drag.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,8 +135,14 @@ fun AmountKeypadSheet(
     title: String,
     onConfirm: (Long) -> Unit,
     onDismiss: () -> Unit,
+    referenceRemaining: Long? = null,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        // Veto a drag settling to Hidden → a stray swipe-down can't discard the entry (#2). Programmatic
+        // hide() (the X / back) bypasses this, so those still dismiss.
+        confirmValueChange = { it != SheetValue.Hidden },
+    )
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     var expr by rememberSaveable { mutableStateOf(if (initialMinor > 0) Money.toEditString(initialMinor) else "") }
@@ -126,6 +150,12 @@ fun AmountKeypadSheet(
     val result = CalculatorEngine.evaluate(expr)
     val amountMinor = CalculatorEngine.toPositiveMinor(result)
     val currentMinor = result?.movePointRight(2)?.longValueExact() ?: 0L
+
+    // Live "left to assign" + over-assign guard (#3/#4).
+    val leftToAssign = referenceRemaining?.let { it - currentMinor }
+    val over = referenceRemaining != null && amountMinor != null && amountMinor > referenceRemaining
+    val remainderShake = remember { Animatable(0f) }
+    LaunchedEffect(over) { if (over) shakeAmount(remainderShake) }
 
     fun dismiss() {
         scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
@@ -135,17 +165,36 @@ fun AmountKeypadSheet(
         Column(
             modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp).padding(bottom = 12.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (leftToAssign != null) {
+                    Text(
+                        text = if (leftToAssign >= 0L) {
+                            "${Money.formatRupees(leftToAssign)} left"
+                        } else {
+                            "Over by ${Money.formatRupees(-leftToAssign)}"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (leftToAssign < 0L) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.offset(x = remainderShake.value.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                IconButton(onClick = { dismiss() }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
+                }
+            }
             Spacer(Modifier.height(10.dp))
             CalculatorAmountDisplay(expr = expr, currentMinor = currentMinor, accent = accent)
             Spacer(Modifier.height(12.dp))
             CalculatorKeypad(
                 onKey = { key -> expr = CalculatorEngine.append(expr, key) },
-                canSave = amountMinor != null,
+                canSave = amountMinor != null && !over,
                 saving = false,
                 onSave = {
                     val a = amountMinor
-                    if (a != null) {
+                    if (a != null && !over) {
                         view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                         onConfirm(a)
                         dismiss()
@@ -156,6 +205,13 @@ fun AmountKeypadSheet(
             Spacer(Modifier.height(8.dp))
         }
     }
+}
+
+/** A quick horizontal wobble to nudge attention to the over-assigned "left" figure (#4). */
+private suspend fun shakeAmount(anim: Animatable<Float, *>) {
+    val steps = listOf(-8f, 8f, -6f, 6f, -3f, 0f)
+    anim.snapTo(0f)
+    for (t in steps) anim.animateTo(t, animationSpec = tween(durationMillis = 34))
 }
 
 /** Map the stored ASCII operators to their display glyphs for the expression line. */

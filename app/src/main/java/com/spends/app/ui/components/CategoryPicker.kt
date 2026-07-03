@@ -135,22 +135,24 @@ fun CategoryPickerSheet(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                // Weighted + ellipsised title yields space so the action buttons never wrap (#1).
                 Text(
-                    if (splitting) "Select categories to split" else "Choose category",
+                    if (splitting) "Select categories" else "Choose category",
                     style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 if (onSplit != null) {
                     if (!splitting) {
-                        TextButton(onClick = { splitting = true }) { Text("Split") }
+                        TextButton(onClick = { splitting = true }) { Text("Split", maxLines = 1, softWrap = false) }
                     } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            TextButton(onClick = { splitting = false; picked = emptySet() }) { Text("Cancel") }
-                            TextButton(
-                                enabled = picked.size >= 2,
-                                onClick = { onSplit(picked.toList()) },
-                            ) { Text("Split ${picked.size}") }
+                        TextButton(onClick = { splitting = false; picked = emptySet() }) {
+                            Text("Cancel", maxLines = 1, softWrap = false)
+                        }
+                        TextButton(enabled = picked.size >= 2, onClick = { onSplit(picked.toList()) }) {
+                            Text("Split ${picked.size}", maxLines = 1, softWrap = false)
                         }
                     }
                 }

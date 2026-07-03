@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** One slice of a split at save time: a category, its amount (paise), and its own note (#5). */
+data class SplitSlice(val categoryId: Long, val amountMinor: Long, val note: String?)
+
 /** Backs the half-screen quick-add sheet. Reuses the same repositories as the full editor. */
 @HiltViewModel
 class QuickAddViewModel @Inject constructor(
@@ -87,15 +90,15 @@ class QuickAddViewModel @Inject constructor(
 
     /**
      * Persist a split: each slice becomes its own normal transaction in the timeline (BAU), sharing the same
-     * kind / date / note / instrument. Written atomically (all-or-nothing). The UI guarantees the slices sum
-     * to the entered total and every slice is valid; we re-check defensively and drop any zero/negative slice.
+     * kind / date / instrument but carrying its OWN note (#5). Written atomically (all-or-nothing). The UI
+     * guarantees the slices sum to the entered total and every slice is valid; we re-check defensively and
+     * drop any zero/negative slice.
      */
     fun saveSplit(
         kind: TxnKind,
-        note: String,
         occurredAt: Long,
         paymentMethodId: Long?,
-        slices: List<AllocationInput>,
+        slices: List<SplitSlice>,
         onSaved: () -> Unit,
     ) {
         if (_saving.value) return
@@ -110,7 +113,7 @@ class QuickAddViewModel @Inject constructor(
                         kind = kind,
                         occurredAt = occurredAt,
                         merchantRaw = null,
-                        note = note.ifBlank { null },
+                        note = slice.note?.ifBlank { null },
                         allocations = listOf(AllocationInput(slice.categoryId, slice.amountMinor)),
                         paymentMethodId = paymentMethodId,
                     )

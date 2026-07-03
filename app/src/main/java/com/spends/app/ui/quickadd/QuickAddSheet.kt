@@ -33,6 +33,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -59,7 +60,6 @@ import com.spends.app.core.money.Money
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.core.time.DateUtils
-import com.spends.app.data.repo.AllocationInput
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.AmountKeypadSheet
@@ -72,13 +72,23 @@ import com.spends.app.ui.cards.PaidWithChip
 import com.spends.app.ui.cards.PaidWithPickerSheet
 import kotlinx.coroutines.launch
 
-/** One slice of a split: a category and its share (paise). Each becomes its own transaction on save (#2). */
-private data class SplitRow(val categoryId: Long, val amountMinor: Long)
+/** One slice of a split: a category, its share (paise), and its own note. Each becomes its own transaction (#2/#5). */
+private data class SplitRow(val categoryId: Long, val amountMinor: Long, val note: String = "")
 
-/** Persists split rows across config changes as a flat [cat, amt, cat, amt, …] Long list. */
-private val SplitRowsSaver = listSaver<List<SplitRow>, Long>(
-    save = { rows -> rows.flatMap { listOf(it.categoryId, it.amountMinor) } },
-    restore = { flat -> flat.chunked(2).mapNotNull { if (it.size == 2) SplitRow(it[0], it[1]) else null } },
+/** Persists split rows across config changes as a flat [cat, amt, note, …] String list (note can be any text). */
+private val SplitRowsSaver = listSaver<List<SplitRow>, String>(
+    save = { rows -> rows.flatMap { listOf(it.categoryId.toString(), it.amountMinor.toString(), it.note) } },
+    restore = { flat ->
+        flat.chunked(3).mapNotNull { c ->
+            if (c.size == 3) {
+                val id = c[0].toLongOrNull()
+                val amt = c[1].toLongOrNull()
+                if (id != null && amt != null) SplitRow(id, amt, c[2]) else null
+            } else {
+                null
+            }
+        }
+    },
 )
 
 /**
@@ -96,7 +106,11 @@ fun QuickAddSheet(
     onSaved: () -> Unit,
     viewModel: QuickAddViewModel = hiltViewModel(),
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Resist an accidental swipe-down discarding a half-built split (#2): dismiss only via the X or back.
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden },
+    )
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     val categories by viewModel.categories.collectAsStateWithLifecycle()
@@ -133,7 +147,6 @@ fun QuickAddSheet(
     var showSplitAmountKeypad by remember { mutableStateOf(false) }
     // Which split row an inline picker/keypad targets; null = we're adding a NEW row.
     var editingRowIndex by remember { mutableStateOf<Int?>(null) }
-    var pendingSplitCategoryId by remember { mutableStateOf<Long?>(null) }
 
     val usageFilter = if (kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
@@ -192,10 +205,9 @@ fun QuickAddSheet(
         val pmId = if (kind == TxnKind.EXPENSE) selectedPaymentMethodId else null
         viewModel.saveSplit(
             kind = kind,
-            note = note,
             occurredAt = occurredAt,
             paymentMethodId = pmId,
-            slices = splits.map { AllocationInput(it.categoryId, it.amountMinor) },
+            slices = splits.map { SplitSlice(it.categoryId, it.amountMinor, it.note.ifBlank { null }) },
         ) { onSaved(); dismiss() }
     }
 
@@ -208,6 +220,13 @@ fun QuickAddSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 12.dp),
         ) {
+            // Dedicated close (#2) — the reliable way out now that a stray swipe-down won't dismiss.
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = { dismiss() }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
+                }
+            }
+            Spacer(Modifier.height(4.dp))
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = kind == TxnKind.EXPENSE,
@@ -272,14 +291,17 @@ fun QuickAddSheet(
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Note (optional)") },
-                singleLine = true,
-            )
+            // The shared note applies to a single add; in split mode each slice carries its own note (#5).
+            if (!splitMode) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Note (optional)") },
+                    singleLine = true,
+                )
+            }
 
             // Split mode is entered from the category picker's "Split" multi-select (#1); it seeds the chosen
             // categories as slices (₹0 each) which the user then assigns from the total.
@@ -293,6 +315,9 @@ fun QuickAddSheet(
                     accent = accent,
                     onEditCategory = { index -> editingRowIndex = index; showSplitCategoryPicker = true },
                     onEditAmount = { index -> editingRowIndex = index; showSplitAmountKeypad = true },
+                    onEditNote = { index, text ->
+                        splits = splits.mapIndexed { i, r -> if (i == index) r.copy(note = text) else r }
+                    },
                     onRemove = { index -> splits = splits.filterIndexed { i, _ -> i != index } },
                     onAdd = { editingRowIndex = null; showSplitCategoryPicker = true },
                     onCancelSplit = { splitMode = false },
@@ -355,9 +380,9 @@ fun QuickAddSheet(
             onSelect = { id ->
                 showSplitCategoryPicker = false
                 if (targetIndex == null) {
-                    // New slice: remember the category, then ask for its amount (pre-filled with the remainder).
-                    pendingSplitCategoryId = id
-                    showSplitAmountKeypad = true
+                    // New slice added at ₹0 — the user sets its amount next via "Set amount" (consistent with
+                    // the multi-select seed, and avoids a dead-end when the remainder is already fully assigned).
+                    splits = splits + SplitRow(id, 0L)
                 } else {
                     splits = splits.mapIndexed { i, row -> if (i == targetIndex) row.copy(categoryId = id) else row }
                     editingRowIndex = null
@@ -367,26 +392,26 @@ fun QuickAddSheet(
         )
     }
 
-    // Split: enter/adjust a slice amount on the same calculator keypad.
+    // Split: adjust a slice's amount on the same calculator keypad (only ever for an EXISTING row now).
     if (showSplitAmountKeypad) {
         val targetIndex = editingRowIndex
-        val initial = if (targetIndex != null) {
-            splits.getOrNull(targetIndex)?.amountMinor ?: 0L
-        } else {
-            splitRemainder.coerceAtLeast(0L) // pre-fill a new slice with what's left to assign
-        }
+        val existingAmt = if (targetIndex != null) (splits.getOrNull(targetIndex)?.amountMinor ?: 0L) else 0L
+        // What THIS slice may take to hit exactly zero remainder = total − every OTHER slice (#3/#4).
+        val otherSum = splitAssigned - existingAmt
+        val reference = amountMinor?.let { (it - otherSum).coerceAtLeast(0L) }
+        // Pre-fill a not-yet-set (₹0) slice with the remainder; keep an already-set slice's own value.
+        val initial = if (existingAmt > 0L) existingAmt else (reference ?: 0L)
         AmountKeypadSheet(
             initialMinor = initial,
             accent = accent,
             title = "Split amount",
+            referenceRemaining = reference,
             onConfirm = { minor ->
-                if (targetIndex != null) {
-                    splits = splits.mapIndexed { i, row -> if (i == targetIndex) row.copy(amountMinor = minor) else row }
-                } else {
-                    pendingSplitCategoryId?.let { splits = splits + SplitRow(it, minor) }
+                targetIndex?.let { idx ->
+                    splits = splits.mapIndexed { i, row -> if (i == idx) row.copy(amountMinor = minor) else row }
                 }
             },
-            onDismiss = { showSplitAmountKeypad = false; editingRowIndex = null; pendingSplitCategoryId = null },
+            onDismiss = { showSplitAmountKeypad = false; editingRowIndex = null },
         )
     }
 
@@ -427,6 +452,7 @@ private fun SplitSection(
     accent: androidx.compose.ui.graphics.Color,
     onEditCategory: (Int) -> Unit,
     onEditAmount: (Int) -> Unit,
+    onEditNote: (Int, String) -> Unit,
     onRemove: (Int) -> Unit,
     onAdd: () -> Unit,
     onCancelSplit: () -> Unit,
@@ -448,39 +474,47 @@ private fun SplitSection(
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f).clickable { onEditCategory(index) },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (cat != null) {
-                        CategoryAvatar(cat.iconKey, cat.colorHex, size = 34.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text(cat.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f).clickable { onEditCategory(index) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (cat != null) {
+                            CategoryAvatar(cat.iconKey, cat.colorHex, size = 34.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text(cat.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                        } else {
+                            Text("Category", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (row.amountMinor > 0) {
+                        Text(
+                            Money.formatRupees(row.amountMinor),
+                            style = Numerals.amountRow,
+                            modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
+                        )
                     } else {
-                        Text("Category", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Set amount",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
+                        )
+                    }
+                    IconButton(onClick = { onRemove(index) }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Close, contentDescription = "Remove", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (row.amountMinor > 0) {
-                    Text(
-                        Money.formatRupees(row.amountMinor),
-                        style = Numerals.amountRow,
-                        modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
-                    )
-                } else {
-                    Text(
-                        "Set amount",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
-                    )
-                }
-                IconButton(onClick = { onRemove(index) }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Filled.Close, contentDescription = "Remove", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                // Each slice keeps its own note (#5).
+                OutlinedTextField(
+                    value = row.note,
+                    onValueChange = { onEditNote(index, it) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    placeholder = { Text("Note (optional)", style = MaterialTheme.typography.bodySmall) },
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    singleLine = true,
+                )
             }
         }
     }

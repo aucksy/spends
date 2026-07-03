@@ -4,13 +4,18 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.35.0** — versionCode **37**, versionName **"0.35.0"**
+- **Shipped: v0.36.0** — versionCode **38**, versionName **"0.36.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.35.0/Spends-v0.35.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.36.0/Spends-v0.36.0.apk
 
 ## Recent tags
+- **v0.36.0** — split hardening (5 items): fixed the split-picker header wrap (#1); quick-add +
+  amount keypad sheets now resist accidental swipe-dismiss and have a dedicated X — only X/back close
+  (#2); live "₹X left to assign" shown beside the Split Amount title (#3); a slice can't over-assign —
+  entering more than remaining disables Done + shakes the figure red (#4); each split slice has its own
+  note (#5). No DB change.
 - **v0.35.0** — 3-item UX round: split entry reworked — tap a category → "Split" → multi-select
   categories → each gets a keypad amount with a live remainder; Save requires every slice > 0 and
   sum = total (#1). Settings decluttered: subtle divider lines between logical rows, shortened
