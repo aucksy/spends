@@ -4,13 +4,17 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.44.0** — versionCode **46**, versionName **"0.44.0"**
+- **Shipped: v0.45.0** — versionCode **47**, versionName **"0.45.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.44.0/Spends-v0.44.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.45.0/Spends-v0.45.0.apk
 
 ## Recent tags
+- **v0.45.0** — keypad-clip fix take 3 (the raw in-Dialog listener in v0.44 also read 0). Insets are
+  UNREADABLE inside a plain Dialog, full stop. So read the nav-bar inset in the ACTIVITY (SpendsTheme,
+  where edge-to-edge insets work) and pass the value into the Dialog via a new `LocalSheetBottomInset`
+  CompositionLocal; `DraglessBottomSheet` pads the keypad up by it. This reads the real value, not zero.
 - **v0.44.0** — REAL keypad-clip fix (v0.43's revert didn't work). Root cause: a plain Compose Dialog
   never feeds WindowInsets into its composition, so BOTH `navigationBarsPadding()` and the
   `decorFitsSystemWindows` flag are no-ops inside it. Fix: `DraglessBottomSheet` now reads the RAW window

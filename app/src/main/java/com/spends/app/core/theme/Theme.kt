@@ -2,6 +2,9 @@ package com.spends.app.core.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -16,6 +19,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.spends.app.domain.model.ThemeMode
 import kotlinx.coroutines.delay
@@ -91,6 +96,15 @@ private val DarkSemantic = SemanticColors(
 val LocalSemanticColors = staticCompositionLocalOf { LightSemantic }
 
 /**
+ * The navigation/gesture-bar bottom inset, captured HERE in the activity composition (where edge-to-edge
+ * WindowInsets actually work) and provided down the tree. Bottom-anchored panels built on a plain Dialog
+ * (DraglessBottomSheet) read this instead of `navigationBarsPadding()` — Compose WindowInsets read 0 inside
+ * a Dialog, so a keypad panel would otherwise run under the gesture bar. Propagates into dialogs via the
+ * CompositionLocal (dialog content inherits the call-site's locals).
+ */
+val LocalSheetBottomInset = staticCompositionLocalOf { 0.dp }
+
+/**
  * The app theme. We always use the hand-tuned design-system palette (no Material You / dynamic colour —
  * the user prefers the brand green and wallpaper extraction never matched it well). [ThemeMode.AUTO]
  * flips to dark inside the user's daily window ([autoDarkStartMinute], [autoDarkEndMinute) minutes-of-day).
@@ -130,7 +144,14 @@ fun SpendsTheme(
         }
     }
 
-    CompositionLocalProvider(LocalSemanticColors provides if (dark) DarkSemantic else LightSemantic) {
+    // Read the gesture/nav-bar inset here (activity is edge-to-edge, so this is the real value) and hand it
+    // to Dialog-based panels, which can't read insets themselves.
+    val sheetBottomInset: Dp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    CompositionLocalProvider(
+        LocalSemanticColors provides if (dark) DarkSemantic else LightSemantic,
+        LocalSheetBottomInset provides sheetBottomInset,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = SpendsTypography,
