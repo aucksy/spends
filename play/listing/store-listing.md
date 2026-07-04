@@ -59,11 +59,11 @@ Questions or feedback: simpleapps108@gmail.com
 | **Privacy policy URL** | https://aucksy.github.io/spends/ |
 | **Default language** | English (India) — or English (US); the copy suits both |
 
-## Graphics required (prepared in Round 2 / `play/assets/`)
-- **App icon:** 512 × 512 PNG (32-bit, with alpha)
-- **Feature graphic:** 1024 × 500 PNG or JPEG (no alpha)
-- **Phone screenshots:** 2–8, PNG/JPEG, 16:9 or 9:16, min 320 px, max 3840 px on the long edge
-  (see `play/PLAY_SUBMISSION_CHECKLIST.md` → Screenshots for exactly which to capture)
+## Graphics
+- **App icon** — `play/assets/spends-icon-512.png` (512 × 512, ready to upload)
+- **Feature graphic** — `play/assets/spends-feature-1024x500.png` (1024 × 500, ready to upload)
+- **Phone screenshots** — 2–8, PNG/JPEG, min 320 px / max 3840 px on the long edge; **you capture these
+  on-device** (see `play/PLAY_SUBMISSION_CHECKLIST.md` → Screenshots for exactly which)
 
 ## Notes
 - Keep the SMS wording in the title/short description on every future update — the approved SMS

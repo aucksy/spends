@@ -112,6 +112,7 @@ Capture at the phone's native resolution; upload PNGs. Tell me if you want them 
 
 ## Quick status
 - [done] Privacy policy page, store copy, data-safety spec, SMS declaration + demo script, this runbook.
-- [Round 2] 512 icon + 1024×500 feature graphic.
+- [done] App icon `play/assets/spends-icon-512.png` + feature graphic `play/assets/spends-feature-1024x500.png`.
+- [you] Capture 2–8 phone screenshots (see **Screenshots** above).
 - [owner] Everything marked **[owner]** above.
 - [optional Round 3] CI auto-upload of the AAB to a Play track via a service account.
