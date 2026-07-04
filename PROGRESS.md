@@ -4,13 +4,19 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.43.0** — versionCode **45**, versionName **"0.43.0"**
+- **Shipped: v0.44.0** — versionCode **46**, versionName **"0.44.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.43.0/Spends-v0.43.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.44.0/Spends-v0.44.0.apk
 
 ## Recent tags
+- **v0.44.0** — REAL keypad-clip fix (v0.43's revert didn't work). Root cause: a plain Compose Dialog
+  never feeds WindowInsets into its composition, so BOTH `navigationBarsPadding()` and the
+  `decorFitsSystemWindows` flag are no-ops inside it. Fix: `DraglessBottomSheet` now reads the RAW window
+  insets off the dialog's view (`ViewCompat.setOnApplyWindowInsetsListener`), and pads the content by
+  max(nav bar, keyboard). API + soundness verified. The keypad's 0·Save row now clears the gesture bar,
+  and a focused Note field clears the keyboard.
 - **v0.43.0** — fix keypad bottom row (0 · Save) clipped under the gesture bar. v0.42 set
   DraglessBottomSheet's Dialog `decorFitsSystemWindows = false`, but a plain Dialog doesn't dispatch
   window insets, so `navigationBarsPadding` read 0 and the panel ran under the nav/gesture bar.
