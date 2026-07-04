@@ -4,13 +4,18 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.46.0** — versionCode **48**, versionName **"0.46.0"**
+- **Shipped: v0.47.0** — versionCode **49**, versionName **"0.47.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.46.0/Spends-v0.46.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.47.0/Spends-v0.47.0.apk
 
 ## Recent tags
+- **v0.47.0** — keypad-clip fix take 5 (final tuning). v0.46 fixed the clip — the 0·Save row became fully
+  visible — but on the user's device it sat too close to the gesture pill. Bumped the clearance floor+margin
+  from `maxOf(inset,24)+8` (min 32dp) to `maxOf(inset,32)+16` (min 48dp) in `DraglessBottomSheet` so the keys
+  have comfortable breathing room above the pill on any device/nav mode. Two-constant change; both adversarial
+  agents GO (Save still always reachable — keypad rows are fixed 54dp, padding is below them inside the scroll).
 - **v0.46.0** — keypad-clip fix take 4. v0.45's activity-read inset was the RIGHT mechanism (Save did move
   up — user confirmed "a bit better") but landed a few dp short: gesture-nav skins report a thinner
   `navigationBars` strip than they visually occupy. Fix in `DraglessBottomSheet`: floor the inset and add a

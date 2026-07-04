@@ -43,11 +43,11 @@ fun DraglessBottomSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.94f).dp
-    // Clearance that keeps the last keypad row (0 · Save) above the gesture/nav bar. The activity-read
-    // inset is the right signal, but some gesture-nav skins report a thinner strip than they visually
-    // occupy, so we floor it and add a small always-on margin. The panel is never flush to the screen
-    // edge, on any device or nav mode. (On a device with no nav bar the floor shows a small tidy gap.)
-    val bottomClearance = maxOf(LocalSheetBottomInset.current, 24.dp) + 8.dp
+    // Clearance that keeps the last keypad row (0 · Save) clear of the gesture/nav bar with comfortable
+    // breathing room. The activity-read inset is the right signal, but gesture-nav skins report a thinner
+    // strip than they visually occupy, so we floor it (32dp) and add a real margin (16dp) on top so the
+    // keys never crowd the gesture pill. The panel is never flush to the screen edge, on any device/nav mode.
+    val bottomClearance = maxOf(LocalSheetBottomInset.current, 32.dp) + 16.dp
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(
