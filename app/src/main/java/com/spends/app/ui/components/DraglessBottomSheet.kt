@@ -41,12 +41,15 @@ fun DraglessBottomSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.94f).dp
+    // decorFitsSystemWindows stays at its DEFAULT (true): the dialog decor fits the system windows, so its
+    // content area already excludes the nav/gesture bar and the panel never runs under it. (Setting it false
+    // needs the window to dispatch insets — which a plain Dialog does NOT — so navigationBarsPadding read 0
+    // and the keypad's bottom row got clipped by the gesture bar. Keyboard lift is handled by the window.)
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnClickOutside = false,
-            decorFitsSystemWindows = false,
         ),
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
