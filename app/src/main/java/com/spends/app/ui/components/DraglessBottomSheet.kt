@@ -32,7 +32,7 @@ import com.spends.app.core.theme.LocalSheetBottomInset
  * `decorFitsSystemWindows` flag are both no-ops there — this bit us repeatedly), yet the fullscreen dialog
  * still draws under the gesture bar, clipping the keypad's bottom row. The real inset is captured in the
  * ACTIVITY (where edge-to-edge insets work) and handed down via [LocalSheetBottomInset]; we pad the content
- * by it so the last row (0 · Save) always clears the gesture bar.
+ * by a floored version of it (see [bottomClearance]) so the last row (0 · Save) always clears the gesture bar.
  *
  * Colour matches the app's other bottom sheets (`surfaceContainerLow`, no tonal tint). Caps at 94% of the
  * screen and scrolls internally for tall content.
@@ -43,7 +43,11 @@ fun DraglessBottomSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.94f).dp
-    val bottomInset = LocalSheetBottomInset.current
+    // Clearance that keeps the last keypad row (0 · Save) above the gesture/nav bar. The activity-read
+    // inset is the right signal, but some gesture-nav skins report a thinner strip than they visually
+    // occupy, so we floor it and add a small always-on margin. The panel is never flush to the screen
+    // edge, on any device or nav mode. (On a device with no nav bar the floor shows a small tidy gap.)
+    val bottomClearance = maxOf(LocalSheetBottomInset.current, 24.dp) + 8.dp
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(
@@ -65,7 +69,7 @@ fun DraglessBottomSheet(
                 Column(
                     modifier = Modifier
                         .verticalScroll(rememberScrollState())
-                        .padding(bottom = bottomInset),
+                        .padding(bottom = bottomClearance),
                     content = content,
                 )
             }

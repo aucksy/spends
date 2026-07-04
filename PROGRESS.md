@@ -4,13 +4,20 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.45.0** — versionCode **47**, versionName **"0.45.0"**
+- **Shipped: v0.46.0** — versionCode **48**, versionName **"0.46.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.45.0/Spends-v0.45.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v0.46.0/Spends-v0.46.0.apk
 
 ## Recent tags
+- **v0.46.0** — keypad-clip fix take 4. v0.45's activity-read inset was the RIGHT mechanism (Save did move
+  up — user confirmed "a bit better") but landed a few dp short: gesture-nav skins report a thinner
+  `navigationBars` strip than they visually occupy. Fix in `DraglessBottomSheet`: floor the inset and add a
+  small always-on margin — `bottomClearance = maxOf(LocalSheetBottomInset.current, 24.dp) + 8.dp` — so the
+  0·Save row clears the bar on any device/nav mode. Padding stays INSIDE the scroll, BELOW the last row, so
+  Save is always reachable (verified: content ~82% of a 94%-capped sheet → fits, no scroll needed). Pure
+  layout; no swipe/discard/validation/money change. Tradeoff: a tidy fixed bottom gap on thin/no-nav-bar devices.
 - **v0.45.0** — keypad-clip fix take 3 (the raw in-Dialog listener in v0.44 also read 0). Insets are
   UNREADABLE inside a plain Dialog, full stop. So read the nav-bar inset in the ACTIVITY (SpendsTheme,
   where edge-to-edge insets work) and pass the value into the Dialog via a new `LocalSheetBottomInset`
