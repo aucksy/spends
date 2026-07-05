@@ -83,6 +83,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.money.Money
+import com.spends.app.core.period.PeriodRange
+import com.spends.app.core.period.PeriodType
+import java.time.YearMonth
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.domain.model.CategoryUsage
@@ -144,6 +147,11 @@ fun TransactionsScreen(
 
     var pendingDelete by remember { mutableStateOf<TransactionRowUi?>(null) }
     var changeCategoryFor by remember { mutableStateOf<TransactionRowUi?>(null) }
+    // "Jump to month" (#1) is offered only in All-time mode, where the list can span years and scrolling to
+    // 2022 is painful. Smart Cycle's composite is always the current cycle, so it's excluded.
+    var showJump by remember { mutableStateOf(false) }
+    val isAllTime = selection.range == PeriodRange.ALL &&
+        !(smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE)
 
     // Multi-select (#9): long-press a row to start; tap toggles; bulk delete / change category.
     var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
@@ -227,6 +235,13 @@ fun TransactionsScreen(
                     unfocusedIndicatorColor = Color.Transparent,
                 ),
             )
+        }
+
+        // "Jump to month" pill — only in All-time, where the timeline spans years (#1).
+        if (isAllTime && !selectionMode && !searchActive && state.groups.isNotEmpty()) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                JumpToMonthPill(onClick = { showJump = true })
+            }
         }
 
         when {
@@ -353,6 +368,27 @@ fun TransactionsScreen(
             onDismiss = { showBulkCategory = false },
         )
     }
+
+    // "Jump to month" (#1): pick a month that has data → scroll the list straight to its first day-header.
+    if (showJump) {
+        val months = remember(state.groups) { state.groups.map { YearMonth.from(it.date) }.distinct() }
+        JumpToMonthSheet(
+            months = months,
+            onPick = { ym ->
+                showJump = false
+                val idx = state.groups.indexOfFirst { YearMonth.from(it.date) == ym }
+                if (idx >= 0) {
+                    // Flat LazyColumn index of that group's header = the summary item (index 0, present only
+                    // when not searching) + every earlier group's own header row + its transaction rows.
+                    val headerOffset = if (state.search.isNotBlank()) 0 else 1
+                    var target = headerOffset
+                    for (i in 0 until idx) target += 1 + state.groups[i].rows.size
+                    scope.launch { listState.scrollToItem(target) }
+                }
+            },
+            onDismiss = { showJump = false },
+        )
+    }
 }
 
 @Composable
@@ -396,6 +432,11 @@ private fun DayHeader(group: DayGroupUi) {
             text = group.headerLabel,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // Day-headers now carry the year (#2) and are wider — keep the label flexible so a busy two-sided
+            // day never squeezes the per-day amounts off the right edge; the label truncates instead.
+            modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp),
         )
         // Per-day Expense + Income shown separately (#1) instead of a single net figure. Only non-zero
         // sides appear; a transfers-only / empty day shows a muted ₹0.

@@ -4,13 +4,25 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v0.47.0** — versionCode **49**, versionName **"0.47.0"**
+- **Shipped: v1.48.0** — versionCode **50**, versionName **"1.48.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
+  (Version promoted to the 1.x line at the user's request; keeps the build-number sequence.)
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v0.47.0/Spends-v0.47.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.48.0/Spends-v1.48.0.apk
 
 ## Recent tags
+- **v1.48.0** — 3-feature round. (1) **"Jump to month" in All-time**: a pill (only in All-time mode) opens a
+  picker of every month that has data, grouped by year; picking one scrolls the timeline straight to that
+  month's first day-header (`ui/transactions/JumpToMonth.kt`; scroll math in TransactionsScreen — summary
+  item + prior groups' header+rows). (2) **Year in day-headers**: `DateUtils.dayMonthFormatter` →
+  "EEE, d MMM yyyy"; label hardened with weight+maxLines+ellipsis so the wider header never squeezes the
+  per-day amounts. (3) **Add a bank/card from "Paid with"** without leaving the entry: PaidWithPickerSheet
+  gained optional `onAddNew`; QuickAddSheet opens the existing `CardEditorSheet` over the still-mounted
+  Dialog (rememberSaveable entry preserved) and auto-selects the new instrument via
+  `QuickAddViewModel.addInstrument` (→ `PaymentMethodRepository.addManual`, returns the new id). Reviews:
+  compile CLEAN + logic GO on all three (index math exact, entry preserved, other picker callers unaffected).
+  No DB change.
 - **v0.47.0** — keypad-clip fix take 5 (final tuning). v0.46 fixed the clip — the 0·Save row became fully
   visible — but on the user's device it sat too close to the gesture pill. Bumped the clearance floor+margin
   from `maxOf(inset,24)+8` (min 32dp) to `maxOf(inset,32)+16` (min 48dp) in `DraglessBottomSheet` so the keys

@@ -34,7 +34,8 @@ object DateUtils {
         Instant.ofEpochMilli(epochMillis).atZone(DEDUPE_ZONE).toLocalDate().toEpochDay()
 
     private val dayFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)
-    private val dayMonthFormatter = DateTimeFormatter.ofPattern("EEE, d MMM", Locale.ENGLISH)
+    // Timeline day-headers always carry the year (#2) so browsing older data (e.g. 2022) is never ambiguous.
+    private val dayMonthFormatter = DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.ENGLISH)
     private val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
     private val monthFormatter = DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH)
 

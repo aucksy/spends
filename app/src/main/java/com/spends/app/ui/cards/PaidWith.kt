@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -137,6 +139,8 @@ fun PaidWithPickerSheet(
     selectedId: Long?,
     onSelect: (Long?) -> Unit,
     onDismiss: () -> Unit,
+    // #3: when provided, the picker offers "Add a card / bank" rows. isBank distinguishes the two.
+    onAddNew: ((isBank: Boolean) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val banks = cards.filter { !it.isCard }
@@ -173,7 +177,39 @@ fun PaidWithPickerSheet(
                     selected = selectedId == card.id,
                 ) { onSelect(card.id) }
             }
+
+            // Add a new instrument WITHOUT leaving the entry (#3): the quick-add sheet stays mounted, so the
+            // amount/category/note already typed survive; the caller auto-selects the new instrument on save.
+            if (onAddNew != null) {
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                Spacer(Modifier.height(4.dp))
+                AddInstrumentRow(Icons.Filled.CreditCard, "Add a credit card") { onAddNew(false) }
+                AddInstrumentRow(Icons.Filled.AccountBalance, "Add a bank or UPI") { onAddNew(true) }
+            }
         }
+    }
+}
+
+/** An "add a card / bank" action row at the foot of the picker (#3): primary-tinted, no swatch. */
+@Composable
+private fun AddInstrumentRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.size(12.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

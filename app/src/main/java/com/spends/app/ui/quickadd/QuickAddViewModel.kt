@@ -11,6 +11,7 @@ import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.repo.TransactionInput
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.CategoryUsage
+import com.spends.app.domain.model.PaymentMethodType
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.cards.PaymentState
 import com.spends.app.ui.cards.toCardOption
@@ -55,6 +56,33 @@ class QuickAddViewModel @Inject constructor(
         if (name.isBlank()) return
         viewModelScope.launch {
             val id = categoryRepository.addCustom(name, usage, iconKey = iconKey)
+            onCreated(id)
+        }
+    }
+
+    /**
+     * Add a bank/card straight from the quick-add "Paid with" picker (#3), then hand back its new id so the
+     * caller can auto-select it — the sheet never closes, so the in-progress entry is preserved. Banks ride
+     * the salary cycle (no billing day); cards keep their own.
+     */
+    fun addInstrument(
+        label: String,
+        last4: String?,
+        institution: String?,
+        billingDay: Int?,
+        dueDay: Int?,
+        isBank: Boolean,
+        onCreated: (Long) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val id = paymentMethodRepository.addManual(
+                label = label,
+                institution = institution,
+                last4 = last4,
+                type = if (isBank) PaymentMethodType.BANK_ACCOUNT else PaymentMethodType.CREDIT_CARD,
+                billingDay = if (isBank) null else billingDay,
+                dueDay = dueDay,
+            )
             onCreated(id)
         }
     }

@@ -64,6 +64,8 @@ import com.spends.app.ui.components.DraglessBottomSheet
 import com.spends.app.ui.components.CategoryEditorSheet
 import com.spends.app.ui.components.CategoryPickerField
 import com.spends.app.ui.components.CategoryPickerSheet
+import com.spends.app.ui.cards.CardEditorInitial
+import com.spends.app.ui.cards.CardEditorSheet
 import com.spends.app.ui.cards.PaidWithChip
 import com.spends.app.ui.cards.PaidWithPickerSheet
 import kotlinx.coroutines.launch
@@ -128,6 +130,9 @@ fun QuickAddSheet(
         }
     }
     var showPaidWith by remember { mutableStateOf(false) }
+    // #3: add a bank/card from the "Paid with" picker without closing the sheet (the entry is preserved).
+    var showAddInstrument by remember { mutableStateOf(false) }
+    var addInstrumentIsBank by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
     // #6: the "pick a category" warning + a gentle shake only fire when the user actually tries to save
     // without one — never reactively while typing the amount (which used to shove the keypad).
@@ -436,6 +441,29 @@ fun QuickAddSheet(
             selectedId = selectedPaymentMethodId,
             onSelect = { selectedPaymentMethodId = it; showPaidWith = false },
             onDismiss = { showPaidWith = false },
+            onAddNew = { isBank ->
+                showPaidWith = false
+                addInstrumentIsBank = isBank
+                showAddInstrument = true
+            },
+        )
+    }
+
+    // #3: the card/bank editor, opened from the picker. The quick-add sheet stays mounted underneath, so the
+    // amount / category / note / splits are preserved; on save we auto-select the newly added instrument.
+    if (showAddInstrument) {
+        CardEditorSheet(
+            title = if (addInstrumentIsBank) "Add a bank" else "Add a card",
+            saveLabel = "Add",
+            initial = CardEditorInitial(),
+            isBank = addInstrumentIsBank,
+            onSave = { label, last4, institution, billingDay, dueDay ->
+                viewModel.addInstrument(label, last4, institution, billingDay, dueDay, addInstrumentIsBank) { newId ->
+                    selectedPaymentMethodId = newId
+                }
+                showAddInstrument = false
+            },
+            onDismiss = { showAddInstrument = false },
         )
     }
 
