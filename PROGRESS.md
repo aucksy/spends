@@ -4,14 +4,21 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.48.0** — versionCode **50**, versionName **"1.48.0"**
+- **Shipped: v1.48.1** — versionCode **51**, versionName **"1.48.1"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
-  (Version promoted to the 1.x line at the user's request; keeps the build-number sequence.)
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.48.0/Spends-v1.48.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.48.1/Spends-v1.48.1.apk
 
 ## Recent tags
+- **v1.48.1** — UI fixes to the v1.48.0 round (3 items, all layout, no logic): (1) the "Jump to month" sheet
+  overflowed → content Column now `verticalScroll` so all years/months are reachable. (2) Dropped the ugly
+  separate "Jump to month" pill; instead the period pill's existing **calendar icon "pops"** (primary-
+  container chip) and is tappable in All-time mode to open the jumper (`PeriodSelectorBar.onJumpToMonth`
+  callback, non-null only in All-time). (3) The "Paid with" picker overflowed and hid the new Add-card/bank
+  rows → its Column now `verticalScroll`. Both reviews compile-CLEAN + logic-GO (isNavigable==range CURRENT
+  so All-time reaches the chip branch; two distinct tap targets; Analytics unaffected). Files: JumpToMonth.kt,
+  PeriodSelectorBar.kt, TransactionsScreen.kt, PaidWith.kt.
 - **v1.48.0** — 3-feature round. (1) **"Jump to month" in All-time**: a pill (only in All-time mode) opens a
   picker of every month that has data, grouped by year; picking one scrolls the timeline straight to that
   month's first day-header (`ui/transactions/JumpToMonth.kt`; scroll math in TransactionsScreen — summary

@@ -207,6 +207,8 @@ fun TransactionsScreen(
                 searchActive = searchActive,
                 smartCycleEnabled = smartCycleEnabled,
                 cards = cardChoices,
+                // #1: only in All-time (with data, not mid-search) does the calendar icon pop + open the jumper.
+                onJumpToMonth = if (isAllTime && !searchActive && state.groups.isNotEmpty()) ({ showJump = true }) else null,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
         }
@@ -235,13 +237,6 @@ fun TransactionsScreen(
                     unfocusedIndicatorColor = Color.Transparent,
                 ),
             )
-        }
-
-        // "Jump to month" pill — only in All-time, where the timeline spans years (#1).
-        if (isAllTime && !selectionMode && !searchActive && state.groups.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
-                JumpToMonthPill(onClick = { showJump = true })
-            }
         }
 
         when {

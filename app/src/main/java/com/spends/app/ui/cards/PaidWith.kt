@@ -3,6 +3,8 @@ package com.spends.app.ui.cards
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -149,7 +151,8 @@ fun PaidWithPickerSheet(
     // alone the list stays flat.
     val grouped = creditCards.isNotEmpty()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 24.dp)) {
+        // Scrolls so a long instrument list never hides the "Add a card / bank" rows at the foot (#3).
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp).padding(bottom = 24.dp)) {
             Text(
                 "Paid with",
                 style = MaterialTheme.typography.titleMedium,

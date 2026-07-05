@@ -9,12 +9,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -31,40 +29,10 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 /**
- * "Jump to month" for the All-time timeline (#1): reaching 2022 by scrolling is painful, so this pill opens
- * a picker of every month that actually has data, grouped by year. Picking one scrolls the list straight to
- * that month's first day-header (the caller owns the scroll — this is pure UI). Only shown in All-time mode.
- */
-@Composable
-fun JumpToMonthPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier,
-    ) {
-        Row(
-            modifier = Modifier.clickable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                Icons.Filled.CalendarMonth,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Jump to month",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * The picker sheet. [months] must already be the distinct months that have data, newest-first; they're
- * grouped by year (newest year first) into rows of three chips. [onPick] fires with the chosen month.
+ * The "Jump to month" picker for the All-time timeline (#1). Opened from the period pill's calendar icon,
+ * which "pops" (primary chip) in All-time mode to advertise it's tappable. Lists every month that actually
+ * has data, grouped by year, three chips per row; the content SCROLLS so every year/month is reachable.
+ * [onPick] fires with the chosen month; the caller scrolls the timeline to it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +45,13 @@ fun JumpToMonthSheet(
     // groupBy preserves encounter order, so the years stay newest-first and each year's months stay ordered.
     val byYear = remember(months) { months.groupBy { it.year } }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+        ) {
             Text(
                 "Jump to month",
                 style = MaterialTheme.typography.titleMedium,

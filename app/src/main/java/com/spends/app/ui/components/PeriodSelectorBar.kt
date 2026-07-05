@@ -87,8 +87,12 @@ fun PeriodSelectorBar(
     searchActive: Boolean = false,
     smartCycleEnabled: Boolean = false,
     cards: List<CardChoice> = emptyList(),
+    // #1: in All-time mode the caller passes this so the leading calendar icon "pops" and opens the
+    // "Jump to month" picker. null in every other mode → the calendar stays a plain decorative glyph.
+    onJumpToMonth: (() -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
+    val view = LocalView.current
     // A persisted SMART_CYCLE selection can outlive the toggle (e.g. a backup restore writes the flag
     // directly, bypassing setSmartCycle). The data paths already coerce it to the salary cycle, so coerce
     // it HERE too — otherwise the pill would read "Smart Cycle" with phantom prev/next arrows over salary
@@ -119,6 +123,29 @@ fun PeriodSelectorBar(
                     CycleArrow(Icons.Filled.ChevronLeft, "Previous cycle", enabled = true) {
                         onSelect(effective.copy(cycleOffset = effective.cycleOffset - 1))
                     }
+                } else if (onJumpToMonth != null) {
+                    // All-time: the calendar "pops" (a primary-container chip) so it reads as tappable, and
+                    // opens the month jumper (#1) — this replaces the separate "Jump to month" pill.
+                    Spacer(Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onJumpToMonth()
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.CalendarMonth,
+                            contentDescription = "Jump to month",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                 } else {
                     Spacer(Modifier.width(8.dp))
                     Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
