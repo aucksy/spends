@@ -4,13 +4,20 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.48.1** — versionCode **51**, versionName **"1.48.1"**
+- **Shipped: v1.48.2** — versionCode **52**, versionName **"1.48.2"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.48.1/Spends-v1.48.1.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.48.2/Spends-v1.48.2.apk
 
 ## Recent tags
+- **v1.48.2** — keypad haptic = Gboard feel. The key haptic fired `LONG_PRESS` from `clickable`'s onClick
+  (RELEASE) — a heavier effect a frame late = the "slight delay". Now `KeypadKey` fires
+  `performHapticFeedback(KEYBOARD_TAP, FLAG_IGNORE_VIEW_SETTING)` on the finger-DOWN via
+  `pointerInput{ awaitEachGesture{ awaitFirstDown(requireUnconsumed=false); … } }` placed before `.clickable`
+  (no consume → tap still commits, scroll not broken). Researched: <30 ms after touch a buzz reads as
+  "didn't register", and KEYBOARD_TAP is the same crisp keyboard effect Gboard uses. SaveKey unchanged. Both
+  reviews compile-CLEAN + behavior-GO. Files: CalculatorKeypad.kt. (Firmness is a 1-line constant swap if wanted.)
 - **v1.48.1** — UI fixes to the v1.48.0 round (3 items, all layout, no logic): (1) the "Jump to month" sheet
   overflowed → content Column now `verticalScroll` so all years/months are reachable. (2) Dropped the ugly
   separate "Jump to month" pill; instead the period pill's existing **calendar icon "pops"** (primary-

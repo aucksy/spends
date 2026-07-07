@@ -4,6 +4,8 @@ import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -55,12 +58,9 @@ fun CalculatorKeypad(
     onSave: () -> Unit,
     saveLabel: String = "Save",
 ) {
-    val view = LocalView.current
-    // Keypad keys use performHapticFeedback (NOT the raw Vibrator): it's routed through the input system
-    // so it fires on the same touch frame — instant, no lag (#2) — and LONG_PRESS is the system's firm
-    // haptic, stronger than the old KEYBOARD_TAP (#3). The raw Vibrator path was both delayed and, on
-    // amplitude-control-less devices, not actually stronger.
-    fun keyTap() = view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    // Key-tap haptics now live inside KeypadKey and fire on finger-DOWN (see there) for a Gboard-class feel.
+    // The old approach fired LONG_PRESS from the click (release) — a heavier effect a frame late, which read
+    // as the "slight delay". onKey stays the value-commit on tap.
     val rows = listOf(
         listOf("C", "/", "*", "<"),
         listOf("7", "8", "9", "-"),
@@ -71,20 +71,13 @@ fun CalculatorKeypad(
         rows.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 row.forEach { key ->
-                    KeypadKey(key = key, modifier = Modifier.weight(1f), onClick = {
-                        keyTap()
-                        onKey(key)
-                    })
+                    KeypadKey(key = key, modifier = Modifier.weight(1f), onClick = { onKey(key) })
                 }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            KeypadKey(key = "0", modifier = Modifier.weight(1f), onClick = {
-                keyTap(); onKey("0")
-            })
-            KeypadKey(key = ".", modifier = Modifier.weight(1f), onClick = {
-                keyTap(); onKey(".")
-            })
+            KeypadKey(key = "0", modifier = Modifier.weight(1f), onClick = { onKey("0") })
+            KeypadKey(key = ".", modifier = Modifier.weight(1f), onClick = { onKey(".") })
             SaveKey(modifier = Modifier.weight(2f), enabled = canSave, saving = saving, label = saveLabel, onClick = onSave)
         }
     }
@@ -205,6 +198,7 @@ private fun displayExpression(expr: String): String =
 
 @Composable
 private fun KeypadKey(key: String, modifier: Modifier, onClick: () -> Unit) {
+    val view = LocalView.current
     val isOperator = key in listOf("/", "*", "-", "+", "=")
     val isUtil = key in listOf("C", "<")
     val container = when {
@@ -219,7 +213,23 @@ private fun KeypadKey(key: String, modifier: Modifier, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = container,
-        modifier = modifier.height(54.dp).clickable(onClick = onClick),
+        modifier = modifier
+            .height(54.dp)
+            // Gboard-class feel: fire the tap haptic on finger-DOWN (not on click/release). awaitFirstDown
+            // catches the earliest touch frame — well under the ~30 ms after which a buzz reads as "didn't
+            // register" — and performHapticFeedback(KEYBOARD_TAP) is the low-latency, input-routed path with
+            // the same crisp keyboard effect Gboard uses. FLAG_IGNORE_VIEW_SETTING guarantees it fires from
+            // the Compose host view. requireUnconsumed=false + no consume() leaves the tap for clickable.
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    view.performHapticFeedback(
+                        HapticFeedbackConstants.KEYBOARD_TAP,
+                        HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING,
+                    )
+                }
+            }
+            .clickable(onClick = onClick),
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Text(
