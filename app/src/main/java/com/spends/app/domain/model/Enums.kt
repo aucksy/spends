@@ -4,9 +4,8 @@ package com.spends.app.domain.model
  * The kind of a transaction. **This drives all money math** (PRD §3/§4.17):
  *  - [INCOME]   increases Balance, never counted as spend.
  *  - [EXPENSE]  decreases Balance; counts in spend analytics unless its category is excludeFromSpend.
- *  - [TRANSFER] neutral to Balance and never spend (card bill payments, self-account moves, top-ups).
  */
-enum class TxnKind { INCOME, EXPENSE, TRANSFER }
+enum class TxnKind { INCOME, EXPENSE }
 
 /** The raw bank movement, independent of [TxnKind]. */
 enum class Direction { DEBIT, CREDIT }

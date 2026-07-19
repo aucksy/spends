@@ -212,12 +212,10 @@ private fun CategoryTxnRowItem(row: CategoryTxnRow) {
         val amountColor = when (row.kind) {
             TxnKind.INCOME -> semantic.income
             TxnKind.EXPENSE -> semantic.expense
-            TxnKind.TRANSFER -> semantic.transfer
         }
         val prefix = when (row.kind) {
             TxnKind.INCOME -> "+"
             TxnKind.EXPENSE -> "-"
-            TxnKind.TRANSFER -> ""
         }
         Text(
             text = prefix + Money.formatRupees(row.amountMinor),

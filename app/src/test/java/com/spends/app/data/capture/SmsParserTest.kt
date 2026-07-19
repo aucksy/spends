@@ -83,10 +83,11 @@ class SmsParserTest {
         assertThat(r.result).isEqualTo(Result.STATEMENT)
     }
 
-    @Test fun indus_bill_payment_transfer() {
+    // Credit-card bill payment: money moving bank → card, never income or spending. With the TRANSFER
+    // kind removed, these must NOT be logged at all (#transfers-removed).
+    @Test fun indus_bill_payment_ignored() {
         val r = p("VM-INDUSB", "Dear Customer, thank you for your Payment of INR 22,000.00 towards your IndusInd Bank Credit Card on 05/07/26 - IndusInd Bank")
-        assertThat(r.result).isEqualTo(Result.TRANSACTION)
-        assertThat(r.kind).isEqualTo(TxnKind.TRANSFER)
+        assertThat(r.result).isEqualTo(Result.IGNORED)
     }
 
     // ---- ICICI ----
@@ -97,10 +98,9 @@ class SmsParserTest {
         assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
     }
 
-    @Test fun icici_bbps_payment_transfer() {
+    @Test fun icici_bbps_payment_ignored() {
         val r = p("AX-ICICIB", "Payment of Rs 5,000.00 has been received on your ICICI Bank Credit Card XX1234 through Bharat Bill Payment System on 21-JUN-26.")
-        assertThat(r.result).isEqualTo(Result.TRANSACTION)
-        assertThat(r.kind).isEqualTo(TxnKind.TRANSFER)
+        assertThat(r.result).isEqualTo(Result.IGNORED)
     }
 
     // ---- OneCard / BOB ----
@@ -143,10 +143,9 @@ class SmsParserTest {
         assertThat(r.last4).isEqualTo("12345")
     }
 
-    @Test fun amex_payment_received_transfer() {
+    @Test fun amex_payment_received_ignored() {
         val r = p("AD-AMEXIN", "Dear Customer, a payment of INR 30,000.00 was received on your Amex Card ***12345 21/06/26. Thank you.")
-        assertThat(r.result).isEqualTo(Result.TRANSACTION)
-        assertThat(r.kind).isEqualTo(TxnKind.TRANSFER)
+        assertThat(r.result).isEqualTo(Result.IGNORED)
     }
 
     // ---- RBL ----
@@ -173,10 +172,9 @@ class SmsParserTest {
     }
 
     // ---- PNB ----
-    @Test fun pnb_payment_received_transfer() {
+    @Test fun pnb_payment_received_ignored() {
         val r = p("VM-PNBCCD", "Thank you Rs.4,000.00/- has been received as payment towards your PNB credit card 1234 via Online Payment. Your available credit limit is Rs.50,000.00. - PNB")
-        assertThat(r.result).isEqualTo(Result.TRANSACTION)
-        assertThat(r.kind).isEqualTo(TxnKind.TRANSFER)
+        assertThat(r.result).isEqualTo(Result.IGNORED)
     }
 
     // ---- Paytm / SBI-UPI / L&T ----

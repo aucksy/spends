@@ -58,7 +58,6 @@ data class AnalyticsUiState(
     val periodLabel: String = "",
     val expenseMinor: Long = 0,
     val incomeMinor: Long = 0,
-    val transferMinor: Long = 0,
     // Spend actually categorised in the breakdown — reconciles the donut centre with its wedges/legend.
     val categorisedSpendMinor: Long = 0,
     val categories: List<CategorySlice> = emptyList(),
@@ -196,7 +195,6 @@ class AnalyticsViewModel @Inject constructor(
         val kindSums = listOf(
             KindSum(TxnKind.INCOME, items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor }),
             KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
-            KindSum(TxnKind.TRANSFER, items.filter { it.expense.kind == TxnKind.TRANSFER }.sumOf { it.expense.amountMinor }),
         )
         return buildState(resolved, catSpend, kindSums, items, rules).copy(isComposite = true)
     }
@@ -210,7 +208,6 @@ class AnalyticsViewModel @Inject constructor(
     ): AnalyticsUiState {
         val expense = kindSums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0
         val income = kindSums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0
-        val transfer = kindSums.firstOrNull { it.kind == TxnKind.TRANSFER }?.total ?: 0
 
         val categorisedSpend = catSpend.sumOf { it.total }
         val spendTotal = categorisedSpend.coerceAtLeast(1)
@@ -242,7 +239,6 @@ class AnalyticsViewModel @Inject constructor(
             periodLabel = resolved.label,
             expenseMinor = expense,
             incomeMinor = income,
-            transferMinor = transfer,
             categorisedSpendMinor = categorisedSpend,
             categories = slices,
             weekly = weekly.map { it.toFloat() },

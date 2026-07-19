@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -44,16 +43,13 @@ fun SummaryHeader(
     val semantic = LocalSemanticColors.current
     val scheme = MaterialTheme.colorScheme
 
-    // Tiles shown in the horizontally-scrollable strip. Expense + Income always; Carry forward and
-    // Transfers join only when relevant, so two fill the width and extras scroll into view.
+    // Tiles shown in the horizontally-scrollable strip. Expense + Income always; Carry forward joins
+    // only when relevant, so two fill the width and the extra scrolls into view.
     val tiles = buildList {
         add(Tile("Expense", state.totals.expense, semantic.expense, Icons.Filled.ArrowUpward, withSign = false))
         add(Tile("Income", state.totals.income, semantic.income, Icons.Filled.ArrowDownward, withSign = false))
         if (state.carryForward != null) {
             add(Tile("Carry forward", state.carryForward, semantic.transfer, Icons.AutoMirrored.Filled.ArrowForward, withSign = true))
-        }
-        if (state.totals.transfer > 0) {
-            add(Tile("Transfers", state.totals.transfer, semantic.transfer, Icons.Filled.SwapHoriz, withSign = false))
         }
     }
 

@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -110,7 +109,7 @@ fun AnalyticsScreen(
             SummaryCard(state)
             Spacer(Modifier.height(14.dp))
             // Inject the current cycle label (#5) so the drill-down shows which period these numbers are for.
-            CategoryDonutCard(state, semantic.dark, semantic.transfer) { catId, name, start, end ->
+            CategoryDonutCard(state, semantic.dark) { catId, name, start, end ->
                 onOpenCategory(catId, name, cycleLabel, start, end)
             }
             Spacer(Modifier.height(14.dp))
@@ -205,7 +204,6 @@ private fun SummaryCell(
 private fun CategoryDonutCard(
     state: AnalyticsUiState,
     dark: Boolean,
-    transferColor: Color,
     onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
 ) {
     fun catColor(hex: String) = parseHexColor(if (dark) ColorAssigner.darkVariant(hex) else hex)
@@ -278,19 +276,6 @@ private fun CategoryDonutCard(
                     }
                 }
             }
-            if (state.transferMinor > 0) {
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(Icons.Filled.SwapHoriz, contentDescription = null, tint = transferColor, modifier = Modifier.size(17.dp))
-                    Text("Excludes transfers", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    Text(Money.formatRupees(state.transferMinor), style = Numerals.amountSmall, color = transferColor)
-                }
-            }
         }
     }
 }
@@ -304,7 +289,7 @@ private fun SpendOverTimeCard(state: AnalyticsUiState) {
             WeeklyBars(values = state.weekly, labels = state.weekLabels)
             Spacer(Modifier.height(10.dp))
             Text(
-                "Excludes transfers.",
+                "Shows spending only.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -14,7 +14,10 @@ class Converters {
     @TypeConverter fun usageToString(value: CategoryUsage): String = value.name
     @TypeConverter fun stringToUsage(value: String): CategoryUsage = CategoryUsage.valueOf(value)
     @TypeConverter fun kindToString(value: TxnKind): String = value.name
-    @TypeConverter fun stringToKind(value: String): TxnKind = TxnKind.valueOf(value)
+    // Defensive: a legacy "TRANSFER" row (the removed kind) decodes to EXPENSE instead of crashing.
+    // The v13→v14 migration deletes such rows, so this is only a belt-and-braces guard.
+    @TypeConverter fun stringToKind(value: String): TxnKind =
+        runCatching { TxnKind.valueOf(value) }.getOrDefault(TxnKind.EXPENSE)
 
     @TypeConverter fun directionToString(value: Direction): String = value.name
     @TypeConverter fun stringToDirection(value: String): Direction = Direction.valueOf(value)

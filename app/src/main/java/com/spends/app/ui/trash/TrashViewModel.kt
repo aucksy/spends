@@ -36,7 +36,6 @@ class TrashViewModel @Inject constructor(
                 val prefix = when (e.expense.kind) {
                     TxnKind.INCOME -> "+"
                     TxnKind.EXPENSE -> "-"
-                    TxnKind.TRANSFER -> ""
                 }
                 TrashRowUi(
                     id = e.expense.id,

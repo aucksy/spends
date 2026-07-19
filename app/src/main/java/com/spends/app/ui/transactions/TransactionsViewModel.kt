@@ -227,7 +227,6 @@ class TransactionsViewModel @Inject constructor(
         val totals = SummaryTotals(
             income = items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor },
             expense = items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
-            transfer = items.filter { it.expense.kind == TxnKind.TRANSFER }.sumOf { it.expense.amountMinor },
         )
         // Single-Card (#7): show the SALARY cycle's remaining balance as the headline (income − all expenses),
         // so the card view reflects your money left, not the card's bare negative. Full composite = own balance.
@@ -296,7 +295,6 @@ class TransactionsViewModel @Inject constructor(
         val totals = SummaryTotals(
             income = kindSums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0,
             expense = kindSums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0,
-            transfer = kindSums.firstOrNull { it.kind == TxnKind.TRANSFER }?.total ?: 0,
         )
 
         val trimmed = query.trim().lowercase()
@@ -340,7 +338,6 @@ class TransactionsViewModel @Inject constructor(
     private fun ExpenseWithAllocations.signedBalanceContribution(): Long = when (expense.kind) {
         TxnKind.INCOME -> expense.amountMinor
         TxnKind.EXPENSE -> -expense.amountMinor
-        TxnKind.TRANSFER -> 0
     }
 
     private fun ExpenseWithAllocations.toRowUi(categoryTotals: Map<Pair<Long, TxnKind>, Long>): TransactionRowUi {

@@ -510,7 +510,6 @@ class SmsCaptureRepository @Inject constructor(
         merchantKeyOf(parsed.merchant)?.let { key -> merchantDao.categoryFor(key)?.let { return it } }
         parsed.categoryHint?.let { hint -> categoryId(hint)?.let { return it } }
         return when (kind) {
-            TxnKind.TRANSFER -> fallbackCategory()
             TxnKind.INCOME -> categoryId("Other Income") ?: fallbackCategory()
             TxnKind.EXPENSE -> guessExpenseCategory(parsed.merchant)?.let { categoryId(it) } ?: fallbackCategory()
         }

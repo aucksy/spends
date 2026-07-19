@@ -240,7 +240,7 @@ private fun ReviewCard(
             }
             Spacer(Modifier.height(4.dp))
             val color = if (row.kind == TxnKind.INCOME) semantic.income else semantic.expense
-            val prefix = when (row.kind) { TxnKind.INCOME -> "+"; TxnKind.EXPENSE -> "-"; TxnKind.TRANSFER -> "" }
+            val prefix = when (row.kind) { TxnKind.INCOME -> "+"; TxnKind.EXPENSE -> "-" }
             Text(prefix + Money.formatRupees(row.amountMinor), style = Numerals.amountLg, color = color)
             Text(row.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
             if (row.subtitle.isNotBlank()) {

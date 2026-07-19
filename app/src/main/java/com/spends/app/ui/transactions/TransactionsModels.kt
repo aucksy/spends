@@ -5,11 +5,10 @@ import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
 import java.time.LocalDate
 
-/** Period totals for the summary header (PRD §4.17). Balance = income − expense; transfers ignored. */
+/** Period totals for the summary header (PRD §4.17). Balance = income − expense. */
 data class SummaryTotals(
     val income: Long = 0,
     val expense: Long = 0,
-    val transfer: Long = 0,
 ) {
     val balance: Long get() = income - expense
 }

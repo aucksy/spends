@@ -124,11 +124,9 @@ object GenericAdapter {
 
     private fun kindFor(type: String?, amount: Long): TxnKind {
         val t = type?.lowercase().orEmpty()
+        // The app no longer has a "transfer" kind; any imported "transfer" row is treated as an expense.
         return when {
             t.contains("income") || t.contains("credit") -> TxnKind.INCOME
-            t.contains("transfer") -> TxnKind.TRANSFER
-            t.contains("expense") || t.contains("debit") -> TxnKind.EXPENSE
-            amount < 0 -> TxnKind.EXPENSE
             else -> TxnKind.EXPENSE
         }
     }

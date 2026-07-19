@@ -474,12 +474,10 @@ private fun TransactionRow(row: TransactionRowUi, selected: Boolean, onClick: ()
         val amountColor = when (row.kind) {
             TxnKind.INCOME -> semantic.income
             TxnKind.EXPENSE -> semantic.expense
-            TxnKind.TRANSFER -> semantic.transfer
         }
         val prefix = when (row.kind) {
             TxnKind.INCOME -> "+"
             TxnKind.EXPENSE -> "-"
-            TxnKind.TRANSFER -> ""
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(

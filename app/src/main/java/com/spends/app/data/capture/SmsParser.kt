@@ -81,13 +81,14 @@ object SmsParser {
         if (low.containsAny("refund", "reversed", "reversal", "refunded")) {
             return Triple(TxnKind.INCOME, Direction.CREDIT, null)
         }
-        // Credit-card bill payment → transfer (NOT income). "payment received on/towards your card",
-        // but NOT a purchase ("...at <merchant>...") and NOT a loan payment.
+        // Credit-card bill payment → NOT logged. It's money moving between your own accounts (bank → card),
+        // never real income or spending, so it must not land in the ledger. "payment received on/towards
+        // your card", but NOT a purchase ("...at <merchant>...") and NOT a loan payment.
         val billPayment = (low.contains("card")) &&
             (low.contains("received") && low.contains("payment") ||
                 low.contains("thank you for your payment") || low.contains("payment received")) &&
             !low.contains(" at ") && !low.contains("spent")
-        if (billPayment) return Triple(TxnKind.TRANSFER, Direction.CREDIT, null)
+        if (billPayment) return null
 
         // A card "payment of Rs X at <merchant>" is a purchase (has " at "), not a bill payment.
         if (isCard && low.contains("payment") && low.contains(" at ")) {
@@ -103,8 +104,9 @@ object SmsParser {
         // Credit on a bank/UPI account → income.
         if (creditWord) {
             return if (isCard && !low.contains("a/c") && !low.contains("account")) {
-                // an unexplained credit on a card that isn't a refund — treat as transfer, never income
-                Triple(TxnKind.TRANSFER, Direction.CREDIT, null)
+                // an unexplained credit on a card that isn't a refund — a card top-up / self-move, never
+                // income and no longer a "transfer" kind, so don't log it.
+                null
             } else {
                 Triple(TxnKind.INCOME, Direction.CREDIT, null)
             }

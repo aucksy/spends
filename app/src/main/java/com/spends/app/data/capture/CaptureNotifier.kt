@@ -43,7 +43,6 @@ class CaptureNotifier @Inject constructor(
         val notifId = body.hashCode() * 31 + receivedAt.hashCode() // stable per message (dedup re-delivery)
         val kindLabel = when (preview.kind) {
             TxnKind.INCOME -> "Income "
-            TxnKind.TRANSFER -> "Transfer "
             TxnKind.EXPENSE -> "Expense "
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)

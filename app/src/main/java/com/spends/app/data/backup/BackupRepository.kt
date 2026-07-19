@@ -89,20 +89,33 @@ class BackupRepository @Inject constructor(
     }
 
     suspend fun applySnapshot(snapshot: Snapshot) {
+        // The "transfer" kind was removed from the app. An OLD backup can still hold kind="TRANSFER"
+        // rows; blindly restoring them would coerce each to an EXPENSE (see the toEntity fallback) and
+        // WRONGLY subtract it from the balance. Transfers were always balance-neutral, so we DROP them on
+        // restore instead — the expenses, their allocations, and any transfer recurring rule.
+        val transferExpenseIds = snapshot.data.expenses.filter { !isKnownKind(it.kind) }.map { it.id }.toHashSet()
+        val expenses = snapshot.data.expenses.filter { it.id !in transferExpenseIds }
+        val allocations = snapshot.data.allocations.filter { it.expenseId !in transferExpenseIds }
+        val recurring = snapshot.data.recurring.filter { isKnownKind(it.kind) }
         db.withTransaction {
             expenseDao.deleteAllAllocations()
             expenseDao.deleteAllExpenses()
             recurringDao.deleteAll()
             categoryDao.deleteAll()
             categoryDao.insertAll(snapshot.data.categories.map { it.toEntity() })
-            expenseDao.insertExpenses(snapshot.data.expenses.map { it.toEntity() })
-            expenseDao.insertAllocations(snapshot.data.allocations.map { it.toEntity() })
-            recurringDao.insertAll(snapshot.data.recurring.map { it.toEntity() })
+            expenseDao.insertExpenses(expenses.map { it.toEntity() })
+            expenseDao.insertAllocations(allocations.map { it.toEntity() })
+            recurringDao.insertAll(recurring.map { it.toEntity() })
             paymentMethodDao.deleteAll()
             paymentMethodDao.insertAll(snapshot.data.paymentMethods.map { it.toEntity() })
         }
         settingsRepository.restore(snapshot.data.settings.toState())
     }
+
+    /** A transaction kind the current app still understands (income / expense). Everything else — a
+     *  legacy "TRANSFER" from an old backup — is dropped on restore rather than mis-mapped to expense. */
+    private fun isKnownKind(kind: String): Boolean =
+        TxnKind.entries.any { it.name == kind }
 
     // ---- Encryption policy ----
 

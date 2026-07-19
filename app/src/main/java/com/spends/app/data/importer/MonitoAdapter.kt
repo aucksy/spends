@@ -130,9 +130,9 @@ object MonitoAdapter {
 
     private fun kindFor(type: String?): TxnKind {
         val t = type?.lowercase().orEmpty()
+        // The app no longer has a "transfer" kind; any imported "transfer" row is treated as an expense.
         return when {
             t.contains("income") -> TxnKind.INCOME
-            t.contains("transfer") -> TxnKind.TRANSFER
             else -> TxnKind.EXPENSE
         }
     }

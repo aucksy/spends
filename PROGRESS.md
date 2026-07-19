@@ -4,13 +4,46 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.49.0** — versionCode **53**, versionName **"1.49.0"**
+- **Shipped: v1.50.0** — versionCode **54**, versionName **"1.50.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
-- **DB schema: v13.** (No DB/schema change this release.)
+- **DB schema: v14.** (MIGRATION_13_14 = data-only cleanup of any leftover `kind='TRANSFER'` rows.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.49.0/Spends-v1.49.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.50.0/Spends-v1.50.0.apk
 
 ## Recent tags
+- **v1.50.0** — Excel export re-columned + **the TRANSFER kind removed from the whole app** (DB v13→v14).
+  **(A) Excel export** (`data/export/ExcelExporter.kt`): the confusing single "Amount" + "Balance impact"
+  columns are replaced by three — **Income (₹)**, **Expenses (₹)**, and a **running Balance (₹)** (passbook
+  style). Balance is accumulated OLDEST→NEWEST (opening = income−expense of everything before the window
+  start, so a windowed export starts from the carried-in balance; all-time opens at 0), then rows are
+  displayed NEWEST→oldest each carrying the balance it settled at. Accumulation sort `compareBy(occurredAt,
+  id)` is the exact reverse of the display sort `compareByDescending(occurredAt).thenByDescending(id)` so
+  same-timestamp rows show the right balance. Dropped the now-redundant "Type" column and `prettyKind()`;
+  added `impactMinor(ExpenseEntity)`. **(B) Transfer removal** (owner: "this concept should not exist"):
+  `TxnKind` is now `{ INCOME, EXPENSE }`. Transfers were always balance-neutral (never in balance = income −
+  expense, never in spend charts), so removal changes **no** totals for income/expense-only data. Touched:
+  `Enums.kt` (enum), `Converters.kt` (stringToKind now defaults unknown→EXPENSE instead of crashing),
+  `SpendsDatabase.kt` (**v14 + MIGRATION_13_14** deletes `kind='TRANSFER'` from expenses+allocations+
+  pending_captures+recurring_rules; data-only, schema identity unchanged from v13), `DatabaseModule.kt`
+  (registered), `SummaryHeader.kt` (Transfers tile gone), `TransactionsModels.kt` (SummaryTotals.transfer
+  gone), `TransactionsViewModel.kt` / `AnalyticsViewModel.kt` (transfer sums + `transferMinor` gone),
+  `AnalyticsScreen.kt` ("Excludes transfers" row gone; weekly note → "Shows spending only"),
+  `TransactionsScreen.kt` / `CategoryTransactionsScreen.kt` / `ReviewScreen.kt` / `TrashViewModel.kt` /
+  `CaptureNotifier.kt` / `SmsCaptureRepository.kt` (TRANSFER `when` branches removed — 2-branch whens are
+  exhaustive), `GenericAdapter.kt` / `MonitoAdapter.kt` (imported "transfer" rows → expense), `SmsParser.kt`
+  (credit-card bill payments + unexplained card credits now **not logged** = IGNORED, were TRANSFER),
+  `SmsParserTest.kt` (4 golden tests → expect IGNORED). NOTE the Add/Edit + Quick-add kind toggles already
+  only offered Income/Expense — no UI toggle change needed. `semantic.transfer` COLOR token is kept (the
+  Carry-forward tile still uses it). **Reviews:** 2 parallel agents (compile/Room + logic/data-safety) →
+  **2 findings, both fixed pre-tag:** (1) BLOCKER — `ExcelExporter.kt` referenced `ExpenseEntity` without
+  importing it → added the import; (2) HIGH data-safety — restoring an OLD backup (made before this release)
+  would coerce its `kind="TRANSFER"` rows into EXPENSES via the `toEntity` fallback, wrongly subtracting them
+  from the balance AND re-creating transfer recurring rules as phantom expense generators. **Fix:**
+  `BackupRepository.applySnapshot` now DROPS legacy transfer rows on restore (transfer expenses + their
+  allocations + transfer recurring rules) via a new `isKnownKind()` (`TxnKind.entries`), instead of coercing
+  them → balance stays correct. Delta re-review (both agents) confirmed both fixes correct + complete, no new
+  problems. LESSON: removing an enum value that's persisted needs BOTH a DB migration AND a restore-path
+  filter — the migration only cleans the LIVE db, old backups re-introduce the value.
 - **v1.49.0** — 5-fix round (no DB change). (1) **Swipe removed** from the transactions list — deleted
   `SwipeableRow`/`SwipeBg` + the swipe-only delete-confirm dialog and recategorise sheet; rows render
   `TransactionRow` directly (too many accidental swipes). Single delete/recategorise stay reachable via

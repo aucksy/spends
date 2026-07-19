@@ -33,7 +33,7 @@ import com.spends.app.data.seed.CategorySeed
         PaymentMethodEntity::class,
         IgnoredPatternEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -268,6 +268,19 @@ abstract class SpendsDatabase : RoomDatabase() {
         val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE payment_methods ADD COLUMN proposedBillingDay INTEGER")
+            }
+        }
+
+        /** v13 -> v14: the TRANSFER transaction kind is removed from the app. Delete any leftover
+         *  transfer rows (transfers were always balance-neutral, so removing them changes no totals)
+         *  so nothing can decode the now-nonexistent enum value. Data-only: no table/column change,
+         *  so the schema identity is unchanged from v13 and validation still passes. */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DELETE FROM allocations WHERE expenseId IN (SELECT id FROM expenses WHERE kind = 'TRANSFER')")
+                db.execSQL("DELETE FROM expenses WHERE kind = 'TRANSFER'")
+                db.execSQL("DELETE FROM pending_captures WHERE kind = 'TRANSFER'")
+                db.execSQL("DELETE FROM recurring_rules WHERE kind = 'TRANSFER'")
             }
         }
     }
