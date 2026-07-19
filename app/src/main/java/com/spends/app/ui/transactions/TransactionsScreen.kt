@@ -2,18 +2,12 @@ package com.spends.app.ui.transactions
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,7 +34,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sms
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,9 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -88,13 +79,11 @@ import com.spends.app.core.period.PeriodType
 import java.time.YearMonth
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
-import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.domain.model.TxnSource
 import com.spends.app.ui.components.CategoryAvatar
 import com.spends.app.ui.components.CategoryPickerSheet
 import com.spends.app.ui.components.PeriodSelectorBar
-import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @Composable
@@ -145,8 +134,6 @@ fun TransactionsScreen(
         }
     }
 
-    var pendingDelete by remember { mutableStateOf<TransactionRowUi?>(null) }
-    var changeCategoryFor by remember { mutableStateOf<TransactionRowUi?>(null) }
     // "Jump to month" (#1) is offered only in All-time mode, where the list can span years and scrolling to
     // 2022 is painful. Smart Cycle's composite is always the current cycle, so it's excluded.
     var showJump by remember { mutableStateOf(false) }
@@ -158,9 +145,9 @@ fun TransactionsScreen(
     val selectionMode = selectedIds.isNotEmpty()
     var showBulkDelete by remember { mutableStateOf(false) }
     var showBulkCategory by remember { mutableStateOf(false) }
-    // Haptic on EVERY multi-select toggle (select AND deselect). KEYBOARD_TAP (the keypad's tick) is
-    // reliably felt across devices, unlike CONTEXT_CLICK which is often suppressed — so it no longer
-    // feels like only the first selection buzzes (#17).
+    // Haptic on EVERY multi-select toggle (select AND deselect). KEYBOARD_TAP is reliably felt across
+    // devices, unlike CONTEXT_CLICK which is often suppressed — so it no longer feels like only the first
+    // selection buzzes (#17).
     fun toggle(id: Long) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
@@ -259,14 +246,14 @@ fun TransactionsScreen(
                         DayHeader(group)
                     }
                     items(group.rows, key = { it.id }) { row ->
-                        SwipeableRow(
+                        // Rows no longer swipe (too many accidental deletes/recategorises). Tap opens the
+                        // editor (delete + change-category live there); long-press starts multi-select for
+                        // bulk delete / change-category.
+                        TransactionRow(
                             row = row,
-                            selectionMode = selectionMode,
                             selected = row.id in selectedIds,
                             onClick = { if (selectionMode) toggle(row.id) else onEditTransaction(row.id) },
                             onLongClick = { if (selectionMode) toggle(row.id) else startSelection(row.id) },
-                            onRequestDelete = { pendingDelete = row },
-                            onRequestChangeCategory = { changeCategoryFor = row },
                         )
                     }
                 }
@@ -285,42 +272,6 @@ fun TransactionsScreen(
               Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Scroll to top")
           }
       }
-    }
-
-    // Delete confirmation (swipe is easy to trigger, so always confirm).
-    pendingDelete?.let { row ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete this transaction?") },
-            text = { Text("\"${row.title}\" moves to Trash — you can restore it from Settings → Trash.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingDelete = null
-                    viewModel.moveToTrash(row.id)
-                    scope.launch {
-                        val result = snackbarHostState.showSnackbar(
-                            message = "Moved to Trash",
-                            actionLabel = "Undo",
-                            duration = SnackbarDuration.Short,
-                        )
-                        if (result == SnackbarResult.ActionPerformed) viewModel.restore(row.id)
-                    }
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
-        )
-    }
-
-    // Right-swipe → change category.
-    changeCategoryFor?.let { row ->
-        val usageFilter = if (row.kind == TxnKind.INCOME) CategoryUsage.INCOME else CategoryUsage.EXPENSE
-        val visible = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
-        CategoryPickerSheet(
-            categories = visible,
-            selectedId = row.primary?.categoryId,
-            onSelect = { id -> viewModel.changeCategory(row.id, id); changeCategoryFor = null },
-            onDismiss = { changeCategoryFor = null },
-        )
     }
 
     // Bulk delete (multi-select).
@@ -457,100 +408,6 @@ private fun DayHeader(group: DayGroupUi) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun SwipeableRow(
-    row: TransactionRowUi,
-    selectionMode: Boolean,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onRequestDelete: () -> Unit,
-    onRequestChangeCategory: () -> Unit,
-) {
-    // In selection mode the swipe gestures are disabled — tap toggles, long-press already active.
-    if (selectionMode) {
-        TransactionRow(row = row, selected = selected, onClick = onClick, onLongClick = onLongClick)
-        return
-    }
-    val view = LocalView.current
-    val semantic = LocalSemanticColors.current
-    val density = LocalDensity.current
-    val maxPx = with(density) { 120.dp.toPx() }
-    val triggerPx = with(density) { 96.dp.toPx() }
-    // Live offset is a plain float mutated synchronously during the drag; ONLY the snap-back animates,
-    // so a single owner ever touches the Animatable — no cross-scope race / stuck partially-swiped row.
-    var offsetX by remember { mutableStateOf(0f) }
-    val anim = remember { Animatable(0f) }
-    // Recomposes only when the swipe crosses 0 (not every drag frame).
-    val direction by remember { derivedStateOf { offsetX.compareTo(0f) } }
-
-    Box {
-        Box(Modifier.matchParentSize()) {
-            when {
-                direction < 0 -> SwipeBg(
-                    color = semantic.expense.copy(alpha = 0.18f),
-                    icon = Icons.Filled.Delete,
-                    tint = semantic.expense,
-                    alignEnd = true,
-                    label = "Delete",
-                )
-                direction > 0 -> SwipeBg(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                    icon = Icons.Filled.SwapHoriz,
-                    tint = MaterialTheme.colorScheme.primary,
-                    alignEnd = false,
-                    label = "Category",
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(offsetX.roundToInt(), 0) }
-                // Modifier.draggable(Horizontal) AXIS-LOCKS: a vertical scroll is consumed by the
-                // LazyColumn and never engages the swipe, so accidental swipes while scrolling stop (#14).
-                // Each direction only REQUESTS an action on release past a deliberate distance (delete is
-                // still behind a confirm dialog), then the row snaps back — never an auto-dismiss.
-                .draggable(
-                    orientation = Orientation.Horizontal,
-                    state = rememberDraggableState { delta -> offsetX = (offsetX + delta).coerceIn(-maxPx, maxPx) },
-                    onDragStopped = {
-                        when {
-                            offsetX <= -triggerPx -> {
-                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestDelete()
-                            }
-                            offsetX >= triggerPx -> {
-                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onRequestChangeCategory()
-                            }
-                        }
-                        anim.snapTo(offsetX)
-                        anim.animateTo(0f) { offsetX = value }
-                    },
-                ),
-        ) {
-            TransactionRow(row = row, selected = false, onClick = onClick, onLongClick = onLongClick)
-        }
-    }
-}
-
-@Composable
-private fun SwipeBg(color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, alignEnd: Boolean, label: String) {
-    Row(
-        modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 24.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
-    ) {
-        if (!alignEnd) {
-            Icon(icon, contentDescription = label, tint = tint)
-            Spacer(Modifier.width(8.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
-        } else {
-            Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
-            Spacer(Modifier.width(8.dp))
-            Icon(icon, contentDescription = label, tint = tint)
         }
     }
 }

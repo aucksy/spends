@@ -35,6 +35,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +46,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.backup.DriveFile
 import com.spends.app.ui.importer.ImportColumnsHelpDialog
+
+/**
+ * Saves the chosen export window (start, end) across a config change / process-death that can happen while
+ * the SAF "create document" picker is foreground. Without this the window would reset to null and the
+ * returning picker result would skip the write, leaving a stray 0-byte .xlsx (#4).
+ */
+private val exportWindowSaver = listSaver<Pair<Long, Long>?, Long>(
+    save = { p -> if (p == null) emptyList() else listOf(p.first, p.second) },
+    restore = { l -> if (l.size == 2) l[0] to l[1] else null },
+)
 
 @Composable
 fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
@@ -305,10 +317,22 @@ fun SpreadsheetSection(
     viewModel: BackupViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val salaryDay by viewModel.salaryDay.collectAsStateWithLifecycle()
+    val earliestDay by viewModel.earliestDay.collectAsStateWithLifecycle()
     var showHelp by remember { mutableStateOf(false) }
+    var showExportCycle by remember { mutableStateOf(false) }
+    // The chosen cycle window (start, end), held between launching the file picker and its result — the SAF
+    // CreateDocument contract only carries a filename, not our window. rememberSaveable so it survives a
+    // rotation / process-death while the picker is foreground (else the returning result would skip the
+    // write and strand a 0-byte file).
+    var pendingExport by rememberSaveable(stateSaver = exportWindowSaver) { mutableStateOf<Pair<Long, Long>?>(null) }
     val excelLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-    ) { uri -> uri?.let(viewModel::exportExcel) }
+    ) { uri ->
+        val window = pendingExport
+        if (uri != null && window != null) viewModel.exportExcel(uri, window.first, window.second)
+        pendingExport = null
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -318,7 +342,7 @@ fun SpreadsheetSection(
             modifier = Modifier.padding(vertical = 4.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            OutlinedButton(onClick = { excelLauncher.launch(viewModel.excelFileName) }, enabled = !state.working, modifier = Modifier.weight(1f)) {
+            OutlinedButton(onClick = { showExportCycle = true }, enabled = !state.working, modifier = Modifier.weight(1f)) {
                 Text("Export Excel", maxLines = 1)
             }
             OutlinedButton(onClick = onImport, enabled = !state.working, modifier = Modifier.weight(1f)) {
@@ -326,6 +350,19 @@ fun SpreadsheetSection(
             }
         }
         TextButton(onClick = { showHelp = true }) { Text("Which columns does import need?") }
+    }
+
+    if (showExportCycle) {
+        ExportCycleSheet(
+            salaryDay = salaryDay,
+            earliestDayMillis = earliestDay,
+            onDismiss = { showExportCycle = false },
+            onExport = { start, end, label ->
+                showExportCycle = false
+                pendingExport = start to end
+                excelLauncher.launch(viewModel.excelFileNameFor(label))
+            },
+        )
     }
 
     if (showHelp) ImportColumnsHelpDialog(onDismiss = { showHelp = false })

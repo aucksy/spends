@@ -58,7 +58,7 @@ fun CalculatorKeypad(
     onSave: () -> Unit,
     saveLabel: String = "Save",
 ) {
-    // Key-tap haptics now live inside KeypadKey and fire on finger-DOWN (see there) for a Gboard-class feel.
+    // Key-tap haptics live inside KeypadKey and fire on finger-DOWN (see there) for an instant, firm feel.
     // The old approach fired LONG_PRESS from the click (release) — a heavier effect a frame late, which read
     // as the "slight delay". onKey stays the value-commit on tap.
     val rows = listOf(
@@ -215,16 +215,19 @@ private fun KeypadKey(key: String, modifier: Modifier, onClick: () -> Unit) {
         color = container,
         modifier = modifier
             .height(54.dp)
-            // Gboard-class feel: fire the tap haptic on finger-DOWN (not on click/release). awaitFirstDown
-            // catches the earliest touch frame — well under the ~30 ms after which a buzz reads as "didn't
-            // register" — and performHapticFeedback(KEYBOARD_TAP) is the low-latency, input-routed path with
-            // the same crisp keyboard effect Gboard uses. FLAG_IGNORE_VIEW_SETTING guarantees it fires from
-            // the Compose host view. requireUnconsumed=false + no consume() leaves the tap for clickable.
+            // Fire the tap haptic on finger-DOWN (not on click/release). awaitFirstDown catches the earliest
+            // touch frame — well under the ~30 ms after which a buzz reads as "didn't register" — and
+            // performHapticFeedback is the low-latency, input-routed path. VIRTUAL_KEY is a firmer effect
+            // than KEYBOARD_TAP (user wanted the keypad buzz stronger) while staying instant on the down
+            // frame, so the firmer tap doesn't reintroduce the old release-timed lag. Firmness ladder if
+            // it needs another nudge: KEYBOARD_TAP (lightest) → VIRTUAL_KEY → LONG_PRESS (firmest) — a
+            // one-line constant swap. FLAG_IGNORE_VIEW_SETTING guarantees it fires from the Compose host
+            // view. requireUnconsumed=false + no consume() leaves the tap for clickable.
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     view.performHapticFeedback(
-                        HapticFeedbackConstants.KEYBOARD_TAP,
+                        HapticFeedbackConstants.VIRTUAL_KEY,
                         HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING,
                     )
                 }

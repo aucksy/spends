@@ -33,11 +33,18 @@ class ExcelExporter @Inject constructor(
         "Merchant / Payee", "Note", "Source", "Split details", "Created",
     )
 
-    suspend fun build(): ByteArray = withContext(Dispatchers.Default) {
+    /** Export every non-trashed transaction (all time). */
+    suspend fun build(): ByteArray = build(Long.MIN_VALUE, Long.MAX_VALUE)
+
+    /**
+     * Export non-trashed transactions whose [occurredAt] falls in `[startMillis, endExclusiveMillis)` (#4).
+     * Pass `Long.MIN_VALUE .. Long.MAX_VALUE` for "all time". An empty window yields a header-only sheet.
+     */
+    suspend fun build(startMillis: Long, endExclusiveMillis: Long): ByteArray = withContext(Dispatchers.Default) {
         val categoryNames = db.categoryDao().getAllOnce().associateBy({ it.id }, { it.name })
         val allocationsByExpense = db.expenseDao().getAllAllocationsOnce().groupBy { it.expenseId }
         val expenses = db.expenseDao().getAllExpensesOnce()
-            .filter { it.deletedAt == null }
+            .filter { it.deletedAt == null && it.occurredAt >= startMillis && it.occurredAt < endExclusiveMillis }
             .sortedByDescending { it.occurredAt }
 
         val rows = expenses.map { e ->

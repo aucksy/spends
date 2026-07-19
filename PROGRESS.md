@@ -4,13 +4,40 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.48.2** — versionCode **52**, versionName **"1.48.2"**
+- **Shipped: v1.49.0** — versionCode **53**, versionName **"1.49.0"**
   (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
 - **DB schema: v13.** (No DB/schema change this release.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.48.2/Spends-v1.48.2.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.49.0/Spends-v1.49.0.apk
 
 ## Recent tags
+- **v1.49.0** — 5-fix round (no DB change). (1) **Swipe removed** from the transactions list — deleted
+  `SwipeableRow`/`SwipeBg` + the swipe-only delete-confirm dialog and recategorise sheet; rows render
+  `TransactionRow` directly (too many accidental swipes). Single delete/recategorise stay reachable via
+  row-tap→editor, and multi-select (long-press) still does bulk delete + change-category. (2) **Widget
+  quick-add keeps in-progress work** — removed `android:noHistory` from `QuickAddActivity` so switching apps
+  no longer finishes it and wipes the entry (QuickAddSheet fields are already `rememberSaveable`;
+  `singleInstance` re-tap resumes the same instance). (3) **Keypad haptic firmer** — `KeypadKey`
+  KEYBOARD_TAP → VIRTUAL_KEY, still fired on finger-down (no lag returns). (4) **Export a chosen cycle to
+  Excel** — `ExcelExporter.build(start, end)` filtered overload (no-arg `build()` delegates to MIN..MAX = all,
+  byte-identical to before); new `ui/backup/ExportCycleSheet.kt` (Month/Salary × All-time/This-cycle/Last-3/
+  Last-6/Custom, default All time; reuses `PillSegmentedControl` + the now-public `CustomRangeDialog` +
+  `PeriodResolver`); `BackupViewModel.exportExcel(uri, start, end)` + `excelFileNameFor(label)` + `salaryDay`/
+  `earliestDay` flows (injects `ExpenseRepository`); `SpreadsheetSection` holds the window in
+  `rememberSaveable` so a rotation/process-death mid-SAF can't strand a 0-byte file. (5) **Compact cycle
+  stepper on the per-category drill-down** — `CategoryTransactionsViewModel` gains a LOCAL `PeriodSelection`
+  (seeded from the shared store's current value so the drill-down matches the Analytics slice you tapped,
+  Smart→Salary; NEVER writes back), resolved via `PeriodResolver` exactly like Analytics; `CategoryTransactions
+  Screen` shows a compact `PeriodSelectorBar` (`label=""` → single line; concrete dates kept on the count
+  line) above "Monthly average", with the empty state inline so the selector stays reachable. ‹ › arrows show
+  for a single cycle; All-time/Last-N show a tappable name. **Reviews:** full round (2 agents: compile +
+  logic) clean, 2 fixed pre-tag (export `rememberSaveable` window; `QuickAddActivity` KDoc); delta re-review
+  (compile + logic) clean; then a regression audit — 0 blocker/high, fixed the 1 MEDIUM = the stepper had
+  been forced to CURRENT (mismatched the tapped Analytics slice) → reverted to seed-from-store so it opens on
+  the viewed cycle, + 3 comment/import nits. Files: `TransactionsScreen.kt`, `AndroidManifest.xml`,
+  `CalculatorKeypad.kt`, `CategoryTransactions{ViewModel,Screen}.kt`, `PeriodSelectorBar.kt` (CustomRangeDialog
+  public), `ExcelExporter.kt`, `BackupViewModel.kt`, `ExportCycleSheet.kt` (new), `BackupSection.kt`,
+  `QuickAddActivity.kt`.
 - **v1.48.2** — keypad haptic = Gboard feel. The key haptic fired `LONG_PRESS` from `clickable`'s onClick
   (RELEASE) — a heavier effect a frame late = the "slight delay". Now `KeypadKey` fires
   `performHapticFeedback(KEYBOARD_TAP, FLAG_IGNORE_VIEW_SETTING)` on the finger-DOWN via

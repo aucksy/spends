@@ -66,15 +66,19 @@
 
         <!-- Standalone quick-add overlay (#1): the home-screen widgets' "+" launch this transparent
              activity so only the keypad sheet appears (home shows behind), never the full app/list — and
-             a future app-lock on MainActivity won't gate it. Its own task affinity + noHistory +
-             excludeFromRecents keep it a transient overlay that never surfaces the main app task. -->
+             a future app-lock on MainActivity won't gate it. Its own task affinity + excludeFromRecents
+             keep it a transient overlay that never surfaces the main app task.
+             NOTE: deliberately NO android:noHistory here. noHistory finishes the activity the moment you
+             leave it, which wiped a half-typed entry the instant you switched to another app (#2). Without
+             it the overlay is retained when backgrounded (singleInstance → re-tapping the widget returns to
+             the same instance), and QuickAddSheet's rememberSaveable fields also survive a process-death
+             recreate — so in-progress work is kept. It still finishes on save / ✕ / back. -->
         <activity
             android:name=".core.QuickAddActivity"
             android:exported="false"
             android:launchMode="singleInstance"
             android:taskAffinity="${applicationId}.quickadd"
             android:excludeFromRecents="true"
-            android:noHistory="true"
             android:theme="@style/Theme.Spends.Transparent"
             android:windowSoftInputMode="adjustResize" />
 

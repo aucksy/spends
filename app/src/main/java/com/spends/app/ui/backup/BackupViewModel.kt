@@ -14,6 +14,7 @@ import com.spends.app.data.backup.DriveAuthManager
 import com.spends.app.data.backup.DriveFile
 import com.spends.app.data.backup.WrongBackupPasswordException
 import com.spends.app.data.export.ExcelExporter
+import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.work.BackupScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -59,6 +61,7 @@ class BackupViewModel @Inject constructor(
     private val driveAuthManager: DriveAuthManager,
     private val settingsRepository: SettingsRepository,
     private val excelExporter: ExcelExporter,
+    private val expenseRepository: ExpenseRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BackupUiState(hasBackupPassword = backupRepository.hasBackupPassword()))
@@ -81,15 +84,29 @@ class BackupViewModel @Inject constructor(
             return "spends-backup-$stamp.spsenc"
         }
 
-    /** Suggested filename for the readable spreadsheet export. */
-    val excelFileName: String get() = "Spends.xlsx"
+    /** Inputs the export cycle-picker needs to resolve a chosen cycle to a concrete window (#4). */
+    val salaryDay: StateFlow<Int> =
+        settingsRepository.settings.map { it.salaryCycleStartDay }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1)
+    val earliestDay: StateFlow<Long?> =
+        expenseRepository.observeEarliestDay()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Build a single-sheet .xlsx of all transactions and write it to the chosen file (readable, not encrypted). */
-    fun exportExcel(uri: Uri) {
+    /** Suggested filename for a spreadsheet export of the chosen cycle (#4), e.g. "Spends-Aug 2026.xlsx". */
+    fun excelFileNameFor(label: String): String {
+        val safe = label.replace("/", "-").trim().ifBlank { "all-time" }
+        return "Spends-$safe.xlsx"
+    }
+
+    /**
+     * Build a single-sheet .xlsx of the transactions in `[startMillis, endExclusiveMillis)` and write it to
+     * the chosen file (readable, not encrypted). Pass `Long.MIN_VALUE .. Long.MAX_VALUE` for all time (#4).
+     */
+    fun exportExcel(uri: Uri, startMillis: Long, endExclusiveMillis: Long) {
         viewModelScope.launch {
             _state.update { it.copy(working = true, message = null, blockingError = null) }
             try {
-                val bytes = excelExporter.build()
+                val bytes = excelExporter.build(startMillis, endExclusiveMillis)
                 check(bytes.isNotEmpty()) { "The spreadsheet came out empty." }
                 writeAllBytes(uri, bytes)
                 _state.update { it.copy(working = false, message = "Spreadsheet exported (${bytes.size / 1024} KB)") }

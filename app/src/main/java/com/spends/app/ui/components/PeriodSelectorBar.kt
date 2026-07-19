@@ -403,7 +403,7 @@ private fun RangeRow(label: String, selected: Boolean, onClick: () -> Unit) {
  * end (end day + 1).
  */
 @Composable
-private fun CustomRangeDialog(
+fun CustomRangeDialog(
     initialStart: LocalDate? = null,
     initialEnd: LocalDate? = null,
     onDismiss: () -> Unit,

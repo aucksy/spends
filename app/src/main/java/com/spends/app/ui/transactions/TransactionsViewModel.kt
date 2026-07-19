@@ -66,7 +66,7 @@ class TransactionsViewModel @Inject constructor(
         val headlineEnd: Long = 0,
     )
 
-    /** Categories (most-used first) for the quick swipe-to-change-category picker. */
+    /** Categories (most-used first) for the bulk change-category picker (multi-select). */
     val categories: StateFlow<List<CategoryEntity>> = categoryRepository.observeActiveByUsage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 

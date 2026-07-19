@@ -1,6 +1,5 @@
 package com.spends.app.ui.categorytxns
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,10 +32,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.money.Money
+import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.CategoryAvatar
+import com.spends.app.ui.components.PeriodSelectorBar
 import com.spends.app.ui.components.PillSegmentedControl
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +47,7 @@ fun CategoryTransactionsScreen(
     viewModel: CategoryTransactionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -61,20 +63,37 @@ fun CategoryTransactionsScreen(
     ) { padding ->
         when {
             state.loading -> Unit
-            state.rows.isEmpty() -> EmptyCategory(modifier = Modifier.fillMaxSize().padding(padding))
+            // The header (with its cycle selector) always shows — even when the chosen cycle has no rows —
+            // so the user can switch back to a cycle that does have data instead of being stranded.
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
-                item(key = "header") { CategoryHeader(state, onAvgWindow = viewModel::setAvgWindow) }
-                items(state.rows, key = { it.id }) { row -> CategoryTxnRowItem(row) }
+                item(key = "header") {
+                    CategoryHeader(
+                        state = state,
+                        selection = selection,
+                        onSelectPeriod = viewModel::setPeriod,
+                        onAvgWindow = viewModel::setAvgWindow,
+                    )
+                }
+                if (state.rows.isEmpty()) {
+                    item(key = "empty") { EmptyCategory() }
+                } else {
+                    items(state.rows, key = { it.id }) { row -> CategoryTxnRowItem(row) }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CategoryHeader(state: CategoryTxnsUiState, onAvgWindow: (AvgWindow) -> Unit) {
+private fun CategoryHeader(
+    state: CategoryTxnsUiState,
+    selection: PeriodSelection,
+    onSelectPeriod: (PeriodSelection) -> Unit,
+    onAvgWindow: (AvgWindow) -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
@@ -91,13 +110,27 @@ private fun CategoryHeader(state: CategoryTxnsUiState, onAvgWindow: (AvgWindow) 
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(2.dp))
-        // The txn count + the cycle these numbers are for (#5) — updates whenever a different cycle is chosen.
-        val cyclePart = state.cycleLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""
+        // Count + the concrete dates of the selected cycle. As you step cycles with the ‹ › arrows below,
+        // this line updates so the exact window is always clear (the stepper itself shows only the name).
+        val datePart = state.cycleLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""
         Text(
-            "${state.count} ${if (state.count == 1) "transaction" else "transactions"}$cyclePart",
+            "${state.count} ${if (state.count == 1) "transaction" else "transactions"}$datePart",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
+        )
+
+        // Cycle selector (#5) — a COMPACT single-line control, seeded from the cycle you were viewing so it
+        // matches the number you tapped. For a single current cycle it's a ‹ › prev/next stepper; for
+        // All-time / Last-N / Custom it's a tappable name. LOCAL: re-scopes the total, count and list without
+        // touching the main Transactions/Analytics cycle. label="" keeps it to one line (dates on the count
+        // line above). Smart Cycle isn't offered here (a composite doesn't map to one category).
+        Spacer(Modifier.height(14.dp))
+        PeriodSelectorBar(
+            selection = selection,
+            label = "",
+            onSelect = onSelectPeriod,
+            smartCycleEnabled = false,
         )
 
         Spacer(Modifier.height(18.dp))
@@ -196,13 +229,18 @@ private fun CategoryTxnRowItem(row: CategoryTxnRow) {
 }
 
 @Composable
-private fun EmptyCategory(modifier: Modifier = Modifier) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+private fun EmptyCategory() {
+    // Inline (not full-screen) so the header + cycle selector above it stay visible and the user can pick a
+    // different cycle.
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("No transactions", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(
-                "Nothing in this category for the selected period.",
+                "Nothing in this category for the selected cycle.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

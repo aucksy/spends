@@ -20,8 +20,10 @@ import dagger.hilt.android.AndroidEntryPoint
  * quick add. The window is see-through; the sheet draws over whatever was behind (the home screen). Saving
  * shows a toast and lets the sheet animate away; dismissing finishes the activity.
  *
- * Manifest: its own task affinity + noHistory + excludeFromRecents so it stays a transient overlay and
- * never brings the main app task forward.
+ * Manifest: its own task affinity + excludeFromRecents keep it a transient overlay that never brings the
+ * main app task forward. Deliberately NOT noHistory — that finished the activity the moment you left it,
+ * wiping a half-typed entry when switching apps (#2); without it the in-progress entry (rememberSaveable in
+ * QuickAddSheet) survives, and re-tapping the widget (singleInstance) returns to the same instance.
  */
 @AndroidEntryPoint
 class QuickAddActivity : ComponentActivity() {
