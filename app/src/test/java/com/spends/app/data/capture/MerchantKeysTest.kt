@@ -56,6 +56,9 @@ class MerchantKeysTest {
     @Test fun `a numbers-only residue is refused`() =
         assertNull(MerchantKeys.normalize("UPI POS 12345"))
 
+    @Test fun `an all-generic multi-word key is refused`() =
+        assertNull(MerchantKeys.normalize("Card Payment"))
+
     @Test fun `suffix stripping keeps a short brand - air india`() =
         assertEquals("air", MerchantKeys.normalize("AIR INDIA"))
 
@@ -91,6 +94,9 @@ class MerchantKeysTest {
         assertFalse(MerchantKeys.sameMerchant("order", "swiggy order"))
         assertFalse(MerchantKeys.sameMerchant("payment", "rent payment"))
     }
+
+    @Test fun `all-generic words never claim a longer key`() =
+        assertFalse(MerchantKeys.sameMerchant("card payment", "sbi card payment"))
 
     // ---- end to end: the real-world repeats that used to miss ----
 

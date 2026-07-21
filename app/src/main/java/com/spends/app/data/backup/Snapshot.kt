@@ -9,7 +9,10 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class Snapshot(
-    val schemaVersion: Int = CURRENT_SCHEMA,
+    // Default 1 (not CURRENT_SCHEMA): every app-written backup serializes the field explicitly
+    // (encodeDefaults = true since v0.4.0), so the default only fires for a foreign/hand-made file —
+    // which must then take the CONSERVATIVE (oldest-schema) restore paths, never the newest.
+    val schemaVersion: Int = 1,
     val createdAt: Long,
     val app: String = "spends",
     val data: SnapshotData,

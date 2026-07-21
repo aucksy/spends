@@ -69,10 +69,10 @@ object MerchantKeys {
             }
         }
         val key = tokens.joinToString(" ").ifBlank { return null }
-        // A key with no letters (an order/reference number) or that is just a generic transaction
-        // word identifies no merchant — refuse it rather than learn garbage.
+        // A key with no letters (an order/reference number) or made ENTIRELY of generic transaction
+        // words ("order", "card payment") identifies no merchant — refuse it rather than learn garbage.
         if (key.none { it.isLetter() }) return null
-        if (tokens.size == 1 && key in STOP_TOKENS) return null
+        if (tokens.all { it in STOP_TOKENS }) return null
         return key
     }
 
@@ -85,8 +85,9 @@ object MerchantKeys {
     fun sameMerchant(a: String, b: String): Boolean {
         if (a == b) return true
         val (short, long) = if (a.length <= b.length) a to b else b to a
-        // A lone generic word ("order", "payment") must never claim a longer key it appears in.
-        if (' ' !in short && short in STOP_TOKENS) return false
+        // A key made entirely of generic words ("order", "card payment") must never claim a longer
+        // key it appears in.
+        if (short.split(' ').all { it in STOP_TOKENS }) return false
         if (short.length >= 4 && long.split(' ').containsAll(short.split(' '))) return true
         return ' ' !in short && ' ' !in long && short.length >= 5 && long.startsWith(short)
     }

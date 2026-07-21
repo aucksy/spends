@@ -228,8 +228,12 @@ class AddEditViewModel @Inject constructor(
                         val categoryChanged = loaded != null && loaded.categoryId != categoryId
                         val noteChanged = loaded != null && loaded.note.trim() != note.trim()
                         if (categoryChanged || noteChanged) {
+                            // Pass the note/category ONLY as deliberate when the user changed them —
+                            // an untouched row note must not displace a newer remembered note, and a
+                            // note-only save must not re-learn the row's (possibly guessed) category.
                             captureRepository.learnFromTransaction(
-                                expenseId, categoryId, note, noteShown = noteChanged,
+                                expenseId, categoryId, note.takeIf { noteChanged },
+                                noteShown = noteChanged, categoryDeliberate = categoryChanged,
                             )
                         }
                     } else {

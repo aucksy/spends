@@ -78,6 +78,7 @@ class BackupRepository @Inject constructor(
     suspend fun buildSnapshot(): Snapshot {
         val settings = settingsRepository.settings.first()
         return Snapshot(
+            schemaVersion = Snapshot.CURRENT_SCHEMA,
             createdAt = DateUtils.nowMillis(),
             data = SnapshotData(
                 settings = settings.toSnapshot(),

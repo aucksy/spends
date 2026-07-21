@@ -542,40 +542,53 @@ class SmsCaptureRepository @Inject constructor(
         learnedFor(merchant, allowFuzzy)?.note?.takeIf { it.isNotBlank() }
 
     /**
-     * Remember that this merchant maps to [categoryId] so future captures pre-select it.
+     * Remember this merchant's category/note so future captures pre-fill them.
      *
-     * Notes: when [replaceNote] (the caller showed the user an editable note field) the given [note]
-     * is stored — including a deliberate clear, which is also propagated onto every other stored
-     * spelling of this merchant so a cleared note can't resurrect via a sibling key. Otherwise the
-     * newest previously learned note across all spellings is preserved.
+     * Category: [categoryId] is stored as-is when [categoryDeliberate] (the user picked it). A
+     * note-only teach (categoryDeliberate = false) keeps the newest ALREADY-learned category for
+     * this merchant instead — re-arming an old row's guessed category must not bury a newer
+     * correction stored under a sibling spelling. Written only under the current key, never onto
+     * fuzzy siblings, so one false-positive match can never rewrite a whole cluster.
      *
-     * The CATEGORY is written only under the current key — never onto fuzzy siblings — so one
-     * false-positive match can never rewrite a whole cluster of merchants.
+     * Notes: when [replaceNote] (the user edited the note field) the given [note] is stored —
+     * including a deliberate clear — and the change is propagated onto sibling spellings that
+     * carried the PREVIOUS note (or none), so the old note can't resurrect; a sibling's own
+     * different note (a fuzzy-clustered but genuinely different business) is never touched.
+     * Otherwise the key's own note is preserved, inheriting the cluster's newest note only when
+     * this key never had an entry of its own.
      */
     private suspend fun learnMerchantCategory(
         merchant: String?,
         categoryId: Long,
         note: String? = null,
         replaceNote: Boolean = false,
+        categoryDeliberate: Boolean = true,
     ) {
         val key = MerchantKeys.normalize(merchant) ?: return
         val cluster = normalizedLearned().filter { (_, n) -> n == key || MerchantKeys.sameMerchant(key, n) }
+        val exactEntry = cluster.filter { (_, n) -> n == key }.maxByOrNull { (e, _) -> e.updatedAt }?.first
+        val newestEntry = cluster.maxByOrNull { (e, _) -> e.updatedAt }?.first
+        val finalCategory = if (categoryDeliberate) categoryId else newestEntry?.categoryId ?: categoryId
         val newNote = note?.trim()?.takeIf { it.isNotBlank() }
-        val keptNote =
-            if (replaceNote) newNote
-            else newNote ?: cluster.maxByOrNull { (e, _) -> e.updatedAt }?.first?.note
+        val keptNote = when {
+            replaceNote -> newNote
+            newNote != null -> newNote
+            exactEntry != null -> exactEntry.note // the key's own note (even a cleared one) wins
+            else -> newestEntry?.note
+        }
         merchantDao.upsert(
             MerchantCategoryEntity(
                 merchantKey = key,
-                categoryId = categoryId,
+                categoryId = finalCategory,
                 updatedAt = DateUtils.nowMillis(),
                 note = keptNote,
             ),
         )
         if (replaceNote) {
-            // Propagate ONLY the note decision to sibling spellings (their own category + timestamp
-            // stay), so the note the user just set/cleared is what every spelling serves next.
-            val siblings = cluster.map { (e, _) -> e }.filter { it.merchantKey != key && it.note != keptNote }
+            val previousNote = exactEntry?.note
+            val siblings = cluster.map { (e, _) -> e }.filter {
+                it.merchantKey != key && it.note != keptNote && (it.note == previousNote || it.note == null)
+            }
             if (siblings.isNotEmpty()) merchantDao.insertAll(siblings.map { it.copy(note = keptNote) })
         }
     }
@@ -583,17 +596,23 @@ class SmsCaptureRepository @Inject constructor(
     /**
      * Learn from the user correcting a captured transaction after the fact — a timeline recategorise,
      * or an editor save on an SMS/NOTIFICATION row (pass its [note] with [noteShown] = true so the
-     * merchant note updates too). No-op for non-capture rows or rows without a merchant.
+     * merchant note updates too; pass [categoryDeliberate] = false for a note-only save so the row's
+     * unchanged — possibly guessed — category isn't re-learned). No-op for non-capture rows or rows
+     * without a merchant.
      */
     suspend fun learnFromTransaction(
         expenseId: Long,
         categoryId: Long,
         note: String? = null,
         noteShown: Boolean = false,
+        categoryDeliberate: Boolean = true,
     ) {
         val expense = expenseDao.getByIdWithAllocations(expenseId)?.expense ?: return
         if (expense.source == TxnSource.SMS || expense.source == TxnSource.NOTIFICATION) {
-            learnMerchantCategory(expense.merchantRaw, categoryId, note, replaceNote = noteShown)
+            learnMerchantCategory(
+                expense.merchantRaw, categoryId, note,
+                replaceNote = noteShown, categoryDeliberate = categoryDeliberate,
+            )
         }
     }
 
