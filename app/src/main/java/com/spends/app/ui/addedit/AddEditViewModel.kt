@@ -134,8 +134,9 @@ class AddEditViewModel @Inject constructor(
                         kind = p.kind,
                         categoryId = p.categoryId,
                         merchant = p.merchant.orEmpty(),
-                        // Pre-fill the note the user last gave this merchant (learned memory; editable).
-                        note = captureRepository.learnedNoteFor(p.merchant).orEmpty(),
+                        // Pre-fill the note the user last gave this merchant (learned memory; editable —
+                        // fuzzy is fine here because the user reviews this screen before saving).
+                        note = captureRepository.learnedNoteFor(p.merchant, allowFuzzy = true).orEmpty(),
                         occurredAt = p.occurredAt,
                         // Auto-match the instrument from the SMS so "Paid with" is pre-filled for review (#3).
                         paymentMethodId = paymentMethodRepository.matchInstrument(p.last4, p.institution),
@@ -219,9 +220,18 @@ class AddEditViewModel @Inject constructor(
                     if (isEdit) {
                         expenseRepository.update(expenseId, input)
                         // Correcting a captured (SMS/NOTIFICATION) row in the editor is the user's main
-                        // correction path since swipe went away — teach the merchant memory from it.
-                        // The note field was visible here, so the note is learned too (a clear clears).
-                        captureRepository.learnFromTransaction(expenseId, categoryId, note, noteShown = true)
+                        // correction path since swipe went away — but teach the merchant memory ONLY from
+                        // what the user actually CHANGED. A date/amount-only edit must not re-learn the
+                        // row's (possibly guessed) category, and an untouched empty note field must not
+                        // erase a remembered note ("field was visible" ≠ "user cleared it").
+                        val loaded = _initial.value
+                        val categoryChanged = loaded != null && loaded.categoryId != categoryId
+                        val noteChanged = loaded != null && loaded.note.trim() != note.trim()
+                        if (categoryChanged || noteChanged) {
+                            captureRepository.learnFromTransaction(
+                                expenseId, categoryId, note, noteShown = noteChanged,
+                            )
+                        }
                     } else {
                         expenseRepository.create(input)
                     }

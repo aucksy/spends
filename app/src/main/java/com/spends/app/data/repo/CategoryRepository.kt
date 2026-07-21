@@ -6,6 +6,8 @@ import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.domain.model.CategoryUsage
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,11 +22,12 @@ class CategoryRepository @Inject constructor(
 
     /**
      * Active categories for the pickers: ranked by use in the last ~3 months (current habits),
-     * all-time count breaking ties. The cutoff is fixed when the picker subscribes — fine, since a
-     * ViewModel re-subscribes on every screen visit.
+     * all-time count breaking ties. The cutoff is computed when collection starts (the flow wrapper),
+     * so even a long-lived ViewModel gets a fresh window on each new collection.
      */
-    fun observeActiveByUsage(): Flow<List<CategoryEntity>> =
-        dao.observeActiveByUsage(System.currentTimeMillis() - RECENT_USAGE_WINDOW_MILLIS)
+    fun observeActiveByUsage(): Flow<List<CategoryEntity>> = flow {
+        emitAll(dao.observeActiveByUsage(System.currentTimeMillis() - RECENT_USAGE_WINDOW_MILLIS))
+    }
 
     fun observeAll(): Flow<List<CategoryEntity>> = dao.observeAll()
 

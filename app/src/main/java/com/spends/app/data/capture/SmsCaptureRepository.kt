@@ -79,7 +79,8 @@ class SmsCaptureRepository @Inject constructor(
         val occurredAt = parsed.occurredAt ?: receivedAt
         val hash = hashFor(parsed, occurredAt, amount, kind)
         if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null // already in the ledger
-        val categoryId = resolveCategory(parsed, kind)
+        // Exact learned matches only — this one-tap add commits with zero review.
+        val categoryId = resolveCategory(parsed, kind, allowFuzzy = false)
         // Silent one-tap "Add" (no editor): tag by last4 only — the PRECISE match. The looser bank-name
         // fallback is deliberately confined to the review editor (#3), where the user can see + correct it,
         // so a same-bank non-card debit is never silently mis-attributed to a card here.
@@ -105,10 +106,11 @@ class SmsCaptureRepository @Inject constructor(
         return CaptureDraft(
             amountMinor = amount,
             kind = kind,
-            categoryId = resolveCategory(parsed, kind),
+            // Fuzzy allowed: everything here lands in the editor for the user to review before Save.
+            categoryId = resolveCategory(parsed, kind, allowFuzzy = true),
             merchant = parsed.merchant?.ifBlank { null },
             // The note the user last gave this merchant, pre-filled for review (editable before Save).
-            note = learnedNoteFor(parsed.merchant),
+            note = learnedNoteFor(parsed.merchant, allowFuzzy = true),
             occurredAt = occurredAt,
             dedupeHash = hashFor(parsed, occurredAt, amount, kind),
             // Pre-match the instrument so the editor's "Paid with" is filled in for review (#3).
@@ -198,7 +200,8 @@ class SmsCaptureRepository @Inject constructor(
         val hash = hashFor(parsed, occurredAt, amount, kind)
         if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null
         if (hash in pendingDao.allHashes().toHashSet()) return@withLock null
-        val categoryId = resolveCategory(parsed, kind)
+        // Fuzzy allowed: a queued row is a review surface (card + editor) before anything commits.
+        val categoryId = resolveCategory(parsed, kind, allowFuzzy = true)
         pendingDao.insert(
             PendingCaptureEntity(
                 amountMinor = amount,
@@ -232,6 +235,8 @@ class SmsCaptureRepository @Inject constructor(
                 val manualKeys = expenseDao.getAllExpensesOnce()
                     .filter { it.deletedAt == null && it.source != TxnSource.SMS }
                     .mapTo(HashSet()) { manualKey(it.occurredAt, it.amountMinor, it.kind) }
+                // One learned-table read for the whole scan (not one per SMS).
+                val learned = normalizedLearned()
 
                 var scanned = 0
                 var queued = 0
@@ -259,7 +264,7 @@ class SmsCaptureRepository @Inject constructor(
                             skipped++
                             continue
                         }
-                        val categoryId = resolveCategory(parsed, kind)
+                        val categoryId = resolveCategory(parsed, kind, allowFuzzy = true, preloaded = learned)
                         val rowId = pendingDao.insert(
                             PendingCaptureEntity(
                                 amountMinor = amount,
@@ -381,7 +386,9 @@ class SmsCaptureRepository @Inject constructor(
     suspend fun getPending(id: Long): PendingCaptureEntity? = pendingDao.getById(id)
 
     /** Re-categorise a queued capture in place — review-only, NEVER writes to the ledger (#9). A hand-pick
-     *  here is a deliberate correction (the strongest signal before confirm), so the merchant learns it. */
+     *  here is a deliberate correction (the strongest signal before confirm), so the merchant learns it.
+     *  NOTE: currently unreachable from the UI (the review card lost its category control in v0.14 —
+     *  corrections go through the full editor); kept correct for when the control returns. */
     suspend fun setPendingCategory(id: Long, categoryId: Long) {
         pendingDao.setCategory(id, categoryId)
         pendingDao.getById(id)?.let { learnMerchantCategory(it.merchant, categoryId) }
@@ -431,20 +438,31 @@ class SmsCaptureRepository @Inject constructor(
     /** Confirm every pending capture as-is. Returns the number added. */
     suspend fun confirmAllPending(): Int = captureMutex.withLock {
         val all = pendingDao.getAllOnce()
-        for (p in all) {
-            // Bulk "Confirm all" (no per-item editor) → precise last4 match only; bank-name fallback is
-            // editor-only (#3) so this never silently mis-attributes a same-bank non-card debit to a card.
-            val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
-            createLedgerTxn(
-                p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS, pmId,
-                note = learnedNoteFor(p.merchant),
-            )
-            // Deliberately NO learning here: these rows carry the app's own guesses, and recording a
-            // guess as a "user choice" locks it in (learned mappings win over fresh guesses forever).
-            // Deliberate picks are learned where they happen: setPendingCategory / the editor confirms.
+        var added = 0
+        // ONE transaction: a mid-loop crash commits NOTHING (every row stays queued) instead of
+        // leaving rows both added and still queued, where a retry would double the money. The hash
+        // guard additionally skips anything an earlier partial run already committed.
+        db.withTransaction {
+            val committed = expenseDao.allDedupeHashes().toHashSet()
+            for (p in all) {
+                if (p.dedupeHash in committed) continue
+                // Bulk "Confirm all" (no per-item editor) → precise last4 match only; bank-name fallback is
+                // editor-only (#3) so this never silently mis-attributes a same-bank non-card debit to a card.
+                val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
+                createLedgerTxn(
+                    p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS, pmId,
+                    // Exact-match note only — this path writes straight to the ledger with no review.
+                    note = learnedNoteFor(p.merchant),
+                )
+                committed.add(p.dedupeHash)
+                added++
+                // Deliberately NO learning here: these rows carry the app's own guesses, and recording a
+                // guess as a "user choice" locks it in (learned mappings win over fresh guesses forever).
+                // Deliberate choices are learned where they happen: the review editor / an editor save.
+            }
+            pendingDao.deleteAll()
         }
-        pendingDao.deleteAll()
-        all.size
+        added
     }
 
     suspend fun rejectPending(id: Long) = pendingDao.deleteById(id)
@@ -490,30 +508,49 @@ class SmsCaptureRepository @Inject constructor(
 
     // ---- Merchant→category/note learning (#14) ----
 
+    /** Every stored entry paired with its normalized key, for in-memory matching. Stored keys are
+     *  re-normalized on the fly so entries learned before normalization existed still match. */
+    private suspend fun normalizedLearned(): List<Pair<MerchantCategoryEntity, String>> =
+        merchantDao.getAllOnce().mapNotNull { e -> MerchantKeys.normalize(e.merchantKey)?.let { n -> e to n } }
+
     /**
-     * The learned entry for this raw merchant string: exact normalized-key hit first, else the most
-     * recently taught fuzzy match ([MerchantKeys.sameMerchant]) — so "RAZ*AMUL" finds what "Amul India"
-     * taught. Stored keys are re-normalized on the fly, so entries learned before normalization existed
-     * still match. Null when nothing is learned for this merchant.
+     * The learned entry for this raw merchant string — the NEWEST matching entry, so the user's
+     * latest correction always wins over an older memory stored under another spelling.
+     *
+     * [allowFuzzy] widens matching beyond the exact normalized key ([MerchantKeys.sameMerchant]).
+     * Pass true ONLY where the result lands in an editor the user reviews before saving; every path
+     * that writes straight to the ledger sticks to exact matches — a fuzzy false positive there
+     * would commit a wrong category/note with zero review.
+     *
+     * [preloaded] lets a bulk scan reuse one table read instead of one per SMS.
      */
-    private suspend fun learnedFor(merchant: String?): MerchantCategoryEntity? {
+    private suspend fun learnedFor(
+        merchant: String?,
+        allowFuzzy: Boolean,
+        preloaded: List<Pair<MerchantCategoryEntity, String>>? = null,
+    ): MerchantCategoryEntity? {
         val key = MerchantKeys.normalize(merchant) ?: return null
-        merchantDao.getByKey(key)?.let { return it }
-        return merchantDao.getAllOnce()
-            .mapNotNull { e -> MerchantKeys.normalize(e.merchantKey)?.let { n -> e to n } }
-            .filter { (_, n) -> MerchantKeys.sameMerchant(key, n) }
+        val entries = preloaded ?: normalizedLearned()
+        return entries
+            .filter { (_, n) -> n == key || (allowFuzzy && MerchantKeys.sameMerchant(key, n)) }
             .maxByOrNull { (e, _) -> e.updatedAt }
             ?.first
     }
 
-    /** The note the user last gave this merchant (for pre-filling), or null. */
-    suspend fun learnedNoteFor(merchant: String?): String? =
-        learnedFor(merchant)?.note?.takeIf { it.isNotBlank() }
+    /** The note the user last gave this merchant, or null. Fuzzy only for editor pre-fills. */
+    suspend fun learnedNoteFor(merchant: String?, allowFuzzy: Boolean = false): String? =
+        learnedFor(merchant, allowFuzzy)?.note?.takeIf { it.isNotBlank() }
 
     /**
-     * Remember that this merchant maps to [categoryId] so future captures pre-select it. When
-     * [replaceNote] (the caller showed the user an editable note field) the given [note] is stored —
-     * including a deliberate clear; otherwise a previously learned note is preserved.
+     * Remember that this merchant maps to [categoryId] so future captures pre-select it.
+     *
+     * Notes: when [replaceNote] (the caller showed the user an editable note field) the given [note]
+     * is stored — including a deliberate clear, which is also propagated onto every other stored
+     * spelling of this merchant so a cleared note can't resurrect via a sibling key. Otherwise the
+     * newest previously learned note across all spellings is preserved.
+     *
+     * The CATEGORY is written only under the current key — never onto fuzzy siblings — so one
+     * false-positive match can never rewrite a whole cluster of merchants.
      */
     private suspend fun learnMerchantCategory(
         merchant: String?,
@@ -522,9 +559,11 @@ class SmsCaptureRepository @Inject constructor(
         replaceNote: Boolean = false,
     ) {
         val key = MerchantKeys.normalize(merchant) ?: return
-        val existing = merchantDao.getByKey(key)
+        val cluster = normalizedLearned().filter { (_, n) -> n == key || MerchantKeys.sameMerchant(key, n) }
         val newNote = note?.trim()?.takeIf { it.isNotBlank() }
-        val keptNote = if (replaceNote) newNote else newNote ?: existing?.note
+        val keptNote =
+            if (replaceNote) newNote
+            else newNote ?: cluster.maxByOrNull { (e, _) -> e.updatedAt }?.first?.note
         merchantDao.upsert(
             MerchantCategoryEntity(
                 merchantKey = key,
@@ -533,6 +572,12 @@ class SmsCaptureRepository @Inject constructor(
                 note = keptNote,
             ),
         )
+        if (replaceNote) {
+            // Propagate ONLY the note decision to sibling spellings (their own category + timestamp
+            // stay), so the note the user just set/cleared is what every spelling serves next.
+            val siblings = cluster.map { (e, _) -> e }.filter { it.merchantKey != key && it.note != keptNote }
+            if (siblings.isNotEmpty()) merchantDao.insertAll(siblings.map { it.copy(note = keptNote) })
+        }
     }
 
     /**
@@ -569,12 +614,18 @@ class SmsCaptureRepository @Inject constructor(
     }
 
     /** @return the resolved category id (learned merchant mapping first, then best guess; falls back to "Other"). */
-    private suspend fun resolveCategory(parsed: SmsParser.Parsed, kind: TxnKind): Long {
+    private suspend fun resolveCategory(
+        parsed: SmsParser.Parsed,
+        kind: TxnKind,
+        allowFuzzy: Boolean,
+        preloaded: List<Pair<MerchantCategoryEntity, String>>? = null,
+    ): Long {
         // #14: if the user has categorised this merchant before, reuse that choice. The learned id is
-        // verified against the live categories (a mapping can outlive its category, e.g. post-restore) —
+        // verified live + unarchived (a mapping can outlive its category, e.g. post-restore/archive) —
         // an unverifiable id falls through to the normal guess instead of breaking the insert.
-        learnedFor(parsed.merchant)?.let { learned ->
-            if (categoryDao.getById(learned.categoryId) != null) return learned.categoryId
+        learnedFor(parsed.merchant, allowFuzzy, preloaded)?.let { learned ->
+            val cat = categoryDao.getById(learned.categoryId)
+            if (cat != null && !cat.isArchived) return learned.categoryId
         }
         parsed.categoryHint?.let { hint -> categoryId(hint)?.let { return it } }
         return when (kind) {

@@ -13,11 +13,7 @@ interface MerchantCategoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: MerchantCategoryEntity)
 
-    /** The learned entry for an exact (normalized) merchant key, or null. */
-    @Query("SELECT * FROM merchant_categories WHERE merchantKey = :merchantKey LIMIT 1")
-    suspend fun getByKey(merchantKey: String): MerchantCategoryEntity?
-
-    /** Every learned entry — the table is small, so fuzzy matching runs over it in memory. */
+    /** Every learned entry — the table is small, so all matching runs over it in memory. */
     @Query("SELECT * FROM merchant_categories")
     suspend fun getAllOnce(): List<MerchantCategoryEntity>
 

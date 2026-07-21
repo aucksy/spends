@@ -45,6 +45,20 @@ class MerchantKeysTest {
         assertNull(MerchantKeys.normalize("**--**"))
     }
 
+    @Test fun `a full gateway name is never self-mangled`() =
+        assertEquals("razorpay", MerchantKeys.normalize("Razorpay"))
+
+    @Test fun `a generic residue after gateway stripping is refused`() {
+        assertNull(MerchantKeys.normalize("PAYTM ORDER"))
+        assertNull(MerchantKeys.normalize("PHONEPE RECHARGE"))
+    }
+
+    @Test fun `a numbers-only residue is refused`() =
+        assertNull(MerchantKeys.normalize("UPI POS 12345"))
+
+    @Test fun `suffix stripping keeps a short brand - air india`() =
+        assertEquals("air", MerchantKeys.normalize("AIR INDIA"))
+
     // ---- sameMerchant (inputs are normalized keys) ----
 
     @Test fun `exact keys match`() =
@@ -72,6 +86,11 @@ class MerchantKeysTest {
 
     @Test fun `tiny keys never fuzzy-match`() =
         assertFalse(MerchantKeys.sameMerchant("abc", "abcdef"))
+
+    @Test fun `a lone generic word never claims a longer key`() {
+        assertFalse(MerchantKeys.sameMerchant("order", "swiggy order"))
+        assertFalse(MerchantKeys.sameMerchant("payment", "rent payment"))
+    }
 
     // ---- end to end: the real-world repeats that used to miss ----
 

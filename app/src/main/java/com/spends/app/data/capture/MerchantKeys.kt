@@ -25,6 +25,18 @@ object MerchantKeys {
     /** Gateways that appear GLUED to the name ("RAZFurlenco") — stripped when enough name remains. */
     private val GLUED_PREFIXES = listOf("razorpay", "razp", "raz", "payu")
 
+    /**
+     * Generic transaction words that identify NO merchant. A key that is just one of these (e.g.
+     * "PAYTM ORDER" → "order") must not become a learning key, and such a word alone must never
+     * fuzzy-match a real key ("order" ⊄ "swiggy order") — either would smear one merchant's
+     * category/note onto unrelated payments.
+     */
+    private val STOP_TOKENS = setOf(
+        "order", "orders", "payment", "payments", "pay", "purchase", "recharge", "store", "stores",
+        "online", "service", "services", "retail", "shop", "shopping", "txn", "transaction",
+        "bill", "bills", "card", "bank",
+    )
+
     private val NON_ALNUM = Regex("[^a-z0-9]+")
 
     /**
@@ -46,14 +58,22 @@ object MerchantKeys {
             tokens = tokens.dropLast(1)
         }
         val first = tokens.first()
-        for (prefix in GLUED_PREFIXES) {
-            // Only when ≥4 chars of real name remain, so short brands ("razor…") are never mangled.
-            if (first.startsWith(prefix) && first.length >= prefix.length + 4) {
-                tokens = listOf(first.removePrefix(prefix)) + tokens.drop(1)
-                break
+        // Never un-glue a token that IS a gateway name itself ("razorpay" must not become "orpay").
+        if (first !in GATEWAY_TOKENS) {
+            for (prefix in GLUED_PREFIXES) {
+                // Only when ≥4 chars of real name remain, so short brands ("razor…") are never mangled.
+                if (first.startsWith(prefix) && first.length >= prefix.length + 4) {
+                    tokens = listOf(first.removePrefix(prefix)) + tokens.drop(1)
+                    break
+                }
             }
         }
-        return tokens.joinToString(" ").ifBlank { null }
+        val key = tokens.joinToString(" ").ifBlank { return null }
+        // A key with no letters (an order/reference number) or that is just a generic transaction
+        // word identifies no merchant — refuse it rather than learn garbage.
+        if (key.none { it.isLetter() }) return null
+        if (tokens.size == 1 && key in STOP_TOKENS) return null
+        return key
     }
 
     /**
@@ -65,6 +85,8 @@ object MerchantKeys {
     fun sameMerchant(a: String, b: String): Boolean {
         if (a == b) return true
         val (short, long) = if (a.length <= b.length) a to b else b to a
+        // A lone generic word ("order", "payment") must never claim a longer key it appears in.
+        if (' ' !in short && short in STOP_TOKENS) return false
         if (short.length >= 4 && long.split(' ').containsAll(short.split(' '))) return true
         return ' ' !in short && ' ' !in long && short.length >= 5 && long.startsWith(short)
     }

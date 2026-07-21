@@ -111,14 +111,22 @@ class BackupRepository @Inject constructor(
             recurringDao.insertAll(recurring.map { it.toEntity() })
             paymentMethodDao.deleteAll()
             paymentMethodDao.insertAll(snapshot.data.paymentMethods.map { it.toEntity() })
-            merchantCategoryDao.deleteAll()
-            // Only mappings whose category exists in this snapshot — a stray id is never restored.
-            val restoredCategoryIds = snapshot.data.categories.mapTo(HashSet()) { it.id }
-            merchantCategoryDao.insertAll(
-                snapshot.data.merchantCategories
-                    .filter { it.categoryId in restoredCategoryIds }
-                    .map { it.toEntity() },
-            )
+            if (snapshot.schemaVersion >= 5) {
+                // v5+ backups own the learned merchant memory: full replace, filtered so a mapping
+                // whose category isn't in this snapshot is never restored.
+                merchantCategoryDao.deleteAll()
+                val restoredCategoryIds = snapshot.data.categories.mapTo(HashSet()) { it.id }
+                merchantCategoryDao.insertAll(
+                    snapshot.data.merchantCategories
+                        .filter { it.categoryId in restoredCategoryIds }
+                        .map { it.toEntity() },
+                )
+            } else {
+                // A pre-v5 backup carries no learned memory — KEEP the device's learning (the old
+                // behavior; wiping it here would punish restoring a day-old backup) and drop only
+                // entries whose category no longer exists after the category swap above.
+                merchantCategoryDao.pruneOrphans()
+            }
         }
         settingsRepository.restore(snapshot.data.settings.toState())
     }
