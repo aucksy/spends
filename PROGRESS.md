@@ -4,16 +4,15 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.50.0** — versionCode **54**, versionName **"1.50.0"**
-  (`app/build.gradle.kts` lines 41–42).
-- **Shipped DB schema: v14.** (MIGRATION_13_14 = data-only cleanup of leftover `kind='TRANSFER'` rows.)
-- **Branch:** `main`. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.50.0/Spends-v1.50.0.apk
+- **Shipped: v1.51.0** — versionCode **55**, versionName **"1.51.0"**
+  (`app/build.gradle.kts` lines 41–42). Release CI green (signed APK + AAB).
+- **DB schema: v15.** (MIGRATION_14_15 = additive `merchant_categories.note` TEXT column.)
+- **Branch:** `main`, clean. Tag-driven CI.
+- APK: https://github.com/aucksy/spends/releases/download/v1.51.0/Spends-v1.51.0.apk
 
-## ON MAIN, UNRELEASED (awaiting owner "ship" → would be v1.51.0, vc 55; DB v14→v15)
+## Recent: v1.51.0 (DB v14→v15)
 **Merchant self-learning rework + recency-ranked category picker** — commits `7842f4a`
-(feature) + `f09ffb2` (review-fix round 1) + `123ea4a` (review-fix round 2). Version NOT
-bumped yet; bump versionCode 55 / versionName 1.51.0 with the tag.
+(feature) + `f09ffb2` (review-fix round 1) + `123ea4a` (review-fix round 2) + `2a67b62` (bump).
 - **MerchantKeys** (`data/capture/MerchantKeys.kt`, pure + 25 golden unit tests):
   normalized merchant keys (gateway prefixes incl. glued "RAZFurlenco", company suffixes,
   order numbers, UPI VPA suffixes stripped; STOP_TOKENS refuses all-generic/letter-less
