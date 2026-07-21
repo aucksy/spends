@@ -5,10 +5,41 @@ for how the project works.
 
 ## Current release
 - **Shipped: v1.50.0** — versionCode **54**, versionName **"1.50.0"**
-  (`app/build.gradle.kts` lines 41–42). CI building; APK link posted on green.
-- **DB schema: v14.** (MIGRATION_13_14 = data-only cleanup of any leftover `kind='TRANSFER'` rows.)
-- **Branch:** `main`, clean. Tag-driven CI.
+  (`app/build.gradle.kts` lines 41–42).
+- **Shipped DB schema: v14.** (MIGRATION_13_14 = data-only cleanup of leftover `kind='TRANSFER'` rows.)
+- **Branch:** `main`. Tag-driven CI.
 - APK: https://github.com/aucksy/spends/releases/download/v1.50.0/Spends-v1.50.0.apk
+
+## ON MAIN, UNRELEASED (awaiting owner "ship" → would be v1.51.0, vc 55; DB v14→v15)
+**Merchant self-learning rework + recency-ranked category picker** — commits `7842f4a`
+(feature) + `f09ffb2` (review-fix round 1) + `123ea4a` (review-fix round 2). Version NOT
+bumped yet; bump versionCode 55 / versionName 1.51.0 with the tag.
+- **MerchantKeys** (`data/capture/MerchantKeys.kt`, pure + 25 golden unit tests):
+  normalized merchant keys (gateway prefixes incl. glued "RAZFurlenco", company suffixes,
+  order numbers, UPI VPA suffixes stripped; STOP_TOKENS refuses all-generic/letter-less
+  keys) + conservative `sameMerchant` fuzzy matching (word containment / glued prefix).
+- **Learning policy:** fuzzy matches pre-fill ONLY editor-reviewed surfaces (draft, pending
+  editor seed, queue guesses at scan time); silent Add / quick confirm / Confirm-all use
+  exact normalized matches only. Learning records only DELIBERATE choices: Confirm-all
+  never learns; editor save teaches only what changed (`categoryDeliberate`/`noteShown`);
+  newest entry wins across spellings; note propagation on replaceNote touches only siblings
+  carrying the previous note. `merchant_categories.note` = **MIGRATION_14_15** (DB v15).
+- **Notes remembered per merchant** and applied everywhere a capture becomes a transaction
+  (owner's choice); pre-filled editable in review editors; a deliberate clear clears + propagates.
+- **Backup Snapshot v5** carries the learned memory (restore: v5+ full-replace filtered to
+  restored categories; pre-v5 keeps device memory + pruneOrphans — schemaVersion default
+  hardened to 1, buildSnapshot stamps CURRENT_SCHEMA).
+- **Confirm-all is now transactional** (one db.withTransaction + per-row dedupe-hash guard —
+  mid-loop crash can no longer double-add on retry; pre-existing hole closed).
+- **Category pickers** rank by last-90-days usage (owner chose 3 months), all-time as
+  tie-break; cutoff computed at collect; archived categories rejected in resolveCategory.
+- **Reviews:** full 2-agent adversarial pass on 7842f4a (1 compile/Room CLEAN-to-build;
+  1 logic found 3 HIGH + mediums) → all fixed in f09ffb2 → 2-agent delta re-review found
+  3 MED residuals (guess re-learning via note-only saves; note smearing across fuzzy
+  siblings) → fixed in 123ea4a → final combined verification agent on the last delta.
+  Owner decisions honored: review queue NOT back-filled when a mapping is learned;
+  Confirm-all commits queue-time categories as displayed.
+- Debug CI green on 7842f4a and f09ffb2 (compile + all unit tests incl. SmsParser gate).
 
 ## Recent tags
 - **v1.50.0** — Excel export re-columned + **the TRANSFER kind removed from the whole app** (DB v13→v14).
