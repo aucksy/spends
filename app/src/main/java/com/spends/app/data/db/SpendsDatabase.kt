@@ -33,7 +33,7 @@ import com.spends.app.data.seed.CategorySeed
         PaymentMethodEntity::class,
         IgnoredPatternEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -281,6 +281,15 @@ abstract class SpendsDatabase : RoomDatabase() {
                 db.execSQL("DELETE FROM expenses WHERE kind = 'TRANSFER'")
                 db.execSQL("DELETE FROM pending_captures WHERE kind = 'TRANSFER'")
                 db.execSQL("DELETE FROM recurring_rules WHERE kind = 'TRANSFER'")
+            }
+        }
+
+        /** v14 -> v15: the learned merchant memory also carries the user's last note for that merchant
+         *  (`merchant_categories.note`, nullable `String?` → `TEXT`, no NOT NULL, no default — matching
+         *  Room's generated DDL) so a repeat merchant pre-fills the note too. Existing rows stay NULL. */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE merchant_categories ADD COLUMN note TEXT")
             }
         }
     }

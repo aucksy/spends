@@ -86,7 +86,10 @@ class SmsCaptureRepository @Inject constructor(
         val pmId = paymentMethodRepository.matchConfirmedByLast4(parsed.last4)
         // Live, user-confirmed captures are tagged NOTIFICATION (a deliberate add) — distinct from the
         // bulk historical scan (SMS) so the hide/delete-bulk controls never touch these (#11).
-        createLedgerTxn(amount, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION, pmId)
+        createLedgerTxn(
+            amount, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION, pmId,
+            note = learnedNoteFor(parsed.merchant),
+        )
     }
 
     /**
@@ -104,6 +107,8 @@ class SmsCaptureRepository @Inject constructor(
             kind = kind,
             categoryId = resolveCategory(parsed, kind),
             merchant = parsed.merchant?.ifBlank { null },
+            // The note the user last gave this merchant, pre-filled for review (editable before Save).
+            note = learnedNoteFor(parsed.merchant),
             occurredAt = occurredAt,
             dedupeHash = hashFor(parsed, occurredAt, amount, kind),
             // Pre-match the instrument so the editor's "Paid with" is filled in for review (#3).
@@ -140,7 +145,8 @@ class SmsCaptureRepository @Inject constructor(
                 parseConfidence = 100,
             ),
         )
-        learnMerchantCategory(merchant?.ifBlank { null }, categoryId)
+        // The user saw + saved the note field here, so their note (or a deliberate clear) is learned too.
+        learnMerchantCategory(merchant?.ifBlank { null }, categoryId, note, replaceNote = true)
         newId
     }
 
@@ -360,9 +366,13 @@ class SmsCaptureRepository @Inject constructor(
         val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
         // Bulk-scanned confirmations stay TxnSource.SMS so the "hide / delete bulk-captured" controls
         // target exactly these (and not the live NOTIFICATION ones).
-        val newId = createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, finalCategory, p.dedupeHash, TxnSource.SMS, pmId)
-        // Remember the user's category choice for this merchant so future captures pre-fill it (#14).
-        learnMerchantCategory(p.merchant, finalCategory)
+        val newId = createLedgerTxn(
+            p.amountMinor, p.kind, p.occurredAt, p.merchant, finalCategory, p.dedupeHash, TxnSource.SMS, pmId,
+            note = learnedNoteFor(p.merchant),
+        )
+        // Learn only a DELIBERATE pick (an explicit category passed in). Recording the row's own
+        // auto-guess would lock a wrong guess in as if the user chose it.
+        if (categoryId != null) learnMerchantCategory(p.merchant, finalCategory)
         pendingDao.deleteById(id)
         newId
     }
@@ -370,8 +380,12 @@ class SmsCaptureRepository @Inject constructor(
     /** Load a queued capture so the editor can prefill from it (review → "Review and Add", #9). */
     suspend fun getPending(id: Long): PendingCaptureEntity? = pendingDao.getById(id)
 
-    /** Re-categorise a queued capture in place — review-only, NEVER writes to the ledger (#9). */
-    suspend fun setPendingCategory(id: Long, categoryId: Long) = pendingDao.setCategory(id, categoryId)
+    /** Re-categorise a queued capture in place — review-only, NEVER writes to the ledger (#9). A hand-pick
+     *  here is a deliberate correction (the strongest signal before confirm), so the merchant learns it. */
+    suspend fun setPendingCategory(id: Long, categoryId: Long) {
+        pendingDao.setCategory(id, categoryId)
+        pendingDao.getById(id)?.let { learnMerchantCategory(it.merchant, categoryId) }
+    }
 
     /**
      * Confirm a pending capture the user reviewed/edited in the full editor (#9). Creates the ledger txn
@@ -408,7 +422,8 @@ class SmsCaptureRepository @Inject constructor(
                 parseConfidence = 100,
             ),
         )
-        learnMerchantCategory(merchant?.ifBlank { null } ?: p.merchant, categoryId)
+        // Full-editor confirm: the user saw + saved the note field, so it's learned (a clear clears).
+        learnMerchantCategory(merchant?.ifBlank { null } ?: p.merchant, categoryId, note, replaceNote = true)
         pendingDao.deleteById(id)
         newId
     }
@@ -420,8 +435,13 @@ class SmsCaptureRepository @Inject constructor(
             // Bulk "Confirm all" (no per-item editor) → precise last4 match only; bank-name fallback is
             // editor-only (#3) so this never silently mis-attributes a same-bank non-card debit to a card.
             val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
-            createLedgerTxn(p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS, pmId)
-            learnMerchantCategory(p.merchant, p.categoryId)
+            createLedgerTxn(
+                p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS, pmId,
+                note = learnedNoteFor(p.merchant),
+            )
+            // Deliberately NO learning here: these rows carry the app's own guesses, and recording a
+            // guess as a "user choice" locks it in (learned mappings win over fresh guesses forever).
+            // Deliberate picks are learned where they happen: setPendingCategory / the editor confirms.
         }
         pendingDao.deleteAll()
         all.size
@@ -441,7 +461,8 @@ class SmsCaptureRepository @Inject constructor(
 
     // ---- helpers ----
 
-    /** #6: merchant = the real merchant only (no bank-name fallback); note is left for the user to fill. */
+    /** #6: merchant = the real merchant only (no bank-name fallback); [note] is the learned merchant
+     *  note when the caller has one (quick/silent confirms), else left for the user to fill. */
     private suspend fun createLedgerTxn(
         amount: Long,
         kind: TxnKind,
@@ -451,13 +472,14 @@ class SmsCaptureRepository @Inject constructor(
         hash: String,
         source: TxnSource,
         paymentMethodId: Long? = null,
+        note: String? = null,
     ): Long = expenseRepository.create(
         TransactionInput(
             amountMinor = amount,
             kind = kind,
             occurredAt = occurredAt,
             merchantRaw = merchant?.ifBlank { null },
-            note = null,
+            note = note?.ifBlank { null },
             allocations = listOf(AllocationInput(categoryId, amount)),
             paymentMethodId = paymentMethodId,
             source = source,
@@ -466,25 +488,67 @@ class SmsCaptureRepository @Inject constructor(
         ),
     )
 
-    // ---- Merchant→category learning (#14) ----
+    // ---- Merchant→category/note learning (#14) ----
 
-    private fun merchantKeyOf(merchant: String?): String? =
-        merchant?.lowercase()?.trim()?.takeIf { it.isNotBlank() }
+    /**
+     * The learned entry for this raw merchant string: exact normalized-key hit first, else the most
+     * recently taught fuzzy match ([MerchantKeys.sameMerchant]) — so "RAZ*AMUL" finds what "Amul India"
+     * taught. Stored keys are re-normalized on the fly, so entries learned before normalization existed
+     * still match. Null when nothing is learned for this merchant.
+     */
+    private suspend fun learnedFor(merchant: String?): MerchantCategoryEntity? {
+        val key = MerchantKeys.normalize(merchant) ?: return null
+        merchantDao.getByKey(key)?.let { return it }
+        return merchantDao.getAllOnce()
+            .mapNotNull { e -> MerchantKeys.normalize(e.merchantKey)?.let { n -> e to n } }
+            .filter { (_, n) -> MerchantKeys.sameMerchant(key, n) }
+            .maxByOrNull { (e, _) -> e.updatedAt }
+            ?.first
+    }
 
-    /** Remember that this merchant maps to [categoryId] so future captures pre-select it. */
-    private suspend fun learnMerchantCategory(merchant: String?, categoryId: Long) {
-        val key = merchantKeyOf(merchant) ?: return
-        merchantDao.upsert(MerchantCategoryEntity(key, categoryId, DateUtils.nowMillis()))
+    /** The note the user last gave this merchant (for pre-filling), or null. */
+    suspend fun learnedNoteFor(merchant: String?): String? =
+        learnedFor(merchant)?.note?.takeIf { it.isNotBlank() }
+
+    /**
+     * Remember that this merchant maps to [categoryId] so future captures pre-select it. When
+     * [replaceNote] (the caller showed the user an editable note field) the given [note] is stored —
+     * including a deliberate clear; otherwise a previously learned note is preserved.
+     */
+    private suspend fun learnMerchantCategory(
+        merchant: String?,
+        categoryId: Long,
+        note: String? = null,
+        replaceNote: Boolean = false,
+    ) {
+        val key = MerchantKeys.normalize(merchant) ?: return
+        val existing = merchantDao.getByKey(key)
+        val newNote = note?.trim()?.takeIf { it.isNotBlank() }
+        val keptNote = if (replaceNote) newNote else newNote ?: existing?.note
+        merchantDao.upsert(
+            MerchantCategoryEntity(
+                merchantKey = key,
+                categoryId = categoryId,
+                updatedAt = DateUtils.nowMillis(),
+                note = keptNote,
+            ),
+        )
     }
 
     /**
-     * Learn from a manual recategorization of a captured transaction (the user correcting a guess in
-     * the timeline). No-op for non-capture rows or rows without a merchant.
+     * Learn from the user correcting a captured transaction after the fact — a timeline recategorise,
+     * or an editor save on an SMS/NOTIFICATION row (pass its [note] with [noteShown] = true so the
+     * merchant note updates too). No-op for non-capture rows or rows without a merchant.
      */
-    suspend fun learnFromTransaction(expenseId: Long, categoryId: Long) {
+    suspend fun learnFromTransaction(
+        expenseId: Long,
+        categoryId: Long,
+        note: String? = null,
+        noteShown: Boolean = false,
+    ) {
         val expense = expenseDao.getByIdWithAllocations(expenseId)?.expense ?: return
         if (expense.source == TxnSource.SMS || expense.source == TxnSource.NOTIFICATION) {
-            learnMerchantCategory(expense.merchantRaw, categoryId)
+            learnMerchantCategory(expense.merchantRaw, categoryId, note, replaceNote = noteShown)
         }
     }
 
@@ -506,8 +570,12 @@ class SmsCaptureRepository @Inject constructor(
 
     /** @return the resolved category id (learned merchant mapping first, then best guess; falls back to "Other"). */
     private suspend fun resolveCategory(parsed: SmsParser.Parsed, kind: TxnKind): Long {
-        // #14: if the user has categorised this merchant before, reuse that choice.
-        merchantKeyOf(parsed.merchant)?.let { key -> merchantDao.categoryFor(key)?.let { return it } }
+        // #14: if the user has categorised this merchant before, reuse that choice. The learned id is
+        // verified against the live categories (a mapping can outlive its category, e.g. post-restore) —
+        // an unverifiable id falls through to the normal guess instead of breaking the insert.
+        learnedFor(parsed.merchant)?.let { learned ->
+            if (categoryDao.getById(learned.categoryId) != null) return learned.categoryId
+        }
         parsed.categoryHint?.let { hint -> categoryId(hint)?.let { return it } }
         return when (kind) {
             TxnKind.INCOME -> categoryId("Other Income") ?: fallbackCategory()

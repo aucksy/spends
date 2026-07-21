@@ -15,20 +15,24 @@ interface CategoryDao {
     fun observeActive(): Flow<List<CategoryEntity>>
 
     /**
-     * Active categories ordered by how often they're actually used (most-used first), so the
-     * picker keeps the user's frequent categories at the top. Falls back to seed order, then name.
+     * Active categories ordered by CURRENT habits: how often each was used since [recentCutoffMillis]
+     * (most first), with the all-time count breaking ties — so the picker follows what the user picks
+     * these days instead of being pinned forever by old imported history. Falls back to seed order, then name.
      */
     @Query(
         "SELECT c.* FROM categories c " +
             "LEFT JOIN (" +
-            "  SELECT a.categoryId AS cid, COUNT(*) AS cnt FROM allocations a " +
+            "  SELECT a.categoryId AS cid, " +
+            "         SUM(CASE WHEN e.occurredAt >= :recentCutoffMillis THEN 1 ELSE 0 END) AS recentCnt, " +
+            "         COUNT(*) AS totalCnt " +
+            "  FROM allocations a " +
             "  JOIN expenses e ON e.id = a.expenseId AND e.deletedAt IS NULL " +
             "  GROUP BY a.categoryId" +
             ") u ON u.cid = c.id " +
             "WHERE c.isArchived = 0 " +
-            "ORDER BY COALESCE(u.cnt, 0) DESC, c.sortOrder ASC, c.name ASC",
+            "ORDER BY COALESCE(u.recentCnt, 0) DESC, COALESCE(u.totalCnt, 0) DESC, c.sortOrder ASC, c.name ASC",
     )
-    fun observeActiveByUsage(): Flow<List<CategoryEntity>>
+    fun observeActiveByUsage(recentCutoffMillis: Long): Flow<List<CategoryEntity>>
 
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC, name ASC")
     fun observeAll(): Flow<List<CategoryEntity>>

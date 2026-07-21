@@ -16,9 +16,10 @@ data class Snapshot(
 ) {
     companion object {
         // v2 adds `recurring`; v3 adds category `iconCustomized`; v4 adds `paymentMethods` + the
-        // `smartCycleEnabled` setting. Decoders use ignoreUnknownKeys + field defaults, so older backups
-        // (no recurring / iconCustomized / paymentMethods) still restore cleanly.
-        const val CURRENT_SCHEMA = 4
+        // `smartCycleEnabled` setting; v5 adds `merchantCategories` (the learned merchant→category/note
+        // memory, so a new phone keeps the learning). Decoders use ignoreUnknownKeys + field defaults,
+        // so older backups (missing any of these) still restore cleanly.
+        const val CURRENT_SCHEMA = 5
     }
 }
 
@@ -31,6 +32,8 @@ data class SnapshotData(
     val recurring: List<SnapshotRecurring> = emptyList(),
     // Added in v4 (Cards feature). Default keeps older backups deserialising.
     val paymentMethods: List<SnapshotPaymentMethod> = emptyList(),
+    // Added in v5 (learned merchant memory). Default keeps older backups deserialising.
+    val merchantCategories: List<SnapshotMerchantCategory> = emptyList(),
 )
 
 @Serializable
@@ -122,6 +125,15 @@ data class SnapshotRecurring(
     // The paid-with instrument for generated transactions (#6). null = Bank. Default keeps older backups
     // valid; payment-method ids are preserved on restore, so the reference stays correct.
     val paymentMethodId: Long? = null,
+)
+
+/** Learned merchant→category/note memory (v5) so restores keep what the app has learned. */
+@Serializable
+data class SnapshotMerchantCategory(
+    val merchantKey: String,
+    val categoryId: Long,
+    val updatedAt: Long,
+    val note: String? = null,
 )
 
 @Serializable

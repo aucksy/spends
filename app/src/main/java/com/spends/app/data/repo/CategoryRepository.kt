@@ -18,8 +18,13 @@ class CategoryRepository @Inject constructor(
 ) {
     fun observeActive(): Flow<List<CategoryEntity>> = dao.observeActive()
 
-    /** Active categories, most-used first (for the quick picker). */
-    fun observeActiveByUsage(): Flow<List<CategoryEntity>> = dao.observeActiveByUsage()
+    /**
+     * Active categories for the pickers: ranked by use in the last ~3 months (current habits),
+     * all-time count breaking ties. The cutoff is fixed when the picker subscribes — fine, since a
+     * ViewModel re-subscribes on every screen visit.
+     */
+    fun observeActiveByUsage(): Flow<List<CategoryEntity>> =
+        dao.observeActiveByUsage(System.currentTimeMillis() - RECENT_USAGE_WINDOW_MILLIS)
 
     fun observeAll(): Flow<List<CategoryEntity>> = dao.observeAll()
 
@@ -95,4 +100,9 @@ class CategoryRepository @Inject constructor(
             dao.deleteById(id)
             CategoryDeleteResult.DELETED
         }
+
+    private companion object {
+        /** "Recent" window for picker ranking — ~3 months (the owner's chosen balance). */
+        const val RECENT_USAGE_WINDOW_MILLIS = 90L * 24 * 60 * 60 * 1000
+    }
 }

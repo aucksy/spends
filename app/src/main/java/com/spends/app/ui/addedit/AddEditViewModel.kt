@@ -134,7 +134,8 @@ class AddEditViewModel @Inject constructor(
                         kind = p.kind,
                         categoryId = p.categoryId,
                         merchant = p.merchant.orEmpty(),
-                        note = "",
+                        // Pre-fill the note the user last gave this merchant (learned memory; editable).
+                        note = captureRepository.learnedNoteFor(p.merchant).orEmpty(),
                         occurredAt = p.occurredAt,
                         // Auto-match the instrument from the SMS so "Paid with" is pre-filled for review (#3).
                         paymentMethodId = paymentMethodRepository.matchInstrument(p.last4, p.institution),
@@ -150,7 +151,7 @@ class AddEditViewModel @Inject constructor(
                     kind = it.kind,
                     categoryId = it.categoryId,
                     merchant = it.merchant.orEmpty(),
-                    note = "",
+                    note = it.note.orEmpty(), // learned merchant note, pre-filled for review
                     occurredAt = it.occurredAt,
                     paymentMethodId = it.paymentMethodId,
                 )
@@ -215,7 +216,15 @@ class AddEditViewModel @Inject constructor(
                         allocations = listOf(AllocationInput(categoryId, amountMinor)),
                         paymentMethodId = paymentMethodId,
                     )
-                    if (isEdit) expenseRepository.update(expenseId, input) else expenseRepository.create(input)
+                    if (isEdit) {
+                        expenseRepository.update(expenseId, input)
+                        // Correcting a captured (SMS/NOTIFICATION) row in the editor is the user's main
+                        // correction path since swipe went away — teach the merchant memory from it.
+                        // The note field was visible here, so the note is learned too (a clear clears).
+                        captureRepository.learnFromTransaction(expenseId, categoryId, note, noteShown = true)
+                    } else {
+                        expenseRepository.create(input)
+                    }
                 }
             }
             _saving.value = false

@@ -12,6 +12,7 @@ import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
+import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PaymentMethodEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.settings.SettingsRepository
@@ -64,6 +65,7 @@ class BackupRepository @Inject constructor(
     private val expenseDao = db.expenseDao()
     private val recurringDao = db.recurringDao()
     private val paymentMethodDao = db.paymentMethodDao()
+    private val merchantCategoryDao = db.merchantCategoryDao()
 
     // Serialises Drive operations so the daily worker and a user-tapped "Back up now" can't race
     // (e.g. both create the "Spends Backup" folder at once).
@@ -84,6 +86,7 @@ class BackupRepository @Inject constructor(
                 allocations = expenseDao.getAllAllocationsOnce().map { it.toSnapshot() },
                 recurring = recurringDao.getAllOnce().map { it.toSnapshot() },
                 paymentMethods = paymentMethodDao.getAllOnce().map { it.toSnapshot() },
+                merchantCategories = merchantCategoryDao.getAllOnce().map { it.toSnapshot() },
             ),
         )
     }
@@ -108,6 +111,14 @@ class BackupRepository @Inject constructor(
             recurringDao.insertAll(recurring.map { it.toEntity() })
             paymentMethodDao.deleteAll()
             paymentMethodDao.insertAll(snapshot.data.paymentMethods.map { it.toEntity() })
+            merchantCategoryDao.deleteAll()
+            // Only mappings whose category exists in this snapshot — a stray id is never restored.
+            val restoredCategoryIds = snapshot.data.categories.mapTo(HashSet()) { it.id }
+            merchantCategoryDao.insertAll(
+                snapshot.data.merchantCategories
+                    .filter { it.categoryId in restoredCategoryIds }
+                    .map { it.toEntity() },
+            )
         }
         settingsRepository.restore(snapshot.data.settings.toState())
     }
@@ -292,6 +303,14 @@ private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
     intervalCount = intervalCount, anchorDay = anchorDay, startDate = startDate, nextRunAt = nextRunAt,
     lastRunAt = lastRunAt, active = active, createdAt = createdAt, updatedAt = updatedAt,
     occurrenceLimit = occurrenceLimit, paymentMethodId = paymentMethodId,
+)
+
+private fun MerchantCategoryEntity.toSnapshot() = SnapshotMerchantCategory(
+    merchantKey = merchantKey, categoryId = categoryId, updatedAt = updatedAt, note = note,
+)
+
+private fun SnapshotMerchantCategory.toEntity() = MerchantCategoryEntity(
+    merchantKey = merchantKey, categoryId = categoryId, updatedAt = updatedAt, note = note,
 )
 
 private fun PaymentMethodEntity.toSnapshot() = SnapshotPaymentMethod(
