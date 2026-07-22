@@ -377,7 +377,7 @@ private fun isAppInstalled(context: Context, packageName: String): Boolean =
 /** Deep-link to our row in the notification-access settings (Android 11+), else the general list. */
 private fun openNotificationAccessSettings(context: Context) {
     val component = ComponentName(context, CaptureNotificationListenerService::class.java)
-    val detail = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL)
+    val detail = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
         .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component.flattenToString())
     val list = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
     val tried = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
