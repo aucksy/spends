@@ -207,6 +207,7 @@ class AddEditViewModel @Inject constructor(
                 isDraft -> captureRepository.commitDraft(
                     amountMinor, kind, categoryId, merchant, note, occurredAt, draft!!.dedupeHash, pmId,
                     relaxedHash = draft!!.relaxedHash,
+                    fromNotification = draft!!.fromNotification,
                 )
                 else -> {
                     val input = TransactionInput(

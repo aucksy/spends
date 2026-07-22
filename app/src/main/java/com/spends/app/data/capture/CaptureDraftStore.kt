@@ -23,6 +23,9 @@ data class CaptureDraft(
     val note: String? = null,
     // Phase 4: the parse's ref-less hash, carried so Save can spot a committed ref-loss twin exactly.
     val relaxedHash: String? = null,
+    // Phase 4: true when this draft came from a watched app's notification (not an SMS) — Save then
+    // additionally applies the notification-only coarse twin guard for ref-less drafts.
+    val fromNotification: Boolean = false,
 )
 
 /**

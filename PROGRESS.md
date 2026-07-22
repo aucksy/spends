@@ -50,26 +50,64 @@ No DB change; no snapshot schema bump (additive settings field only).
   bills + current open statements. Likely a statements/dues table (DB v15→v16) +
   Cards-tab/breakdown surfacing. Do NOT start without the owner un-parking it.
 
-## ▶ ACTIVE NEXT = Notification capture (Phase 4), fresh chat
-Owner-chosen 2026-07-22. Rationale: SMS capture can't read **RCS/RBM** bank alerts (known
-limitation) — but RCS messages and bank/UPI apps DO post system notifications, so a
-NotificationListenerService catches what SMS capture misses.
-- PRD Phase 4 scope: capture from bank/UPI app notifications (GPay, PhonePe, bank apps,
-  and Google Messages RCS chats), review-only via the existing `pending_captures` queue —
-  NEVER auto-add (same hard rule as SMS).
-- Reuse: `SmsParser`-style pure parsing on notification title+text; `SenderAllowlist`
-  concept → per-app + per-sender allowlist; dedupe hashes ALREADY guard cross-source
-  duplicates (an SMS + a notification for the same txn must collapse — day|amount|kind|
-  last4-or-merchant|ref hash); CaptureNotifier / review screen / merchant learning all
-  reusable as-is.
-- Prior art in the family: NotDigest (D:\Apps\Notifications Digest) has the battle-tested
-  NotificationListenerService patterns — OEM unbind → `requestRebind` self-heal +
-  specialUse foreground-service keep-alive; note Spends may NOT want a keep-alive service
-  initially (battery/permission cost) — decide in design.
-- Known traps: listener needs its own special permission grant (Settings deep-link);
-  notification text comes as extras (EXTRA_TITLE/EXTRA_TEXT/EXTRA_BIG_TEXT); apps repost/
-  update the same notification (dedupe by key+when); group summaries duplicate children.
-- Kickoff prompt for the fresh chat is in the handoff (also see memory spends-app.md).
+## ▶ BUILT, UNRELEASED: Notification capture (Phase 4) — awaiting owner ship gate
+Owner-chosen 2026-07-22; built same day. Commits `85ca2f2` (feature) + `56e98c0`/`c70d843`/
+`d285b74` (compile fixes) + `eb9094a` (review-fix round) + the delta-fix commit after it.
+**DB v15→v16** (`pending_captures.sourceApp`, additive nullable TEXT). **CI green** on the
+full chain (compile + all unit tests incl. the SmsParser golden gate). **NOT tagged — the
+owner has not said ship.** Version stays v1.52.0 / vc 56 until then.
+
+**What it does:** `CaptureNotificationListenerService` reads notifications from apps the
+user ticks (launch set: **Google Messages + Truecaller** — owner-chosen; GPay/PhonePe
+deferred until they get their own parsing rules, so no checkbox that captures nothing).
+Closes the RCS gap: RCS bank alerts look like SMS in notification form, so the untouched
+`SmsParser` + allowlist handle them. Review-only, same hard rule as SMS — a capture either
+shows the standard "Review & Add / Ignore" prompt or lands in `pending_captures`; NEVER
+the ledger without explicit user action.
+
+**Key design points:**
+- `SenderAllowlist.canonicalSenderFor`: RCS friendly names ("Axis Bank", "HDFC Bank
+  Cards") → the canonical DLT header, so parse + hashes are identical to the SMS twin;
+  suffix stripping (Ltd/Limited/India/Cards/Card/Bank/Official), exact-match-after-strip.
+- MessagingStyle-aware extraction (per-message sender/text/timestamp; bigText fallback);
+  group summaries / ongoing / FGS skipped; repost guard (7d TTL) + 72h live age gate
+  (sweep gets the full 7d); `requestRebind` self-heal; **no keep-alive service**
+  (owner-chosen); shade catch-up on connect queues SILENTLY (owner said yes to sweep).
+- **⭐Twin collapse (the hard part):** the same real payment can arrive as SMS + notification
+  with the notification text missing the ref number → different dedupe hashes. Solution =
+  the **relaxed hash** (hash with ref blanked): a ref-less capture's stored hash IS its
+  relaxed hash, so twins are exactly detectable. Guards at every layer: `claimPrompt`
+  (atomic, both live paths, refs-provably-differ escape), queue insert (with-ref insert
+  deletes its queued ref-less twin; exact relaxed check queue-side), and EVERY commit path
+  (`twinAlreadyCommitted` on confirm/confirm-all, relaxedHash+fromNotification on
+  commitDraft). The coarse day|amount|kind branch is confined to notification-sourced
+  rows so the pure-SMS flow's blast radius is nil.
+- Blocked-notifications fallback: a PROMPT that can't show (POST_NOTIFICATIONS denied)
+  queues silently instead of evaporating.
+- Settings: "Detect from app notifications" toggle + notification-access deep-link
+  (`ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS` — note the full constant name) + app
+  checklist; defaults seeded ONCE via a seeded-flag (un-ticking everything sticks).
+  Device-local prefs, deliberately NOT in the backup snapshot.
+- Review UI: "DETECTED FROM NOTIFICATION" badge + "via <app>" in the detail sheet.
+
+**Reviews (ritual honored):** round 1 = 2 full adversarial agents (compile: 1 blocker
+found+fixed; logic: 1 BLOCKER + 1 HIGH + 5 MED) → fix round `eb9094a` → delta verification
+agent (traced the twin matrix, hash byte-compat, races): found 1 residual HIGH (ref-less
+notification DRAFT could commit after its SMS twin, needed origin threading into
+CaptureDraft) → fixed. ⭐LESSON: `*/` inside a KDoc sentence ("*prompts*/re-parses") ends
+the comment and produces bizarre parse errors — CI now uploads the full Gradle output as a
+`build-output` artifact (fetchable anonymously via nightly.link) because job logs need
+admin auth.
+
+**Accepted residuals (owner may revisit):** rejected captures can resurrect after process
+death + repost (pre-existing re-scan semantics, no tombstone table); ledger-side relaxed
+check is coarse day|amount|kind → an RCS-only no-ref alert is silently dropped when ANY
+same-day same-amount row exists (conservative by design); a swipe-dismissed prompt for an
+RCS-only alert is unrecoverable (no history source); unknown RBM agent names silently
+no-match (no debug counter); GPay/PhonePe/Paytm parsing = future round.
+
+**To ship (when owner says so):** bump versionCode 57 / versionName 1.53.0, tag v1.53.0,
+poll CI, paste the direct APK link, give the manual-test checklist (below in handoff).
 
 ## Recent: v1.51.0 (DB v14→v15)
 **Merchant self-learning rework + recency-ranked category picker** — commits `7842f4a`

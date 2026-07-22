@@ -171,7 +171,7 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             return
         }
         if (guard.claimPrompt(preview.relaxedHash, preview.refNumber)) {
-            captureNotifier.postCapturePrompt(c.sender, c.body, c.timestamp, preview)
+            captureNotifier.postCapturePrompt(c.sender, c.body, c.timestamp, preview, sourceApp = pkg)
         }
         // else: the SMS receiver already prompted a twin of this transaction — drop; every write
         // path re-checks the exact + relaxed hashes, so nothing can double-add regardless.

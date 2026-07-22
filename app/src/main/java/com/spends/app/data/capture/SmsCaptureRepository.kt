@@ -98,7 +98,14 @@ class SmsCaptureRepository @Inject constructor(
         val kind = parsed.kind ?: return@withLock null
         val occurredAt = parsed.occurredAt ?: receivedAt
         val hash = hashFor(parsed, occurredAt, amount, kind)
-        if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null // already in the ledger
+        val ledgerHashes = expenseDao.allDedupeHashes().toHashSet()
+        if (hash in ledgerHashes) return@withLock null // already in the ledger
+        // Twin guard (Phase 4): this path is currently unreachable (the prompt lost its silent "Add"
+        // action), but if it ever returns it must not re-open the ref-loss twin hole — a committed
+        // ref-less twin stores exactly this parse's relaxed hash.
+        if (relaxedHashOf(parsed, occurredAt, amount, kind).let { it != hash && it in ledgerHashes }) {
+            return@withLock null
+        }
         // Exact learned matches only — this one-tap add commits with zero review.
         val categoryId = resolveCategory(parsed, kind, allowFuzzy = false)
         // Silent one-tap "Add" (no editor): tag by last4 only — the PRECISE match. The looser bank-name
@@ -116,8 +123,9 @@ class SmsCaptureRepository @Inject constructor(
     /**
      * Parse a live SMS into an UNSAVED draft for the editor (notification "Edit"/tap). Writes NOTHING —
      * the transaction is created only when the user Saves, via [commitDraft] (#4). Null when not a txn.
+     * [sourceApp] = the watched app's package for a listener-sourced prompt (Phase 4), null for SMS.
      */
-    suspend fun draftFor(sender: String?, body: String?, receivedAt: Long): CaptureDraft? {
+    suspend fun draftFor(sender: String?, body: String?, receivedAt: Long, sourceApp: String? = null): CaptureDraft? {
         val parsed = SmsParser.parse(sender, body, receivedAt)
         if (parsed.result != SmsParser.Result.TRANSACTION) return null
         val amount = parsed.amountMinor ?: return null
@@ -134,6 +142,7 @@ class SmsCaptureRepository @Inject constructor(
             occurredAt = occurredAt,
             dedupeHash = hashFor(parsed, occurredAt, amount, kind),
             relaxedHash = relaxedHashOf(parsed, occurredAt, amount, kind),
+            fromNotification = sourceApp != null,
             // Pre-match the instrument so the editor's "Paid with" is filled in for review (#3).
             paymentMethodId = paymentMethodRepository.matchInstrument(parsed.last4, parsed.institution),
         )
@@ -153,6 +162,7 @@ class SmsCaptureRepository @Inject constructor(
         dedupeHash: String,
         paymentMethodId: Long? = null,
         relaxedHash: String? = null,
+        fromNotification: Boolean = false,
     ): Long = captureMutex.withLock {
         // Same guard the silent "Add" path has: never double-count an SMS already in the ledger (e.g. a
         // re-delivered alert, or one the user already added). Returns a sentinel; the editor only needs
@@ -160,6 +170,14 @@ class SmsCaptureRepository @Inject constructor(
         val ledgerHashes = expenseDao.allDedupeHashes().toHashSet()
         if (dedupeHash in ledgerHashes) return@withLock -1L
         if (relaxedHash != null && relaxedHash != dedupeHash && relaxedHash in ledgerHashes) return@withLock -1L
+        // Ref-less NOTIFICATION draft (relaxedHash == dedupeHash): its with-ref SMS twin stores an
+        // unknowable hash, so the coarse day|amount|kind ledger check is the only handle — mirrors
+        // twinAlreadyCommitted's ref-less branch and, like it, never touches the pure-SMS flow.
+        if (relaxedHash != null && relaxedHash == dedupeHash && fromNotification &&
+            ledgerHasDayAmountKind(occurredAt, amountMinor, kind)
+        ) {
+            return@withLock -1L
+        }
         val newId = expenseRepository.create(
             TransactionInput(
                 amountMinor = amountMinor,
@@ -476,10 +494,11 @@ class SmsCaptureRepository @Inject constructor(
     /**
      * True when confirming [p] would re-add money that is already in the ledger (Phase 4 twin
      * guards, checked at EVERY commit): its exact hash is committed; or its REF-LESS twin is
-     * committed (the ledger then contains exactly p's relaxed hash — precise, no false positives);
-     * or — for a ref-less notification row — any same-day|amount|kind ledger row exists (the
+     * committed (the ledger then contains exactly p's relaxed hash — precise, and applied to ALL
+     * rows: for a true SMS↔SMS ref-loss twin this CORRECTS v1.52.0, which double-counted); or —
+     * for a ref-less notification row only — any same-day|amount|kind ledger row exists (the
      * with-ref twin's hash is unknowable from this side, so the coarse key is the only handle;
-     * confined to sourceApp rows so the SMS-only flow keeps its v1.52.0 behavior exactly).
+     * that looser branch is confined to sourceApp rows to keep the SMS flow's blast radius nil).
      */
     private suspend fun twinAlreadyCommitted(p: PendingCaptureEntity, ledgerHashes: Set<String>): Boolean {
         if (p.dedupeHash in ledgerHashes) return true

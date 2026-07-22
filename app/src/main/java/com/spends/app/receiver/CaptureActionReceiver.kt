@@ -67,5 +67,8 @@ class CaptureActionReceiver : BroadcastReceiver() {
         const val EXTRA_BODY = "body"
         const val EXTRA_RECEIVED_AT = "received_at"
         const val EXTRA_NOTIF_ID = "notif_id"
+
+        /** Watched-app package for a notification-listener capture (Phase 4); null for SMS. */
+        const val EXTRA_SOURCE_APP = "source_app"
     }
 }

@@ -47,10 +47,10 @@ class MainViewModel @Inject constructor(
     private val _pendingCaptureDraft = MutableStateFlow(false)
     val pendingCaptureDraft: StateFlow<Boolean> = _pendingCaptureDraft
 
-    fun handleCaptureEdit(sender: String?, body: String?, receivedAt: Long) {
+    fun handleCaptureEdit(sender: String?, body: String?, receivedAt: Long, sourceApp: String? = null) {
         if (body.isNullOrBlank()) return
         viewModelScope.launch {
-            val draft = runCatching { captureRepository.draftFor(sender, body, receivedAt) }.getOrNull()
+            val draft = runCatching { captureRepository.draftFor(sender, body, receivedAt, sourceApp) }.getOrNull()
             if (draft != null) {
                 captureDraftStore.set(draft)
                 _pendingCaptureDraft.value = true

@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
             sender = intent.getStringExtra(CaptureActionReceiver.EXTRA_SENDER),
             body = intent.getStringExtra(CaptureActionReceiver.EXTRA_BODY),
             receivedAt = intent.getLongExtra(CaptureActionReceiver.EXTRA_RECEIVED_AT, System.currentTimeMillis()),
+            sourceApp = intent.getStringExtra(CaptureActionReceiver.EXTRA_SOURCE_APP),
         )
         intent.removeExtra(EXTRA_CAPTURE_EDIT) // consume so a config change / re-create doesn't re-fire
     }

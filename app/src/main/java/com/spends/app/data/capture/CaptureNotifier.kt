@@ -35,7 +35,16 @@ class CaptureNotifier @Inject constructor(
         }
     }
 
-    fun postCapturePrompt(sender: String?, body: String, receivedAt: Long, preview: SmsCaptureRepository.CapturePreview) {
+    /** [sourceApp] = the watched app's package when this alert came from the notification listener
+     *  (Phase 4); carried through the edit intent into the draft so Save can apply the notification-
+     *  only twin guard. Null for the SMS path. */
+    fun postCapturePrompt(
+        sender: String?,
+        body: String,
+        receivedAt: Long,
+        preview: SmsCaptureRepository.CapturePreview,
+        sourceApp: String? = null,
+    ) {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) return // POST_NOTIFICATIONS not granted — nothing to show
         ensureChannel()
@@ -52,11 +61,11 @@ class CaptureNotifier @Inject constructor(
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setAutoCancel(true)
-            .setContentIntent(editIntent(sender, body, receivedAt, notifId, 0))
+            .setContentIntent(editIntent(sender, body, receivedAt, notifId, 0, sourceApp))
             // Two actions only (#8): "Review & Add" opens the editor prefilled (review-then-add, never a
             // silent add — matches the user's review-only stance), "Ignore" dismisses. The old silent "Add"
             // broadcast action is gone.
-            .addAction(0, "Review & Add", editIntent(sender, body, receivedAt, notifId, 3))
+            .addAction(0, "Review & Add", editIntent(sender, body, receivedAt, notifId, 3, sourceApp))
             .addAction(0, "Ignore", broadcast(CaptureActionReceiver.ACTION_IGNORE, sender, body, receivedAt, notifId, 2))
             .build()
 
@@ -78,7 +87,7 @@ class CaptureNotifier @Inject constructor(
         return PendingIntent.getBroadcast(context, notifId + req, intent, PENDING_FLAGS)
     }
 
-    private fun editIntent(sender: String?, body: String, receivedAt: Long, notifId: Int, req: Int): PendingIntent {
+    private fun editIntent(sender: String?, body: String, receivedAt: Long, notifId: Int, req: Int, sourceApp: String?): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(MainActivity.EXTRA_CAPTURE_EDIT, true)
@@ -86,6 +95,7 @@ class CaptureNotifier @Inject constructor(
             putExtra(CaptureActionReceiver.EXTRA_BODY, body)
             putExtra(CaptureActionReceiver.EXTRA_RECEIVED_AT, receivedAt)
             putExtra(CaptureActionReceiver.EXTRA_NOTIF_ID, notifId)
+            putExtra(CaptureActionReceiver.EXTRA_SOURCE_APP, sourceApp)
         }
         return PendingIntent.getActivity(context, notifId + req, intent, PENDING_FLAGS)
     }
