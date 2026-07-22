@@ -4,14 +4,14 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.51.0** — versionCode **55**, versionName **"1.51.0"**
-  (`app/build.gradle.kts` lines 41–42). Release CI green (signed APK + AAB).
-- **DB schema: v15.** (MIGRATION_14_15 = additive `merchant_categories.note` TEXT column.)
-- **Branch:** `main`. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.51.0/Spends-v1.51.0.apk
+- **Shipped: v1.52.0** — versionCode **56**, versionName **"1.52.0"**
+  (`app/build.gradle.kts` lines 41–42). Tagged `eff095a` (owner said ship 2026-07-22).
+- **DB schema: v15.** (unchanged since v1.51.0; MIGRATION_14_15 = `merchant_categories.note`.)
+- **Branch:** `main`, clean. Tag-driven CI.
+- APK: https://github.com/aucksy/spends/releases/download/v1.52.0/Spends-v1.52.0.apk
 
-## UNRELEASED on main (awaiting owner ship gate → will become v1.52.0, vc 56)
-**Smart Cycle Step 1 — the "balance improves on billing day" fix.** Commit `32cca4f`.
+## v1.52.0 — Smart Cycle Step 1 ("balance improves on billing day" fix)
+Feature commit `32cca4f` + bump `eff095a`.
 No DB change; no snapshot schema bump (additive settings field only).
 
 - **RCA (owner-reported, export-verified):** Smart Cycle was a per-instrument composite —
@@ -43,12 +43,33 @@ No DB change; no snapshot schema bump (additive settings field only).
 - **Known nits (accepted):** in-app pill says "Single Card" over the whole-cycle fallback
   when a picked card was deleted (rare, numbers correct); dead composite multi-instrument
   code (`resolveSmartCycle`, `isComposite` flags) kept — Step 2 reuses the machinery.
-- **▶ NEXT = Step 2 (owner-approved direction): card dues.** When a card's billing day
-  passes, the closed statement becomes a visible "Bill generated — ₹X unpaid" that persists
-  until paid (manual "mark paid" + auto-detect from the bill-payment SMS the parser
-  currently IGNORES — use as a signal, not a transaction). "Total unpaid on cards" = closed
-  unpaid bills + current open statements. Likely needs a small statements/dues table (DB
-  v15→v16) + Cards-tab/breakdown surfacing. Fresh chat, design first.
+- **⏸ PARKED (owner 2026-07-22): Step 2 card dues.** When a card's billing day passes, the
+  closed statement becomes a visible "Bill generated — ₹X unpaid" persisting until paid
+  (manual "mark paid" + auto-detect from the bill-payment SMS the parser currently
+  IGNORES — use as a signal, not a transaction). "Total unpaid on cards" = closed unpaid
+  bills + current open statements. Likely a statements/dues table (DB v15→v16) +
+  Cards-tab/breakdown surfacing. Do NOT start without the owner un-parking it.
+
+## ▶ ACTIVE NEXT = Notification capture (Phase 4), fresh chat
+Owner-chosen 2026-07-22. Rationale: SMS capture can't read **RCS/RBM** bank alerts (known
+limitation) — but RCS messages and bank/UPI apps DO post system notifications, so a
+NotificationListenerService catches what SMS capture misses.
+- PRD Phase 4 scope: capture from bank/UPI app notifications (GPay, PhonePe, bank apps,
+  and Google Messages RCS chats), review-only via the existing `pending_captures` queue —
+  NEVER auto-add (same hard rule as SMS).
+- Reuse: `SmsParser`-style pure parsing on notification title+text; `SenderAllowlist`
+  concept → per-app + per-sender allowlist; dedupe hashes ALREADY guard cross-source
+  duplicates (an SMS + a notification for the same txn must collapse — day|amount|kind|
+  last4-or-merchant|ref hash); CaptureNotifier / review screen / merchant learning all
+  reusable as-is.
+- Prior art in the family: NotDigest (D:\Apps\Notifications Digest) has the battle-tested
+  NotificationListenerService patterns — OEM unbind → `requestRebind` self-heal +
+  specialUse foreground-service keep-alive; note Spends may NOT want a keep-alive service
+  initially (battery/permission cost) — decide in design.
+- Known traps: listener needs its own special permission grant (Settings deep-link);
+  notification text comes as extras (EXTRA_TITLE/EXTRA_TEXT/EXTRA_BIG_TEXT); apps repost/
+  update the same notification (dedupe by key+when); group summaries duplicate children.
+- Kickoff prompt for the fresh chat is in the handoff (also see memory spends-app.md).
 
 ## Recent: v1.51.0 (DB v14→v15)
 **Merchant self-learning rework + recency-ranked category picker** — commits `7842f4a`
