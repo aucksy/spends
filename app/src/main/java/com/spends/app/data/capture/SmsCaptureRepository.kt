@@ -56,9 +56,17 @@ class SmsCaptureRepository @Inject constructor(
     /** Outcome of a historical inbox scan. */
     data class ScanResult(val scanned: Int, val queued: Int, val skippedDuplicate: Int)
 
-    /** A read-only summary of a parsed SMS for the live capture prompt. [dedupeHash] lets callers
-     *  collapse the SMS + notification twins of the same alert into one prompt (Phase 4). */
-    data class CapturePreview(val amountMinor: Long, val kind: TxnKind, val title: String, val dedupeHash: String)
+    /** A read-only summary of a parsed SMS for the live capture prompt. [dedupeHash] + [relaxedHash] +
+     *  [refNumber] let both live paths collapse the SMS + notification twins of one alert into ONE
+     *  prompt — including twins whose texts differ only by a lost reference number (Phase 4). */
+    data class CapturePreview(
+        val amountMinor: Long,
+        val kind: TxnKind,
+        val title: String,
+        val dedupeHash: String,
+        val relaxedHash: String,
+        val refNumber: String?,
+    )
 
     // ---- Live capture (notification path) ----
 
@@ -72,6 +80,8 @@ class SmsCaptureRepository @Inject constructor(
         return CapturePreview(
             amount, kind, parsed.merchant ?: parsed.institution ?: "Transaction",
             dedupeHash = hashFor(parsed, occurredAt, amount, kind),
+            relaxedHash = relaxedHashOf(parsed, occurredAt, amount, kind),
+            refNumber = parsed.refNumber,
         )
     }
 
@@ -123,12 +133,16 @@ class SmsCaptureRepository @Inject constructor(
             note = learnedNoteFor(parsed.merchant, allowFuzzy = true),
             occurredAt = occurredAt,
             dedupeHash = hashFor(parsed, occurredAt, amount, kind),
+            relaxedHash = relaxedHashOf(parsed, occurredAt, amount, kind),
             // Pre-match the instrument so the editor's "Paid with" is filled in for review (#3).
             paymentMethodId = paymentMethodRepository.matchInstrument(parsed.last4, parsed.institution),
         )
     }
 
-    /** Save an edited live-capture draft to the ledger (explicit Save). Tags NOTIFICATION + the dedupe hash. */
+    /** Save an edited live-capture draft to the ledger (explicit Save). Tags NOTIFICATION + the dedupe
+     *  hash. [relaxedHash] (when the draft carries one, Phase 4) additionally blocks the ref-loss twin:
+     *  if the ledger already holds a row stored under exactly that relaxed hash, this same transaction
+     *  was committed from its ref-less notification twin — exact match, never a distinct transaction. */
     suspend fun commitDraft(
         amountMinor: Long,
         kind: TxnKind,
@@ -138,11 +152,14 @@ class SmsCaptureRepository @Inject constructor(
         occurredAt: Long,
         dedupeHash: String,
         paymentMethodId: Long? = null,
+        relaxedHash: String? = null,
     ): Long = captureMutex.withLock {
         // Same guard the silent "Add" path has: never double-count an SMS already in the ledger (e.g. a
         // re-delivered alert, or one the user already added). Returns a sentinel; the editor only needs
         // to know Save finished — it ignores the id.
-        if (dedupeHash in expenseDao.allDedupeHashes().toHashSet()) return@withLock -1L
+        val ledgerHashes = expenseDao.allDedupeHashes().toHashSet()
+        if (dedupeHash in ledgerHashes) return@withLock -1L
+        if (relaxedHash != null && relaxedHash != dedupeHash && relaxedHash in ledgerHashes) return@withLock -1L
         val newId = expenseRepository.create(
             TransactionInput(
                 amountMinor = amountMinor,
@@ -216,6 +233,13 @@ class SmsCaptureRepository @Inject constructor(
             if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null
             if (hash in pendingDao.allHashes().toHashSet()) return@withLock null
             if (sourceApp != null && relaxedNoRefDuplicate(parsed, occurredAt, amount, kind)) return@withLock null
+            // Twin upgrade: inserting a WITH-ref capture removes any ref-less twin already queued (a
+            // row whose stored hash equals this capture's relaxed hash IS that twin — exact match, no
+            // false positives) so one payment never shows as two review rows.
+            if (parsed.refNumber != null) {
+                val relaxed = relaxedHashOf(parsed, occurredAt, amount, kind)
+                pendingDao.getAllOnce().filter { it.dedupeHash == relaxed }.forEach { pendingDao.deleteById(it.id) }
+            }
             // Fuzzy allowed: a queued row is a review surface (card + editor) before anything commits.
             val categoryId = resolveCategory(parsed, kind, allowFuzzy = true)
             pendingDao.insert(
@@ -267,6 +291,13 @@ class SmsCaptureRepository @Inject constructor(
         val hash = hashFor(parsed, occurredAt, amount, kind)
         if (isKnownHash(hash)) return NotificationOutcome(NotificationDecision.DUPLICATE)
         if (relaxedNoRefDuplicate(parsed, occurredAt, amount, kind)) return NotificationOutcome(NotificationDecision.DUPLICATE)
+        // With-ref incoming whose REF-LESS twin was already committed: the ledger holds a row stored
+        // under exactly this capture's relaxed hash. Exact match — never skips a distinct transaction.
+        if (parsed.refNumber != null &&
+            relaxedHashOf(parsed, occurredAt, amount, kind) in expenseDao.allDedupeHashes().toHashSet()
+        ) {
+            return NotificationOutcome(NotificationDecision.DUPLICATE)
+        }
         if (canPrompt && !isPatternSuppressed(sender, body, timestamp)) {
             val preview = preview(sender, body, timestamp) ?: return NotificationOutcome(NotificationDecision.NOT_TRANSACTION)
             return NotificationOutcome(NotificationDecision.PROMPT, preview)
@@ -285,11 +316,19 @@ class SmsCaptureRepository @Inject constructor(
      */
     private suspend fun relaxedNoRefDuplicate(parsed: SmsParser.Parsed, occurredAt: Long, amount: Long, kind: TxnKind): Boolean {
         if (parsed.refNumber != null) return false
+        if (ledgerHasDayAmountKind(occurredAt, amount, kind)) return true
+        // Queue side is EXACT: same relaxed identity (incl. last4/merchant), so a different-card or
+        // different-merchant same-day same-amount capture still queues.
+        val relaxed = relaxedHashOf(parsed, occurredAt, amount, kind)
+        return pendingDao.getAllOnce().any { relaxedHashOf(it) == relaxed }
+    }
+
+    /** Coarse ledger twin check (day|amount|kind, any source, non-deleted) — the scan's manual-entry
+     *  dedupe stance applied to ref-less captures. */
+    private suspend fun ledgerHasDayAmountKind(occurredAt: Long, amount: Long, kind: TxnKind): Boolean {
         val key = manualKey(occurredAt, amount, kind)
-        val inLedger = expenseDao.getAllExpensesOnce()
+        return expenseDao.getAllExpensesOnce()
             .any { it.deletedAt == null && manualKey(it.occurredAt, it.amountMinor, it.kind) == key }
-        if (inLedger) return true
-        return pendingDao.getAllOnce().any { manualKey(it.occurredAt, it.amountMinor, it.kind) == key }
     }
 
     /**
@@ -434,12 +473,29 @@ class SmsCaptureRepository @Inject constructor(
             .maxWithOrNull(compareBy({ it.value }, { -it.key }))
             ?.key
 
+    /**
+     * True when confirming [p] would re-add money that is already in the ledger (Phase 4 twin
+     * guards, checked at EVERY commit): its exact hash is committed; or its REF-LESS twin is
+     * committed (the ledger then contains exactly p's relaxed hash — precise, no false positives);
+     * or — for a ref-less notification row — any same-day|amount|kind ledger row exists (the
+     * with-ref twin's hash is unknowable from this side, so the coarse key is the only handle;
+     * confined to sourceApp rows so the SMS-only flow keeps its v1.52.0 behavior exactly).
+     */
+    private suspend fun twinAlreadyCommitted(p: PendingCaptureEntity, ledgerHashes: Set<String>): Boolean {
+        if (p.dedupeHash in ledgerHashes) return true
+        val relaxed = relaxedHashOf(p)
+        val refless = p.dedupeHash == relaxed
+        if (!refless && relaxed in ledgerHashes) return true
+        if (refless && p.sourceApp != null && ledgerHasDayAmountKind(p.occurredAt, p.amountMinor, p.kind)) return true
+        return false
+    }
+
     /** Confirm one pending capture into the ledger (optionally overriding the guessed category). */
     suspend fun confirmPending(id: Long, categoryId: Long? = null): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
-        // Already committed under this hash (e.g. the live-prompt twin was added while this row sat in
-        // the queue) → drop the queued row instead of double-adding; same guard commitDraft has.
-        if (p.dedupeHash in expenseDao.allDedupeHashes().toHashSet()) {
+        // This transaction already got committed another way (its live-prompt twin, or its SMS /
+        // notification twin under a different hash) → drop the stale row instead of double-adding.
+        if (twinAlreadyCommitted(p, expenseDao.allDedupeHashes().toHashSet())) {
             pendingDao.deleteById(id)
             return@withLock null
         }
@@ -492,9 +548,9 @@ class SmsCaptureRepository @Inject constructor(
         paymentMethodId: Long? = null,
     ): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
-        // Same twin guard as confirmPending: this capture was already committed under its hash →
-        // remove the stale queue row rather than double-adding the money.
-        if (p.dedupeHash in expenseDao.allDedupeHashes().toHashSet()) {
+        // Same twin guard as confirmPending: this capture (or its differently-hashed twin) was
+        // already committed → remove the stale queue row rather than double-adding the money.
+        if (twinAlreadyCommitted(p, expenseDao.allDedupeHashes().toHashSet())) {
             pendingDao.deleteById(id)
             return@withLock null
         }
@@ -524,11 +580,21 @@ class SmsCaptureRepository @Inject constructor(
         var added = 0
         // ONE transaction: a mid-loop crash commits NOTHING (every row stays queued) instead of
         // leaving rows both added and still queued, where a retry would double the money. The hash
-        // guard additionally skips anything an earlier partial run already committed.
+        // guard additionally skips anything an earlier partial run already committed, and the Phase 4
+        // twin guards (relaxed hash + coarse day-key, mirroring twinAlreadyCommitted but with the
+        // ledger read ONCE) keep a ref-loss SMS+notification twin pair from committing twice.
         db.withTransaction {
             val committed = expenseDao.allDedupeHashes().toHashSet()
+            val ledgerDayKeys = expenseDao.getAllExpensesOnce()
+                .filter { it.deletedAt == null }
+                .mapTo(HashSet()) { manualKey(it.occurredAt, it.amountMinor, it.kind) }
             for (p in all) {
+                val relaxed = relaxedHashOf(p)
+                val refless = p.dedupeHash == relaxed
+                val dayKey = manualKey(p.occurredAt, p.amountMinor, p.kind)
                 if (p.dedupeHash in committed) continue
+                if (!refless && relaxed in committed) continue // its ref-less twin already committed
+                if (refless && p.sourceApp != null && dayKey in ledgerDayKeys) continue // coarse twin
                 // Bulk "Confirm all" (no per-item editor) → precise last4 match only; bank-name fallback is
                 // editor-only (#3) so this never silently mis-attributes a same-bank non-card debit to a card.
                 val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
@@ -538,6 +604,7 @@ class SmsCaptureRepository @Inject constructor(
                     note = learnedNoteFor(p.merchant),
                 )
                 committed.add(p.dedupeHash)
+                ledgerDayKeys.add(dayKey)
                 added++
                 // Deliberately NO learning here: these rows carry the app's own guesses, and recording a
                 // guess as a "user choice" locks it in (learned mappings win over fresh guesses forever).
@@ -702,12 +769,32 @@ class SmsCaptureRepository @Inject constructor(
     /** Drop learned mappings whose category was since deleted (so a stale id is never reused). */
     suspend fun pruneLearnedOrphans() = runCatching { merchantDao.pruneOrphans() }
 
-    private fun hashFor(parsed: SmsParser.Parsed, occurredAt: Long, amount: Long, kind: TxnKind): String {
+    private fun hashFor(parsed: SmsParser.Parsed, occurredAt: Long, amount: Long, kind: TxnKind): String =
+        dedupeHash(occurredAt, amount, kind, parsed.last4, parsed.merchant, parsed.refNumber)
+
+    /** The canonical dedupe hash. Input format is FROZEN — every stored hash was built from it. */
+    private fun dedupeHash(occurredAt: Long, amount: Long, kind: TxnKind, last4: String?, merchant: String?, ref: String?): String {
         // Fixed-zone day bucket so existing hashes stay valid and a re-scan after travel can't slip past dedupe.
         val day = DateUtils.dedupeEpochDay(occurredAt)
-        val key = parsed.last4 ?: parsed.merchant?.lowercase() ?: ""
-        return sha256("sms|$day|$amount|${kind.name}|$key|${parsed.refNumber ?: ""}")
+        val key = last4 ?: merchant?.lowercase() ?: ""
+        return sha256("sms|$day|$amount|${kind.name}|$key|${ref ?: ""}")
     }
+
+    /**
+     * The hash this capture WOULD have if its reference number were missing — the twin-collapse pivot
+     * (Phase 4). Two facts make it powerful: (a) a ref-less capture's stored hash IS its relaxed hash,
+     * so "row/draft is ref-less" = `dedupeHash == relaxedHash`, and (b) a with-ref capture's ref-less
+     * twin stores EXACTLY this value, so `relaxedHash in ledger/queue hashes` finds the twin with zero
+     * false positives (a genuinely distinct with-ref transaction stores a different hash).
+     */
+    private fun relaxedHashFor(occurredAt: Long, amount: Long, kind: TxnKind, last4: String?, merchant: String?): String =
+        dedupeHash(occurredAt, amount, kind, last4, merchant, ref = null)
+
+    private fun relaxedHashOf(parsed: SmsParser.Parsed, occurredAt: Long, amount: Long, kind: TxnKind): String =
+        relaxedHashFor(occurredAt, amount, kind, parsed.last4, parsed.merchant)
+
+    private fun relaxedHashOf(p: PendingCaptureEntity): String =
+        relaxedHashFor(p.occurredAt, p.amountMinor, p.kind, p.last4, p.merchant)
 
     /** Day+amount+kind key used to skip captures that would duplicate the user's own entries (fixed-zone day). */
     private fun manualKey(occurredAt: Long, amount: Long, kind: TxnKind): String {

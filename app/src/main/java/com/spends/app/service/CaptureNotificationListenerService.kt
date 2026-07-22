@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.spends.app.data.capture.CaptureNotifier
 import com.spends.app.data.capture.NotificationCapture
 import com.spends.app.data.capture.RecentCaptureGuard
@@ -73,7 +74,11 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             active.forEach { sbn ->
                 if (sbn.packageName !in s.notificationCaptureApps) return@forEach
                 if (!looksReadable(sbn)) return@forEach
-                extractCandidates(sbn).forEach { c -> runCatching { process(c, sbn.packageName, canPrompt = false) } }
+                extractCandidates(sbn).forEach { c ->
+                    // The sweep gets the guard's full 7-day window (not the 72h live gate): the shade
+                    // is bounded + user-visible, and it's the ONLY recovery path notifications have.
+                    runCatching { process(c, sbn.packageName, canPrompt = false, maxAgeMillis = RecentCaptureGuard.MESSAGE_TTL_MILLIS) }
+                }
             }
         }
     }
@@ -141,23 +146,35 @@ class CaptureNotificationListenerService : NotificationListenerService() {
     /**
      * Handle one candidate message. Layered guards, in order:
      *  - too-old filter: a conversation notification reposts messages for days; anything older than
-     *    [MAX_LIVE_AGE_MILLIS] is never (re)captured live — with the long message-guard TTL this also
-     *    keeps a REJECTED capture from riding back in on a later repost;
+     *    [maxAgeMillis] (72h live, 7d for the shade sweep) is never (re)captured — with the matching
+     *    message-guard TTL this also keeps a REJECTED capture from riding back in on a later repost;
      *  - repost guard: each (app, sender, body) processed once per guard window;
-     *  - the repository's dedupe stack (exact hash vs ledger + queue, relaxed no-ref net);
-     *  - prompt guard: the SMS twin of this alert prompts once, not twice (checked by both paths).
+     *  - the repository's dedupe stack (exact hash vs ledger + queue, relaxed twin nets);
+     *  - prompt claim: the SMS twin of this alert prompts once, not twice (claimed by both paths;
+     *    ref-loss twins collide on the relaxed hash);
+     *  - blocked-notifications fallback: a PROMPT that can't be shown (POST_NOTIFICATIONS denied)
+     *    queues silently instead of evaporating — for an RCS-only alert there is no other chance.
      */
-    private suspend fun process(c: NotificationCapture.Candidate, pkg: String, canPrompt: Boolean) {
-        if (System.currentTimeMillis() - c.timestamp > MAX_LIVE_AGE_MILLIS) return
+    private suspend fun process(
+        c: NotificationCapture.Candidate,
+        pkg: String,
+        canPrompt: Boolean,
+        maxAgeMillis: Long = MAX_LIVE_AGE_MILLIS,
+    ) {
+        if (System.currentTimeMillis() - c.timestamp > maxAgeMillis) return
         if (!guard.checkAndMark(guard.messageKey(pkg, c.sender, c.body), RecentCaptureGuard.MESSAGE_TTL_MILLIS)) return
         val outcome = captureRepository.handleNotificationAlert(c.sender, c.body, c.timestamp, pkg, canPrompt)
         if (outcome.decision != SmsCaptureRepository.NotificationDecision.PROMPT) return
         val preview = outcome.preview ?: return
-        if (guard.checkAndMark(guard.promptKey(preview.dedupeHash), RecentCaptureGuard.PROMPT_TTL_MILLIS)) {
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            captureRepository.queueForReview(c.sender, c.body, c.timestamp, pkg)
+            return
+        }
+        if (guard.claimPrompt(preview.relaxedHash, preview.refNumber)) {
             captureNotifier.postCapturePrompt(c.sender, c.body, c.timestamp, preview)
         }
-        // else: the SMS receiver already prompted this exact transaction — drop; every write path
-        // re-checks the dedupe hash, so nothing can double-add regardless.
+        // else: the SMS receiver already prompted a twin of this transaction — drop; every write
+        // path re-checks the exact + relaxed hashes, so nothing can double-add regardless.
     }
 
     companion object {

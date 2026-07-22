@@ -76,11 +76,13 @@ class CaptureViewModel @Inject constructor(
 
     // ---- Notification capture (Phase 4) ----
 
-    /** Notification access granted → turn notification capture on (first enable seeds the default apps). */
+    /** Notification access granted → turn notification capture on. Defaults are seeded exactly ONCE
+     *  (a seeded-flag, not an empty-set check) so deliberately un-ticking every app sticks. */
     fun enableNotificationCapture() {
         viewModelScope.launch {
-            if (settingsRepository.settings.first().notificationCaptureApps.isEmpty()) {
+            if (!settingsRepository.notificationAppsSeeded()) {
                 settingsRepository.setNotificationCaptureApps(NotificationCaptureApps.DEFAULT_PACKAGES)
+                settingsRepository.markNotificationAppsSeeded()
             }
             settingsRepository.setNotificationCaptureEnabled(true)
             _local.update {

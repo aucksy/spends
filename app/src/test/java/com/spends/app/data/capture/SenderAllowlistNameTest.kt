@@ -39,6 +39,18 @@ class SenderAllowlistNameTest {
         assertThat(SenderAllowlist.canonicalSenderFor("American Express")).isEqualTo("AMEXIN")
     }
 
+    @Test fun common_agent_name_suffixes_are_stripped() {
+        assertThat(SenderAllowlist.canonicalSenderFor("Axis Bank Ltd")).isEqualTo("AXISBK")
+        assertThat(SenderAllowlist.canonicalSenderFor("HDFC Bank Cards")).isEqualTo("HDFCBK")
+        assertThat(SenderAllowlist.canonicalSenderFor("IDFC FIRST Bank Limited")).isEqualTo("IDFCFB")
+        assertThat(SenderAllowlist.canonicalSenderFor("SBI Card India")).isEqualTo("SBICRD")
+    }
+
+    @Test fun suffix_stripping_never_invents_a_match() {
+        assertThat(SenderAllowlist.canonicalSenderFor("Kotak Bank")).isNull()
+        assertThat(SenderAllowlist.canonicalSenderFor("Some Shop Ltd")).isNull()
+    }
+
     // ---- header-form senders pass through unchanged (SMS/RCS twins stay identical) ----
 
     @Test fun dlt_header_sender_passes_through_untouched() {

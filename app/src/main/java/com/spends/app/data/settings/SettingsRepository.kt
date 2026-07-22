@@ -15,6 +15,7 @@ import com.spends.app.domain.model.SmsCaptureMode
 import com.spends.app.domain.model.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -141,6 +142,10 @@ class SettingsRepository @Inject constructor(
     suspend fun setNotificationCaptureEnabled(value: Boolean) = edit { it[Keys.NOTIFICATION_CAPTURE] = value }
     /** Replace the watched-app package set for notification capture. */
     suspend fun setNotificationCaptureApps(packages: Set<String>) = edit { it[Keys.NOTIFICATION_CAPTURE_APPS] = packages }
+    /** One-time seeding marker for the watched-app list: an EMPTY set must mean "the user un-ticked
+     *  everything" (respected), not "never initialised" — so defaults are seeded exactly once. */
+    suspend fun notificationAppsSeeded(): Boolean = store.data.first()[Keys.NOTIFICATION_CAPTURE_SEEDED] ?: false
+    suspend fun markNotificationAppsSeeded() = edit { it[Keys.NOTIFICATION_CAPTURE_SEEDED] = true }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -202,5 +207,6 @@ class SettingsRepository @Inject constructor(
         val DEFAULT_PAYMENT_METHOD = longPreferencesKey("default_payment_method_id")
         val NOTIFICATION_CAPTURE = booleanPreferencesKey("notification_capture_enabled")
         val NOTIFICATION_CAPTURE_APPS = stringSetPreferencesKey("notification_capture_apps")
+        val NOTIFICATION_CAPTURE_SEEDED = booleanPreferencesKey("notification_capture_seeded")
     }
 }

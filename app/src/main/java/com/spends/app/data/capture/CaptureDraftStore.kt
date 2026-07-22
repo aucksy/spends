@@ -21,6 +21,8 @@ data class CaptureDraft(
     val paymentMethodId: Long? = null,
     // The note the user last gave this merchant (learned memory), pre-filled for review.
     val note: String? = null,
+    // Phase 4: the parse's ref-less hash, carried so Save can spot a committed ref-loss twin exactly.
+    val relaxedHash: String? = null,
 )
 
 /**

@@ -9,8 +9,9 @@ import javax.inject.Singleton
  *  1. **Reposts** — a messaging notification re-delivers its whole recent-message list every time
  *     the conversation updates; each message must be processed once ([MESSAGE_TTL_MILLIS]).
  *  2. **Twins** — the same bank alert arriving through BOTH the SMS receiver and the Messages/
- *     Truecaller notification must produce ONE heads-up prompt ([PROMPT_TTL_MILLIS], keyed on the
- *     parse's dedupe hash, checked by both paths).
+ *     Truecaller notification must produce ONE heads-up prompt ([claimPrompt]: keyed on the parse's
+ *     RELAXED hash with a refs-provably-differ escape, so even a twin that lost its reference
+ *     number collides; claimed atomically by both paths).
  *
  * Purely advisory: losing this state (process death) never loses money — the DB dedupe hashes are
  * the real guard; this only prevents duplicate prompts and re-parses. Bounded LRU so it can't grow.
@@ -20,6 +21,15 @@ class RecentCaptureGuard @Inject constructor() {
 
     private val seen = object : LinkedHashMap<String, Long>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>): Boolean = size > MAX_ENTRIES
+    }
+
+    /** Prompts posted recently, keyed by the parse's RELAXED hash → (time, that parse's ref). Keying
+     *  on the relaxed hash makes ref-loss twins (same alert, one text lost the reference number)
+     *  collide; storing the ref lets two provably distinct transactions (both refs present and
+     *  different) escape the collision and prompt separately. */
+    private val prompts = object : LinkedHashMap<String, Pair<Long, String?>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, String?>>): Boolean =
+            size > MAX_ENTRIES
     }
 
     /**
@@ -35,11 +45,27 @@ class RecentCaptureGuard @Inject constructor() {
         return true
     }
 
+    /**
+     * Atomically claim the right to post a heads-up prompt for this parse. True → post it (the claim
+     * is recorded); false → a TWIN of this transaction prompted within [PROMPT_TTL_MILLIS] — drop.
+     * Twin = same relaxed hash AND the refs are not provably different (either side missing a ref,
+     * or refs equal). Both live paths (SMS receiver + notification listener) call this, so one real-
+     * world payment produces at most one prompt no matter which channel wins the race.
+     */
+    @Synchronized
+    fun claimPrompt(relaxedHash: String, refNumber: String?, now: Long = System.currentTimeMillis()): Boolean {
+        val e = prompts[relaxedHash]
+        if (e != null && now - e.first < PROMPT_TTL_MILLIS) {
+            val seenRef = e.second
+            val isTwin = refNumber == null || seenRef == null || refNumber == seenRef
+            if (isTwin) return false
+        }
+        prompts[relaxedHash] = now to refNumber
+        return true
+    }
+
     /** Repost guard key for one message inside one app's notification. */
     fun messageKey(sourceApp: String, sender: String, body: String): String = "msg|$sourceApp|$sender|${body.hashCode()}|${body.length}"
-
-    /** Cross-source prompt guard key for a parsed transaction. */
-    fun promptKey(dedupeHash: String): String = "prompt|$dedupeHash"
 
     companion object {
         private const val MAX_ENTRIES = 512

@@ -206,6 +206,7 @@ class AddEditViewModel @Inject constructor(
                 // Save an unsaved live-capture draft (#4): tags TxnSource.NOTIFICATION + the dedupe hash.
                 isDraft -> captureRepository.commitDraft(
                     amountMinor, kind, categoryId, merchant, note, occurredAt, draft!!.dedupeHash, pmId,
+                    relaxedHash = draft!!.relaxedHash,
                 )
                 else -> {
                     val input = TransactionInput(

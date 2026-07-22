@@ -106,8 +106,21 @@ object SenderAllowlist {
         lookup(senderOrTitle)?.let { return it }
         val normalized = senderOrTitle?.trim()?.uppercase()?.replace(Regex("[^A-Z0-9]"), "")
             ?.takeIf { it.isNotBlank() } ?: return null
-        return byDisplayName[normalized]
+        byDisplayName[normalized]?.let { return it }
+        // Real RBM/Truecaller agent names vary ("Axis Bank Ltd", "HDFC Bank Cards") — retry with up
+        // to two common trailing tokens stripped, exact-matching the table after each strip so a
+        // random business can never fuzzy-match into a bank.
+        var n = normalized
+        repeat(2) {
+            val suffix = NAME_SUFFIXES.firstOrNull { n.length > it.length && n.endsWith(it) } ?: return null
+            n = n.removeSuffix(suffix)
+            byDisplayName[n]?.let { return it }
+        }
+        return null
     }
+
+    /** Trailing tokens RBM agent names append to the bare brand (longest first so LIMITED wins over LTD). */
+    private val NAME_SUFFIXES = listOf("LIMITED", "OFFICIAL", "INDIA", "CARDS", "CARD", "BANK", "LTD")
 
     /**
      * Translate a notification sender/title into a sender string [SmsParser] accepts, or null when

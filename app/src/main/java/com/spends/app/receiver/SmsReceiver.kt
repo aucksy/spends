@@ -65,15 +65,12 @@ class SmsReceiver : BroadcastReceiver() {
                             // Already in the ledger or the review queue (e.g. the notification twin of
                             // this alert got there first, Phase 4) — a prompt would only invite a
                             // double-add attempt the hash guards would then have to swallow.
-                        } else if (guard.checkAndMark(
-                                guard.promptKey(preview.dedupeHash),
-                                RecentCaptureGuard.PROMPT_TTL_MILLIS,
-                            )
-                        ) {
+                        } else if (guard.claimPrompt(preview.relaxedHash, preview.refNumber)) {
                             notifier.postCapturePrompt(sender, body, receivedAt, preview)
                         }
-                        // else: the notification listener prompted this exact transaction moments ago
-                        // (the SMS + Messages/Truecaller twins of one alert) — one prompt is the contract.
+                        // else: the notification listener prompted a TWIN of this transaction moments
+                        // ago (the SMS + Messages/Truecaller twins of one alert, even when one text
+                        // lost the reference number) — one prompt is the contract.
                     }
                 }
             } finally {
