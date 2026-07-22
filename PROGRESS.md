@@ -7,8 +7,48 @@ for how the project works.
 - **Shipped: v1.51.0** — versionCode **55**, versionName **"1.51.0"**
   (`app/build.gradle.kts` lines 41–42). Release CI green (signed APK + AAB).
 - **DB schema: v15.** (MIGRATION_14_15 = additive `merchant_categories.note` TEXT column.)
-- **Branch:** `main`, clean. Tag-driven CI.
+- **Branch:** `main`. Tag-driven CI.
 - APK: https://github.com/aucksy/spends/releases/download/v1.51.0/Spends-v1.51.0.apk
+
+## UNRELEASED on main (awaiting owner ship gate → will become v1.52.0, vc 56)
+**Smart Cycle Step 1 — the "balance improves on billing day" fix.** Commit `32cca4f`.
+No DB change; no snapshot schema bump (additive settings field only).
+
+- **RCA (owner-reported, export-verified):** Smart Cycle was a per-instrument composite —
+  each card's window anchored on its own billingDay. The moment a billing day passed, that
+  card's previous-cycle spends silently left the current-cycle balance (no carry-forward,
+  no dues bucket, bill payments deliberately unlogged), so a negative balance "improved"
+  with nothing paid. Owner's data: true Jun-25→Jul-21 cycle net **−₹13,357** while the app
+  showed a shrinking ~−5k. Salary cycles run 25th→24th; +₹10,000 income on Jul 17 was the
+  one *real* part of the movement.
+- **Fix:** Smart Cycle (all instruments) = ONE contiguous window via `PeriodResolver`,
+  anchored on new setting `smartCycleResetDay` (**0 = follow salary day**, the default;
+  `SettingsState.effectiveSmartResetDay`). Timeline, Analytics, breakdown screen, category
+  drill-down and the widget all resolve the SAME window → all numbers reconcile.
+  Carry-forward rules now apply to Smart exactly like Salary (it's a plain window).
+  **Single-Card mode unchanged** (that card's own billing cycle via
+  `CompositeCycleResolver.resolveSingleCard`) with the reset-window headline balance.
+  Cards tab keeps per-card statement windows (correct — it's a statement view).
+- **Settings flow (owner decision):** toggling Smart Cycle ON opens `SmartResetDayDialog`
+  — plain-words copy, wheel 1..31 preset to the salary day; picking exactly the salary day
+  stores 0 (follows later salary-day changes); any other day is pinned. Editable later via
+  the "Cycle reset day" row. Toggle subtitle rewritten to match the new promise.
+- **Backup:** additive `SnapshotSettings.smartCycleResetDay` (default 0) + restore write.
+  Old backups restore fine (default = follow salary).
+- **Reviews:** 2 full adversarial agents (compile CLEAN-TO-BUILD; logic GO, 1 MED + 3 LOW)
+  → 4 fixes (drill-down stale-SMART→Salary coercion; widget vanished-card label; breakdown
+  feature-flag anchor guard; drill-down sheet hint text) → combined delta agent VERIFIED all.
+- **Tests:** `PeriodResolverTest` smart-anchor cases (distinct reset day, equality with
+  salary when 0, offset stepping) + new `SettingsStateTest` (effective-day fallback rules).
+- **Known nits (accepted):** in-app pill says "Single Card" over the whole-cycle fallback
+  when a picked card was deleted (rare, numbers correct); dead composite multi-instrument
+  code (`resolveSmartCycle`, `isComposite` flags) kept — Step 2 reuses the machinery.
+- **▶ NEXT = Step 2 (owner-approved direction): card dues.** When a card's billing day
+  passes, the closed statement becomes a visible "Bill generated — ₹X unpaid" that persists
+  until paid (manual "mark paid" + auto-detect from the bill-payment SMS the parser
+  currently IGNORES — use as a signal, not a transaction). "Total unpaid on cards" = closed
+  unpaid bills + current open statements. Likely needs a small statements/dues table (DB
+  v15→v16) + Cards-tab/breakdown surfacing. Fresh chat, design first.
 
 ## Recent: v1.51.0 (DB v14→v15)
 **Merchant self-learning rework + recency-ranked category picker** — commits `7842f4a`
