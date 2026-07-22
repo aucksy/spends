@@ -4,11 +4,11 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.52.0** — versionCode **56**, versionName **"1.52.0"**
-  (`app/build.gradle.kts` lines 41–42). Tagged `eff095a` (owner said ship 2026-07-22).
-- **DB schema: v15.** (unchanged since v1.51.0; MIGRATION_14_15 = `merchant_categories.note`.)
+- **Shipped: v1.53.0** — versionCode **57**, versionName **"1.53.0"**
+  (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-22 (same day as v1.52.0).
+- **DB schema: v16.** (MIGRATION_15_16 = `pending_captures.sourceApp`, additive nullable TEXT.)
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.52.0/Spends-v1.52.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.53.0/Spends-v1.53.0.apk
 
 ## v1.52.0 — Smart Cycle Step 1 ("balance improves on billing day" fix)
 Feature commit `32cca4f` + bump `eff095a`.
@@ -50,12 +50,12 @@ No DB change; no snapshot schema bump (additive settings field only).
   bills + current open statements. Likely a statements/dues table (DB v15→v16) +
   Cards-tab/breakdown surfacing. Do NOT start without the owner un-parking it.
 
-## ▶ BUILT, UNRELEASED: Notification capture (Phase 4) — awaiting owner ship gate
-Owner-chosen 2026-07-22; built same day. Commits `85ca2f2` (feature) + `56e98c0`/`c70d843`/
-`d285b74` (compile fixes) + `eb9094a` (review-fix round) + the delta-fix commit after it.
-**DB v15→v16** (`pending_captures.sourceApp`, additive nullable TEXT). **CI green** on the
-full chain (compile + all unit tests incl. the SmsParser golden gate). **NOT tagged — the
-owner has not said ship.** Version stays v1.52.0 / vc 56 until then.
+## v1.53.0 — Notification capture (Phase 4) — SHIPPED (owner said ship 2026-07-22)
+Owner-chosen 2026-07-22; built + shipped same day. Commits `85ca2f2` (feature) +
+`56e98c0`/`c70d843`/`d285b74` (compile fixes) + `eb9094a` (review-fix round) + `7b4c945`
+(delta fix + docs) + the vc57 bump. **DB v15→v16** (`pending_captures.sourceApp`, additive
+nullable TEXT). CI green on the full chain (compile + all unit tests incl. the SmsParser
+golden gate).
 
 **What it does:** `CaptureNotificationListenerService` reads notifications from apps the
 user ticks (launch set: **Google Messages + Truecaller** — owner-chosen; GPay/PhonePe
@@ -106,8 +106,8 @@ same-day same-amount row exists (conservative by design); a swipe-dismissed prom
 RCS-only alert is unrecoverable (no history source); unknown RBM agent names silently
 no-match (no debug counter); GPay/PhonePe/Paytm parsing = future round.
 
-**To ship (when owner says so):** bump versionCode 57 / versionName 1.53.0, tag v1.53.0,
-poll CI, paste the direct APK link, give the manual-test checklist (below in handoff).
+**Next candidates (owner picks):** GPay/PhonePe/Paytm notification parsing rules round ·
+card dues (Step 2, still ⏸ PARKED) · category budgets · exact-alarm backup · Play prep.
 
 ## Recent: v1.51.0 (DB v14→v15)
 **Merchant self-learning rework + recency-ranked category picker** — commits `7842f4a`
