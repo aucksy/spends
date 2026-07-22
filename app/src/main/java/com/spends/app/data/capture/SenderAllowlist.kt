@@ -46,6 +46,44 @@ object SenderAllowlist {
         put("CREDIN", Institution("CRED", InstitutionType.PAYMENT_APP))
     }
 
+    /**
+     * RCS business chats and Truecaller verified senders show a FRIENDLY name ("Axis Bank",
+     * "SBI Card") instead of the DLT header ("AX-AXISBK") — this maps those names (normalized:
+     * uppercase, alphanumerics only) to the same institutions. Notification capture only; the SMS
+     * path never consults it. Institution names/types mirror [byHeader] exactly so both sources of
+     * the same alert classify identically (and dedupe hashes line up).
+     */
+    private val byDisplayName: Map<String, Institution> = buildMap {
+        put("AXISBANK", Institution("Axis Bank", InstitutionType.BANK))
+        put("IDFCFIRSTBANK", Institution("IDFC First Bank", InstitutionType.BANK))
+        put("IDFCFIRST", Institution("IDFC First Bank", InstitutionType.BANK))
+        put("SBI", Institution("SBI", InstitutionType.BANK))
+        put("STATEBANKOFINDIA", Institution("SBI", InstitutionType.BANK))
+        put("SBIBANK", Institution("SBI", InstitutionType.BANK))
+        put("SBICARD", Institution("SBI Card", InstitutionType.CREDIT_CARD))
+        put("SBICARDS", Institution("SBI Card", InstitutionType.CREDIT_CARD))
+        put("INDUSINDBANK", Institution("IndusInd Bank", InstitutionType.CREDIT_CARD))
+        put("INDUSIND", Institution("IndusInd Bank", InstitutionType.CREDIT_CARD))
+        put("ICICIBANK", Institution("ICICI Bank", InstitutionType.CREDIT_CARD))
+        put("ICICI", Institution("ICICI Bank", InstitutionType.CREDIT_CARD))
+        put("ONECARD", Institution("OneCard", InstitutionType.CREDIT_CARD))
+        put("YESBANK", Institution("Yes Bank", InstitutionType.CREDIT_CARD))
+        put("AMERICANEXPRESS", Institution("American Express", InstitutionType.CREDIT_CARD))
+        put("AMEX", Institution("American Express", InstitutionType.CREDIT_CARD))
+        put("RBLBANK", Institution("RBL Bank", InstitutionType.CREDIT_CARD))
+        put("HDFCBANK", Institution("HDFC Bank", InstitutionType.CREDIT_CARD))
+        put("HDFC", Institution("HDFC Bank", InstitutionType.CREDIT_CARD))
+        put("PNB", Institution("PNB", InstitutionType.CREDIT_CARD))
+        put("PUNJABNATIONALBANK", Institution("PNB", InstitutionType.CREDIT_CARD))
+        put("LTFINANCE", Institution("L&T Finance", InstitutionType.LOAN))
+        put("LANDTFINANCE", Institution("L&T Finance", InstitutionType.LOAN))
+        put("PAYTM", Institution("Paytm", InstitutionType.WALLET))
+        put("PAYTMBANK", Institution("Paytm", InstitutionType.WALLET))
+        put("PAYTMPAYMENTSBANK", Institution("Paytm", InstitutionType.WALLET))
+        put("MOBIKWIK", Institution("MobiKwik", InstitutionType.WALLET))
+        put("CRED", Institution("CRED", InstitutionType.PAYMENT_APP))
+    }
+
     /** Extract the bank "header" from a sender id, or null for numeric / unrecognisable senders. */
     fun headerOf(sender: String?): String? {
         if (sender.isNullOrBlank()) return null
@@ -58,4 +96,30 @@ object SenderAllowlist {
     }
 
     fun lookup(sender: String?): Institution? = headerOf(sender)?.let { byHeader[it] }
+
+    /**
+     * Notification-capture lookup: try the SMS header form first (many RCS bank chats still show
+     * "AX-AXISBK"), then fall back to the friendly business name. Null → not a tracked financial
+     * sender, exactly like [lookup].
+     */
+    fun lookupSenderOrName(senderOrTitle: String?): Institution? {
+        lookup(senderOrTitle)?.let { return it }
+        val normalized = senderOrTitle?.trim()?.uppercase()?.replace(Regex("[^A-Z0-9]"), "")
+            ?.takeIf { it.isNotBlank() } ?: return null
+        return byDisplayName[normalized]
+    }
+
+    /**
+     * Translate a notification sender/title into a sender string [SmsParser] accepts, or null when
+     * it isn't a tracked financial sender. Header-form senders pass through unchanged (so an RCS
+     * twin of an SMS produces the IDENTICAL parse and dedupe hash); friendly names map to that
+     * institution's canonical header. Everything downstream — parse, prompt intents, the editor's
+     * re-parse — then behaves exactly as if the alert were an SMS from that institution.
+     */
+    fun canonicalSenderFor(senderOrTitle: String?): String? {
+        if (lookup(senderOrTitle) != null) return senderOrTitle
+        val inst = lookupSenderOrName(senderOrTitle) ?: return null
+        // First header registered for this institution = its canonical header.
+        return byHeader.entries.firstOrNull { it.value.name == inst.name && it.value.type == inst.type }?.key
+    }
 }

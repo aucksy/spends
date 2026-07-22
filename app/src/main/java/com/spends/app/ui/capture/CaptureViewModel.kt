@@ -3,6 +3,7 @@ package com.spends.app.ui.capture
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.capture.NotificationCaptureApps
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +25,9 @@ data class CaptureUiState(
     val hideCaptured: Boolean = false,
     val working: Boolean = false,
     val message: String? = null,
+    // Notification capture (Phase 4)
+    val notificationEnabled: Boolean = false,
+    val notificationApps: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -45,6 +49,8 @@ class CaptureViewModel @Inject constructor(
                 hideCaptured = s.hideCapturedInLists,
                 pendingCount = pending,
                 capturedCount = captured,
+                notificationEnabled = s.notificationCaptureEnabled,
+                notificationApps = s.notificationCaptureApps,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CaptureUiState())
 
@@ -66,6 +72,41 @@ class CaptureViewModel @Inject constructor(
     }
 
     fun permissionDenied() = _local.update { it.copy(message = "SMS permission is needed to read bank texts.") }
+
+    // ---- Notification capture (Phase 4) ----
+
+    /** Notification access granted → turn notification capture on (first enable seeds the default apps). */
+    fun enableNotificationCapture() {
+        viewModelScope.launch {
+            if (settingsRepository.settings.first().notificationCaptureApps.isEmpty()) {
+                settingsRepository.setNotificationCaptureApps(NotificationCaptureApps.DEFAULT_PACKAGES)
+            }
+            settingsRepository.setNotificationCaptureEnabled(true)
+            _local.update {
+                it.copy(
+                    message = "On — new alerts from the ticked apps will ask you. Notifications keep no " +
+                        "history, so this works from now on (plus whatever is in the shade right now).",
+                )
+            }
+        }
+    }
+
+    fun disableNotificationCapture() {
+        viewModelScope.launch {
+            settingsRepository.setNotificationCaptureEnabled(false)
+            _local.update { it.copy(message = "Notification detection turned off") }
+        }
+    }
+
+    fun notificationAccessMissing() =
+        _local.update { it.copy(message = "Notification access wasn't granted — the switch stays off.") }
+
+    fun toggleNotificationApp(packageName: String, on: Boolean) {
+        viewModelScope.launch {
+            val apps = settingsRepository.settings.first().notificationCaptureApps
+            settingsRepository.setNotificationCaptureApps(if (on) apps + packageName else apps - packageName)
+        }
+    }
 
     fun setHideCaptured(value: Boolean) = viewModelScope.launch { settingsRepository.setHideCapturedInLists(value) }
 

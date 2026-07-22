@@ -5,4 +5,6 @@
     <string name="widget_quick_add_label">Quick Add Transaction</string>
     <string name="widget_summary_label">Spends Summary</string>
     <string name="widget_summary_description">Income, expense and balance for your current cycle.</string>
+    <!-- Shown in Android's "Notification access" settings list (Phase 4 notification capture). -->
+    <string name="notification_access_label">Spends transaction detection</string>
 </resources>

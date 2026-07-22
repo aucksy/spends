@@ -1,8 +1,13 @@
 package com.spends.app.ui.capture
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -18,9 +23,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -30,17 +37,25 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.spends.app.data.capture.NotificationCaptureApps
+import com.spends.app.service.CaptureNotificationListenerService
 
 @Composable
 fun CaptureSection(
@@ -49,8 +64,12 @@ fun CaptureSection(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var showScan by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
+    var showAccessExplainer by remember { mutableStateOf(false) }
+    // Survives the trip out to Android's notification-access screen (our activity may be recreated).
+    var awaitingAccess by rememberSaveable { mutableStateOf(false) }
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -163,9 +182,126 @@ fun CaptureSection(
             }
         }
 
+        // ---- Notification capture (Phase 4): the RCS-gap closer ----
+        HorizontalDivider(Modifier.padding(vertical = 10.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
+            Icon(Icons.Filled.NotificationsNone, contentDescription = null)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Detect from app notifications", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Catches bank alerts that arrive as chat messages (RCS) instead of SMS — read from " +
+                        "the apps you tick below. Same rule: nothing is added until you confirm it. " +
+                        "Parsed locally, nothing is uploaded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = state.notificationEnabled,
+                onCheckedChange = { turnOn ->
+                    if (turnOn) {
+                        if (hasNotificationAccess(context)) {
+                            viewModel.enableNotificationCapture()
+                            requestListenerRebind(context)
+                            requestNotifIfNeeded()
+                        } else {
+                            showAccessExplainer = true
+                        }
+                    } else {
+                        viewModel.disableNotificationCapture()
+                    }
+                },
+            )
+        }
+
+        if (state.notificationEnabled) {
+            Text(
+                "Apps to watch",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+            )
+            NotificationCaptureApps.CANDIDATES.forEach { app ->
+                val installed = remember(app.packageName) { isAppInstalled(context, app.packageName) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(app.displayName, style = MaterialTheme.typography.bodyLarge)
+                        if (!installed) {
+                            Text(
+                                "Not installed on this phone",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Checkbox(
+                        checked = app.packageName in state.notificationApps,
+                        enabled = installed,
+                        onCheckedChange = { on -> viewModel.toggleNotificationApp(app.packageName, on) },
+                    )
+                }
+            }
+            Text(
+                "Unlike SMS, Android keeps no notification history — detection works from the moment " +
+                    "it's on (plus whatever was still in your notification shade).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+            )
+        }
+
         state.message?.let { msg ->
             Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 4.dp))
         }
+    }
+
+    if (showAccessExplainer) {
+        AlertDialog(
+            onDismissRequest = { showAccessExplainer = false },
+            title = { Text("Allow notification access") },
+            text = {
+                Text(
+                    "To see bank alerts inside Google Messages or Truecaller, Android asks you to grant " +
+                        "Spends \"Notification access\" once. On the next screen, find Spends and switch " +
+                        "it on, then come back — everything is read on your phone only, and nothing is " +
+                        "ever added without your confirmation.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAccessExplainer = false
+                    awaitingAccess = true
+                    openNotificationAccessSettings(context)
+                }) { Text("Open settings") }
+            },
+            dismissButton = { TextButton(onClick = { showAccessExplainer = false }) { Text("Cancel") } },
+        )
+    }
+
+    // Coming back from the access screen: if the grant happened, flip the switch on for real.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && awaitingAccess) {
+                if (hasNotificationAccess(context)) {
+                    awaitingAccess = false
+                    viewModel.enableNotificationCapture()
+                    requestListenerRebind(context)
+                    requestNotifIfNeeded()
+                } else {
+                    awaitingAccess = false
+                    viewModel.notificationAccessMissing()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     if (showScan) {
@@ -227,6 +363,36 @@ fun CaptureSection(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Is Spends granted Android's "Notification access" (the listener permission)? */
+private fun hasNotificationAccess(context: Context): Boolean =
+    NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+private fun isAppInstalled(context: Context, packageName: String): Boolean =
+    runCatching { context.packageManager.getApplicationInfo(packageName, 0) }.isSuccess
+
+/** Deep-link to our row in the notification-access settings (Android 11+), else the general list. */
+private fun openNotificationAccessSettings(context: Context) {
+    val component = ComponentName(context, CaptureNotificationListenerService::class.java)
+    val detail = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL)
+        .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component.flattenToString())
+    val list = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+    val tried = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        runCatching { context.startActivity(detail) }.isSuccess
+    } else {
+        false
+    }
+    if (!tried) runCatching { context.startActivity(list) }
+}
+
+/** Nudge the system to (re)bind our listener right after enabling — no-op if not granted/already bound. */
+private fun requestListenerRebind(context: Context) {
+    runCatching {
+        NotificationListenerService.requestRebind(
+            ComponentName(context, CaptureNotificationListenerService::class.java),
         )
     }
 }

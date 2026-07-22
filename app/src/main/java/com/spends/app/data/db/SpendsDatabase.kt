@@ -33,7 +33,7 @@ import com.spends.app.data.seed.CategorySeed
         PaymentMethodEntity::class,
         IgnoredPatternEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -290,6 +290,15 @@ abstract class SpendsDatabase : RoomDatabase() {
         val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE merchant_categories ADD COLUMN note TEXT")
+            }
+        }
+
+        /** v15 -> v16: notification capture (Phase 4) — queued rows record which watched app's
+         *  notification they came from (`pending_captures.sourceApp`, nullable `String?` → `TEXT`,
+         *  no NOT NULL, no default — matching Room's generated DDL). SMS rows stay NULL. */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pending_captures ADD COLUMN sourceApp TEXT")
             }
         }
     }

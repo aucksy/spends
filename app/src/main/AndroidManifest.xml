@@ -39,6 +39,13 @@
          whose taps fire a PendingIntent so there's no View to drive performHapticFeedback. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Notification capture (Phase 4): the Settings checklist shows which watched apps are installed;
+         on Android 11+ that visibility must be declared per package. -->
+    <queries>
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.truecaller" />
+    </queries>
+
     <application
         android:name=".core.SpendsApp"
         android:allowBackup="true"
@@ -93,6 +100,21 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@style/Theme.Spends.Transparent" />
+
+        <!-- Notification capture (Phase 4): the system binds this listener and delivers every posted
+             notification; we read ONLY the apps the user ticked (Google Messages / Truecaller — RCS
+             bank alerts SMS capture can't see). Review-only like SMS; parsed locally, nothing leaves
+             the device. exported=true + the BIND permission = only the system can bind (NotDigest
+             pattern). No default_filter_types meta-data: silent-tray notifications must be seen too. -->
+        <service
+            android:name=".service.CaptureNotificationListenerService"
+            android:exported="true"
+            android:label="@string/notification_access_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <!-- Live SMS capture receiver. BROADCAST_SMS permission ensures only the system delivers it. -->
         <receiver

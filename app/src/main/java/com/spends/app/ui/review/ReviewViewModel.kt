@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.core.money.Money
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.capture.NotificationCaptureApps
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
@@ -31,8 +32,9 @@ data class ReviewRowUi(
     val categoryName: String?,
     val iconKey: String?,
     val colorHex: String?,
-    val rawBody: String?, // #10: original SMS body (null for rows scanned before DB v8)
+    val rawBody: String?, // #10: original SMS/notification text (null for rows scanned before DB v8)
     val sender: String?,
+    val sourceAppName: String?, // Phase 4: watched-app name for a notification capture, null for SMS rows
     val receivedAt: Long,
     val searchText: String, // #12: lowercased blob of every searchable field
 )
@@ -87,8 +89,10 @@ class ReviewViewModel @Inject constructor(
         val title = merchant?.takeIf { it.isNotBlank() } ?: cat?.name ?: "Detected transaction"
         val instrument = institution?.let { inst -> last4?.let { "$inst ••$it" } ?: inst }
         val subtitle = listOfNotNull(instrument, DateUtils.formatDay(occurredAt)).joinToString(" · ")
+        val sourceAppName = sourceApp?.let { NotificationCaptureApps.displayName(it) ?: it }
         val searchText = listOfNotNull(
             Money.formatRupees(amountMinor), title, subtitle, cat?.name, merchant, institution, last4, sender, rawBody,
+            sourceAppName,
         ).joinToString(" ").lowercase()
         return ReviewRowUi(
             id = id,
@@ -102,6 +106,7 @@ class ReviewViewModel @Inject constructor(
             colorHex = cat?.colorHex,
             rawBody = rawBody,
             sender = sender,
+            sourceAppName = sourceAppName,
             receivedAt = receivedAt,
             searchText = searchText,
         )

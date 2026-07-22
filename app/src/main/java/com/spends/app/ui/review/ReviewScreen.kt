@@ -221,11 +221,16 @@ private fun ReviewCard(
     SpendsCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("DETECTED FROM SMS", style = MaterialTheme.typography.labelMedium, color = semantic.review, modifier = Modifier.weight(1f))
+                Text(
+                    if (row.sourceAppName != null) "DETECTED FROM NOTIFICATION" else "DETECTED FROM SMS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = semantic.review,
+                    modifier = Modifier.weight(1f),
+                )
                 // #10: only when we actually kept the source text (rows scanned before DB v8 have none).
                 if (!row.rawBody.isNullOrBlank()) {
                     Text(
-                        "View SMS",
+                        if (row.sourceAppName != null) "View text" else "View SMS",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -262,7 +267,7 @@ private fun ReviewCard(
     }
 }
 
-/** #10: shows the original captured SMS (sender + time + body) in a theme-matching bottom sheet. */
+/** #10: shows the original captured SMS/notification (sender + time + body) in a theme-matching sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SmsDetailSheet(row: ReviewRowUi, onDismiss: () -> Unit) {
@@ -274,9 +279,14 @@ private fun SmsDetailSheet(row: ReviewRowUi, onDismiss: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
         ) {
-            Text("Original SMS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                if (row.sourceAppName != null) "Original notification" else "Original SMS",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
             Spacer(Modifier.height(4.dp))
             val subtitle = listOfNotNull(
+                row.sourceAppName?.let { "via $it" },
                 row.sender?.takeIf { it.isNotBlank() },
                 "${DateUtils.formatDay(row.receivedAt)} · ${DateUtils.formatTime(row.receivedAt)}",
             ).joinToString(" · ")

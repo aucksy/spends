@@ -56,8 +56,9 @@ class SmsCaptureRepository @Inject constructor(
     /** Outcome of a historical inbox scan. */
     data class ScanResult(val scanned: Int, val queued: Int, val skippedDuplicate: Int)
 
-    /** A read-only summary of a parsed SMS for the live capture prompt. */
-    data class CapturePreview(val amountMinor: Long, val kind: TxnKind, val title: String)
+    /** A read-only summary of a parsed SMS for the live capture prompt. [dedupeHash] lets callers
+     *  collapse the SMS + notification twins of the same alert into one prompt (Phase 4). */
+    data class CapturePreview(val amountMinor: Long, val kind: TxnKind, val title: String, val dedupeHash: String)
 
     // ---- Live capture (notification path) ----
 
@@ -67,8 +68,17 @@ class SmsCaptureRepository @Inject constructor(
         if (parsed.result != SmsParser.Result.TRANSACTION) return null
         val amount = parsed.amountMinor ?: return null
         val kind = parsed.kind ?: return null
-        return CapturePreview(amount, kind, parsed.merchant ?: parsed.institution ?: "Transaction")
+        val occurredAt = parsed.occurredAt ?: receivedAt
+        return CapturePreview(
+            amount, kind, parsed.merchant ?: parsed.institution ?: "Transaction",
+            dedupeHash = hashFor(parsed, occurredAt, amount, kind),
+        )
     }
+
+    /** True when this exact capture is already in the ledger or the review queue — callers use it to
+     *  skip a redundant live prompt (the DB write paths all re-check under the mutex regardless). */
+    suspend fun isKnownHash(hash: String): Boolean =
+        hash in expenseDao.allDedupeHashes().toHashSet() || hash in pendingDao.allHashes().toHashSet()
 
     /** Live notification "Add" (the explicit, silent add): create the ledger transaction. Returns its id. */
     suspend fun captureReturningId(sender: String?, body: String?, receivedAt: Long): Long? = captureMutex.withLock {
@@ -190,35 +200,96 @@ class SmsCaptureRepository @Inject constructor(
      * Silently drop a parsed SMS into the review queue (#7) — used when its alert is suppressed, so a
      * suppressed-but-genuine transaction is still reviewable and NEVER lost. Skips anything already in the
      * ledger or queue (dedupe hash). Returns the queued row id, or null if not a txn / already known.
+     *
+     * [sourceApp] is set only for notification captures (the watched app's package, Phase 4); those rows
+     * additionally pass the relaxed no-ref duplicate check — a notification that lost its reference
+     * number must not re-queue a transaction the SMS twin already delivered under a different hash.
      */
-    suspend fun queueForReview(sender: String?, body: String?, receivedAt: Long): Long? = captureMutex.withLock {
-        val parsed = SmsParser.parse(sender, body, receivedAt)
-        if (parsed.result != SmsParser.Result.TRANSACTION) return@withLock null
-        val amount = parsed.amountMinor ?: return@withLock null
-        val kind = parsed.kind ?: return@withLock null
-        val occurredAt = parsed.occurredAt ?: receivedAt
+    suspend fun queueForReview(sender: String?, body: String?, receivedAt: Long, sourceApp: String? = null): Long? =
+        captureMutex.withLock {
+            val parsed = SmsParser.parse(sender, body, receivedAt)
+            if (parsed.result != SmsParser.Result.TRANSACTION) return@withLock null
+            val amount = parsed.amountMinor ?: return@withLock null
+            val kind = parsed.kind ?: return@withLock null
+            val occurredAt = parsed.occurredAt ?: receivedAt
+            val hash = hashFor(parsed, occurredAt, amount, kind)
+            if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null
+            if (hash in pendingDao.allHashes().toHashSet()) return@withLock null
+            if (sourceApp != null && relaxedNoRefDuplicate(parsed, occurredAt, amount, kind)) return@withLock null
+            // Fuzzy allowed: a queued row is a review surface (card + editor) before anything commits.
+            val categoryId = resolveCategory(parsed, kind, allowFuzzy = true)
+            pendingDao.insert(
+                PendingCaptureEntity(
+                    amountMinor = amount,
+                    kind = kind,
+                    occurredAt = occurredAt,
+                    merchant = parsed.merchant?.ifBlank { null },
+                    last4 = parsed.last4,
+                    institution = parsed.institution,
+                    categoryId = categoryId,
+                    parseConfidence = parsed.confidence,
+                    dedupeHash = hash,
+                    receivedAt = receivedAt,
+                    createdAt = DateUtils.nowMillis(),
+                    rawBody = body,
+                    sender = sender,
+                    sourceApp = sourceApp,
+                ),
+            ).takeIf { it != -1L }
+        }
+
+    // ---- Notification capture (Phase 4) ----
+
+    /** What the listener should do with one notification message. */
+    enum class NotificationDecision { NOT_TRANSACTION, DUPLICATE, QUEUED, PROMPT }
+
+    data class NotificationOutcome(val decision: NotificationDecision, val preview: CapturePreview? = null)
+
+    /**
+     * Decide + act on one message pulled from a watched app's notification. Review-only, exactly like
+     * SMS: the outcome is either a heads-up prompt (PROMPT — the caller posts it; nothing written), a
+     * silent queue row (QUEUED — suppressed pattern or a no-prompt sweep), or a skip. Dedupe layers:
+     * exact hash vs ledger + queue, then the relaxed no-ref check (see [queueForReview]). Checks here
+     * are advisory/fast; every write path re-verifies under the capture mutex.
+     */
+    suspend fun handleNotificationAlert(
+        sender: String?,
+        body: String?,
+        timestamp: Long,
+        sourceApp: String,
+        canPrompt: Boolean,
+    ): NotificationOutcome {
+        val parsed = SmsParser.parse(sender, body, timestamp)
+        if (parsed.result != SmsParser.Result.TRANSACTION) return NotificationOutcome(NotificationDecision.NOT_TRANSACTION)
+        val amount = parsed.amountMinor ?: return NotificationOutcome(NotificationDecision.NOT_TRANSACTION)
+        val kind = parsed.kind ?: return NotificationOutcome(NotificationDecision.NOT_TRANSACTION)
+        val occurredAt = parsed.occurredAt ?: timestamp
         val hash = hashFor(parsed, occurredAt, amount, kind)
-        if (hash in expenseDao.allDedupeHashes().toHashSet()) return@withLock null
-        if (hash in pendingDao.allHashes().toHashSet()) return@withLock null
-        // Fuzzy allowed: a queued row is a review surface (card + editor) before anything commits.
-        val categoryId = resolveCategory(parsed, kind, allowFuzzy = true)
-        pendingDao.insert(
-            PendingCaptureEntity(
-                amountMinor = amount,
-                kind = kind,
-                occurredAt = occurredAt,
-                merchant = parsed.merchant?.ifBlank { null },
-                last4 = parsed.last4,
-                institution = parsed.institution,
-                categoryId = categoryId,
-                parseConfidence = parsed.confidence,
-                dedupeHash = hash,
-                receivedAt = receivedAt,
-                createdAt = DateUtils.nowMillis(),
-                rawBody = body,
-                sender = sender,
-            ),
-        ).takeIf { it != -1L }
+        if (isKnownHash(hash)) return NotificationOutcome(NotificationDecision.DUPLICATE)
+        if (relaxedNoRefDuplicate(parsed, occurredAt, amount, kind)) return NotificationOutcome(NotificationDecision.DUPLICATE)
+        if (canPrompt && !isPatternSuppressed(sender, body, timestamp)) {
+            val preview = preview(sender, body, timestamp) ?: return NotificationOutcome(NotificationDecision.NOT_TRANSACTION)
+            return NotificationOutcome(NotificationDecision.PROMPT, preview)
+        }
+        val queued = queueForReview(sender, body, timestamp, sourceApp)
+        return NotificationOutcome(if (queued != null) NotificationDecision.QUEUED else NotificationDecision.DUPLICATE)
+    }
+
+    /**
+     * The no-ref safety net (Phase 4): a notification twin can carry slightly less text than the SMS
+     * and lose the reference number — then its hash differs and exact dedupe misses. When the incoming
+     * parse has NO ref, treat a same-day + same-amount + same-kind row (ledger, any source, or queue)
+     * as the same transaction and skip. Deliberately conservative toward never double-counting (the
+     * same day|amount|kind key the scan already uses against manual entries); a parse WITH a ref is
+     * never skipped this way — same-day equal-amount repeat purchases carry distinct refs.
+     */
+    private suspend fun relaxedNoRefDuplicate(parsed: SmsParser.Parsed, occurredAt: Long, amount: Long, kind: TxnKind): Boolean {
+        if (parsed.refNumber != null) return false
+        val key = manualKey(occurredAt, amount, kind)
+        val inLedger = expenseDao.getAllExpensesOnce()
+            .any { it.deletedAt == null && manualKey(it.occurredAt, it.amountMinor, it.kind) == key }
+        if (inLedger) return true
+        return pendingDao.getAllOnce().any { manualKey(it.occurredAt, it.amountMinor, it.kind) == key }
     }
 
     /**
@@ -366,6 +437,12 @@ class SmsCaptureRepository @Inject constructor(
     /** Confirm one pending capture into the ledger (optionally overriding the guessed category). */
     suspend fun confirmPending(id: Long, categoryId: Long? = null): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
+        // Already committed under this hash (e.g. the live-prompt twin was added while this row sat in
+        // the queue) → drop the queued row instead of double-adding; same guard commitDraft has.
+        if (p.dedupeHash in expenseDao.allDedupeHashes().toHashSet()) {
+            pendingDao.deleteById(id)
+            return@withLock null
+        }
         val finalCategory = categoryId ?: p.categoryId
         // Quick-confirm (no editor) → precise last4 match only; bank-name fallback is editor-only (#3).
         val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
@@ -415,6 +492,12 @@ class SmsCaptureRepository @Inject constructor(
         paymentMethodId: Long? = null,
     ): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
+        // Same twin guard as confirmPending: this capture was already committed under its hash →
+        // remove the stale queue row rather than double-adding the money.
+        if (p.dedupeHash in expenseDao.allDedupeHashes().toHashSet()) {
+            pendingDao.deleteById(id)
+            return@withLock null
+        }
         val newId = expenseRepository.create(
             TransactionInput(
                 amountMinor = amountMinor,

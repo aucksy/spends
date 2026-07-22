@@ -41,6 +41,7 @@ object DatabaseModule {
                 SpendsDatabase.MIGRATION_12_13,
                 SpendsDatabase.MIGRATION_13_14,
                 SpendsDatabase.MIGRATION_14_15,
+                SpendsDatabase.MIGRATION_15_16,
             )
             .build()
 

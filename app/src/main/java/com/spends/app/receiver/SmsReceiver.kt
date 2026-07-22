@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
 import com.spends.app.data.capture.CaptureNotifier
+import com.spends.app.data.capture.RecentCaptureGuard
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.EntryPoint
@@ -31,6 +32,7 @@ class SmsReceiver : BroadcastReceiver() {
         fun captureRepository(): SmsCaptureRepository
         fun settingsRepository(): SettingsRepository
         fun captureNotifier(): CaptureNotifier
+        fun recentCaptureGuard(): RecentCaptureGuard
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -47,6 +49,7 @@ class SmsReceiver : BroadcastReceiver() {
         val capture = entry.captureRepository()
         val settings = entry.settingsRepository()
         val notifier = entry.captureNotifier()
+        val guard = entry.recentCaptureGuard()
 
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
@@ -58,9 +61,19 @@ class SmsReceiver : BroadcastReceiver() {
                         // silently into the review queue instead, so it's reviewable but never lost.
                         if (capture.isPatternSuppressed(sender, body, receivedAt)) {
                             capture.queueForReview(sender, body, receivedAt)
-                        } else {
+                        } else if (capture.isKnownHash(preview.dedupeHash)) {
+                            // Already in the ledger or the review queue (e.g. the notification twin of
+                            // this alert got there first, Phase 4) — a prompt would only invite a
+                            // double-add attempt the hash guards would then have to swallow.
+                        } else if (guard.checkAndMark(
+                                guard.promptKey(preview.dedupeHash),
+                                RecentCaptureGuard.PROMPT_TTL_MILLIS,
+                            )
+                        ) {
                             notifier.postCapturePrompt(sender, body, receivedAt, preview)
                         }
+                        // else: the notification listener prompted this exact transaction moments ago
+                        // (the SMS + Messages/Truecaller twins of one alert) — one prompt is the contract.
                     }
                 }
             } finally {

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.SmsCaptureMode
@@ -64,6 +65,11 @@ data class SettingsState(
     // (a payment-method id is meaningless across devices), so it's NOT in the backup snapshot. 0 in the
     // store means "unset" → null here.
     val defaultPaymentMethodId: Long? = null,
+    // Notification capture (Phase 4): read transaction notifications from the apps in
+    // [notificationCaptureApps] (package names). Device-local — the listener grant is per-device and an
+    // app list is meaningless on another phone — so neither field is in the backup snapshot.
+    val notificationCaptureEnabled: Boolean = false,
+    val notificationCaptureApps: Set<String> = emptySet(),
 ) {
     /** The day the Smart Cycle window actually anchors on: the explicit reset day, else the salary day. */
     val effectiveSmartResetDay: Int
@@ -102,6 +108,8 @@ class SettingsRepository @Inject constructor(
             recurringNotifyEnabled = prefs[Keys.RECURRING_NOTIFY] ?: true,
             recurringNotifyMinute = prefs[Keys.RECURRING_NOTIFY_MINUTE] ?: (9 * 60),
             defaultPaymentMethodId = prefs[Keys.DEFAULT_PAYMENT_METHOD]?.takeIf { it > 0 },
+            notificationCaptureEnabled = prefs[Keys.NOTIFICATION_CAPTURE] ?: false,
+            notificationCaptureApps = prefs[Keys.NOTIFICATION_CAPTURE_APPS] ?: emptySet(),
         )
     }
 
@@ -130,6 +138,9 @@ class SettingsRepository @Inject constructor(
     suspend fun setRecurringNotifyTime(minuteOfDay: Int) = edit { it[Keys.RECURRING_NOTIFY_MINUTE] = minuteOfDay.coerceIn(0, 1439) }
     /** Set the default "Paid with" instrument for new expenses (#2); null = generic Bank (stored as 0). */
     suspend fun setDefaultPaymentMethodId(id: Long?) = edit { it[Keys.DEFAULT_PAYMENT_METHOD] = id ?: 0L }
+    suspend fun setNotificationCaptureEnabled(value: Boolean) = edit { it[Keys.NOTIFICATION_CAPTURE] = value }
+    /** Replace the watched-app package set for notification capture. */
+    suspend fun setNotificationCaptureApps(packages: Set<String>) = edit { it[Keys.NOTIFICATION_CAPTURE_APPS] = packages }
 
     /** Overwrite every preference from a restored snapshot. */
     suspend fun restore(state: SettingsState) {
@@ -189,5 +200,7 @@ class SettingsRepository @Inject constructor(
         val RECURRING_NOTIFY = booleanPreferencesKey("recurring_notify_enabled")
         val RECURRING_NOTIFY_MINUTE = intPreferencesKey("recurring_notify_minute")
         val DEFAULT_PAYMENT_METHOD = longPreferencesKey("default_payment_method_id")
+        val NOTIFICATION_CAPTURE = booleanPreferencesKey("notification_capture_enabled")
+        val NOTIFICATION_CAPTURE_APPS = stringSetPreferencesKey("notification_capture_apps")
     }
 }

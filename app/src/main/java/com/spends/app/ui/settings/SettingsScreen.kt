@@ -183,8 +183,8 @@ fun SettingsScreen(
             // ── How transactions get added without typing (#3: was two separate sections). ──
             SettingsSection("Automatic entries") {
                 ClickableRow(
-                    title = "Detect from SMS",
-                    value = "Review & add from bank SMS",
+                    title = "Detect from SMS & notifications",
+                    value = "Review & add from bank alerts",
                     onClick = onOpenCapture,
                     leading = { Icon(Icons.Filled.Sms, contentDescription = null) },
                 )
