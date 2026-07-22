@@ -36,10 +36,22 @@ jobs:
           chmod +x gradlew
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee gradle-test-output.txt
 
       - name: Android Lint (informational)
         run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      # Full Gradle console output as an artifact: compile errors never reach the HTML test
+      # reports, and this machine polls CI anonymously (no gh CLI / no API token for job logs).
+      - name: Upload build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: gradle-test-output.txt
+          if-no-files-found: ignore
 
       - name: Upload test + lint reports
         if: always()
