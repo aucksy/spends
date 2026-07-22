@@ -13,7 +13,7 @@ import javax.inject.Singleton
  *     parse's dedupe hash, checked by both paths).
  *
  * Purely advisory: losing this state (process death) never loses money — the DB dedupe hashes are
- * the real guard; this only prevents duplicate *prompts*/re-parses. Bounded LRU so it can't grow.
+ * the real guard; this only prevents duplicate prompts and re-parses. Bounded LRU so it can't grow.
  */
 @Singleton
 class RecentCaptureGuard @Inject constructor() {
