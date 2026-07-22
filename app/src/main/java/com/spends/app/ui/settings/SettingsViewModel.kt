@@ -70,6 +70,11 @@ class SettingsViewModel @Inject constructor(
             periodSelectionStore.set(PeriodSelection(type = PeriodType.SALARY_CYCLE))
         }
     }
+    /** 0 = follow the salary day. onSaved runs AFTER the write commits (same reason as [setSalaryDay]). */
+    fun setSmartCycleResetDay(day: Int, onSaved: () -> Unit = {}) = viewModelScope.launch {
+        settingsRepository.setSmartCycleResetDay(day)
+        onSaved()
+    }
     /** Persist the widget-eye setting, THEN run [onSaved] (the widget refresh) — so the refresh reads the
      *  just-committed value instead of racing the async DataStore write (#2: it wasn't updating instantly). */
     fun setWidgetEyeHidden(value: Boolean, onSaved: () -> Unit) = viewModelScope.launch {

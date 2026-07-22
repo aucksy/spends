@@ -87,8 +87,12 @@ class TransactionsViewModel @Inject constructor(
 
     private val searchQuery = MutableStateFlow("")
 
-    // Resolve (type, range) into a concrete window — or the Smart Cycle composite (Round B) when the feature
-    // is on and SMART_CYCLE is picked — reacting to the salary day, the confirmed cards, and the earliest txn.
+    // Resolve (type, range) into a concrete window — reacting to the salary day, the reset day, the
+    // confirmed cards, and the earliest txn. Smart Cycle (all instruments) is ONE contiguous window anchored
+    // on the user's reset day (default = salary day): every transaction counts in the cycle it was spent in,
+    // whatever instrument paid it. (The old per-instrument composite silently dropped a card's spends from
+    // the balance the moment its billing day passed — the "balance improves on billing day" bug.) Only
+    // Single-Card mode still uses the composite machinery, to show that one card's own billing cycle.
     private val resolvedFlow: StateFlow<ResolvedB> =
         combine(
             selection,
@@ -97,16 +101,20 @@ class TransactionsViewModel @Inject constructor(
             paymentMethodRepository.observeConfirmed(),
         ) { sel, settings, earliest, cards ->
             val today = LocalDate.now(DateUtils.ZONE)
-            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
-                resolveComposite(sel, settings.salaryCycleStartDay, today, cards)
+            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE && sel.selectedCardId != null) {
+                resolveSingleCard(sel, settings, today, cards)
             } else {
                 // A stale SMART_CYCLE selection while the feature is off falls back to the salary cycle.
-                val effType = if (sel.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else sel.type
+                val effType = if (!settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
+                    PeriodType.SALARY_CYCLE
+                } else {
+                    sel.type
+                }
                 val r = PeriodResolver.resolve(
                     type = effType,
                     range = sel.range,
                     salaryDay = settings.salaryCycleStartDay,
-                    smartDay = settings.salaryCycleStartDay,
+                    smartDay = settings.effectiveSmartResetDay,
                     today = today,
                     earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
                     customStartMillis = sel.customStartMillis,
@@ -144,33 +152,44 @@ class TransactionsViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionsUiState())
 
-    /** Build the Smart Cycle composite (all instruments) or a single card from the selection + confirmed cards. */
-    private fun resolveComposite(
+    /** Single-Card mode: that one card's own billing cycle, from the selection + confirmed cards. */
+    private fun resolveSingleCard(
         sel: PeriodSelection,
-        salaryDay: Int,
+        settings: SettingsState,
         today: LocalDate,
         cards: List<com.spends.app.data.db.entity.PaymentMethodEntity>,
     ): ResolvedB {
+        val salaryDay = settings.salaryCycleStartDay
         val infos = cards.map { CardCycleInfo(it.id, it.label, it.colorHex, it.last4, it.billingDay) }
-        val card = sel.selectedCardId?.let { id -> infos.firstOrNull { it.id == id } }
-        val period = if (card != null) {
-            CompositeCycleResolver.resolveSingleCard(card, salaryDay, today, sel.cycleOffset)
-        } else {
-            CompositeCycleResolver.resolveSmartCycle(infos, salaryDay, today, sel.cycleOffset)
-        }
-        // For a single card, also resolve the salary cycle window (same offset) — its balance is the headline
-        // so the card view reflects your remaining salary money, not just the card's charges (#7).
-        if (card != null) {
-            var salWin = CycleUtils.windowFor(today, salaryDay)
-            repeat(abs(sel.cycleOffset)) {
-                salWin = if (sel.cycleOffset < 0) CycleUtils.previousWindow(salWin, salaryDay) else CycleUtils.nextWindow(salWin, salaryDay)
+        val card = infos.firstOrNull { it.id == sel.selectedCardId }
+            // The selected card vanished (deleted / unconfirmed): fall back to the whole Smart Cycle window
+            // via the contiguous resolver — mirrors the old composite fallback.
+            ?: run {
+                val r = PeriodResolver.resolve(
+                    type = PeriodType.SMART_CYCLE,
+                    range = PeriodRange.CURRENT,
+                    salaryDay = salaryDay,
+                    smartDay = settings.effectiveSmartResetDay,
+                    today = today,
+                    earliestDataDay = null,
+                    customStartMillis = null,
+                    customEndExclusiveMillis = null,
+                    cycleOffset = sel.cycleOffset,
+                )
+                return ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
             }
-            return ResolvedB(
-                period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period,
-                headlineStart = salWin.startMillis(), headlineEnd = salWin.endExclusiveMillis(),
-            )
+        val period = CompositeCycleResolver.resolveSingleCard(card, salaryDay, today, sel.cycleOffset)
+        // Also resolve the Smart Cycle window (same offset) — its balance is the headline so the card view
+        // reflects your money left this cycle, not just the card's bare negative (#7).
+        val resetDay = settings.effectiveSmartResetDay
+        var cycleWin = CycleUtils.windowFor(today, resetDay)
+        repeat(abs(sel.cycleOffset)) {
+            cycleWin = if (sel.cycleOffset < 0) CycleUtils.previousWindow(cycleWin, resetDay) else CycleUtils.nextWindow(cycleWin, resetDay)
         }
-        return ResolvedB(period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period)
+        return ResolvedB(
+            period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period,
+            headlineStart = cycleWin.startMillis(), headlineEnd = cycleWin.endExclusiveMillis(),
+        )
     }
 
     fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
@@ -214,7 +233,7 @@ class TransactionsViewModel @Inject constructor(
         return ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
     }
 
-    /** Smart Cycle composite: filter the bounding items to each instrument's own cycle, then build the list. */
+    /** Single-Card mode: filter the bounding items to the card's own billing cycle, then build the list. */
     private fun buildStateComposite(
         resolved: ResolvedB,
         settings: SettingsState,
@@ -228,8 +247,8 @@ class TransactionsViewModel @Inject constructor(
             income = items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor },
             expense = items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
         )
-        // Single-Card (#7): show the SALARY cycle's remaining balance as the headline (income − all expenses),
-        // so the card view reflects your money left, not the card's bare negative. Full composite = own balance.
+        // Single-Card (#7): show the Smart Cycle window's remaining balance as the headline (income − all
+        // expenses), so the card view reflects your money left, not the card's bare negative.
         val singleCard = resolved.headlineStart > 0L
         val headlineBalance = if (singleCard) {
             (headlineKindSums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0) -
@@ -247,11 +266,15 @@ class TransactionsViewModel @Inject constructor(
             canStepForward = false,
             search = query,
             totals = totals,
-            carryForward = null, // carry-forward doesn't apply to a multi-instrument composite
+            carryForward = null, // carry-forward doesn't apply to a single card's statement view
             groups = buildGroups(items, filtered),
             isComposite = true,
             headlineBalanceMinor = headlineBalance,
-            headlineLabel = if (singleCard) "Salary cycle" else null,
+            headlineLabel = if (singleCard) {
+                if (settings.effectiveSmartResetDay == settings.salaryCycleStartDay) "Salary cycle" else "Smart Cycle"
+            } else {
+                null
+            },
         )
     }
 

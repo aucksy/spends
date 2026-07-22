@@ -60,6 +60,9 @@ data class SnapshotSettings(
     val autoBackupMinuteOfDay: Int = 2 * 60,
     // Added in v4 (Cards feature). Default off keeps older backups valid.
     val smartCycleEnabled: Boolean = false,
+    // Added in v1.52.0 (Smart Cycle reset day; 0 = follow the salary day). Additive default keeps older
+    // backups valid.
+    val smartCycleResetDay: Int = 0,
 )
 
 @Serializable

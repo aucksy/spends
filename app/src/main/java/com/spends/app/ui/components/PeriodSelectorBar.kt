@@ -87,6 +87,9 @@ fun PeriodSelectorBar(
     searchActive: Boolean = false,
     smartCycleEnabled: Boolean = false,
     cards: List<CardChoice> = emptyList(),
+    // The category drill-down offers the Smart pill (so its window matches the slice you tapped) but hides
+    // the card narrowing — a per-category list isn't per-card. Everything else keeps the section.
+    showCardSection: Boolean = true,
     // #1: in All-time mode the caller passes this so the leading calendar icon "pops" and opens the
     // "Jump to month" picker. null in every other mode → the calendar stays a plain decorative glyph.
     onJumpToMonth: (() -> Unit)? = null,
@@ -215,6 +218,7 @@ fun PeriodSelectorBar(
             onDismiss = { open = false },
             smartCycleEnabled = smartCycleEnabled,
             cards = cards,
+            showCardSection = showCardSection,
         )
     }
 }
@@ -250,6 +254,7 @@ private fun PeriodSelectorSheet(
     onDismiss: () -> Unit,
     smartCycleEnabled: Boolean,
     cards: List<CardChoice>,
+    showCardSection: Boolean,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var current by remember { mutableStateOf(selection) }
@@ -270,7 +275,7 @@ private fun PeriodSelectorSheet(
         }
     }
     val selectedTypeIndex = types.indexOf(current.type).let { if (it < 0) types.indexOf(PeriodType.SALARY_CYCLE) else it }
-    val showCardPicker = smartCycleEnabled && current.type == PeriodType.SMART_CYCLE
+    val showCardPicker = smartCycleEnabled && current.type == PeriodType.SMART_CYCLE && showCardSection
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
@@ -292,24 +297,36 @@ private fun PeriodSelectorSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            if (showCardPicker) {
-                // Smart Cycle is the per-instrument composite — Range (All / Last-N / Custom) doesn't apply
-                // (it always resolves the CURRENT cycle, stepped by the prev/next arrows). Instead, let the
-                // user narrow to one card's billing cycle, or keep "All cards" for the union.
-                Spacer(Modifier.height(18.dp))
-                SectionLabel("Cards")
-                Spacer(Modifier.height(4.dp))
-                RangeRow("All cards · composite", current.selectedCardId == null) {
-                    onSelect(current.copy(selectedCardId = null, cycleOffset = 0)); onDismiss()
-                }
-                cards.forEach { card ->
-                    CardPickerRow(card, selected = current.selectedCardId == card.id) {
-                        onSelect(current.copy(selectedCardId = card.id, cycleOffset = 0)); onDismiss()
+            if (current.type == PeriodType.SMART_CYCLE && smartCycleEnabled) {
+                // Smart Cycle always resolves the CURRENT cycle (stepped by the prev/next arrows), so Range
+                // (All / Last-N / Custom) doesn't apply. Instead, let the user narrow to one card's billing
+                // cycle, or keep "All cards" for the whole cycle — unless the caller hides the card section
+                // (the category drill-down: a per-category list isn't per-card).
+                if (showCardPicker) {
+                    Spacer(Modifier.height(18.dp))
+                    SectionLabel("Cards")
+                    Spacer(Modifier.height(4.dp))
+                    RangeRow("All cards", current.selectedCardId == null) {
+                        onSelect(current.copy(selectedCardId = null, cycleOffset = 0)); onDismiss()
                     }
-                }
-                if (cards.isEmpty()) {
+                    cards.forEach { card ->
+                        CardPickerRow(card, selected = current.selectedCardId == card.id) {
+                            onSelect(current.copy(selectedCardId = card.id, cycleOffset = 0)); onDismiss()
+                        }
+                    }
+                    if (cards.isEmpty()) {
+                        Text(
+                            "Add a card to see its own billing cycle here.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp),
+                        )
+                    }
+                } else {
+                    // Card section hidden (category drill-down): explain why nothing else is listed.
+                    Spacer(Modifier.height(18.dp))
                     Text(
-                        "Add a card to see its own billing cycle here.",
+                        "Smart Cycle shows one cycle at a time — use the ‹ › arrows to move between cycles.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp),

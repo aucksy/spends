@@ -342,6 +342,7 @@ private fun SettingsState.toSnapshot() = SnapshotSettings(
     carryForwardEnabled, trashRetentionDays, autoBackupEnabled,
     carryForwardAnchorEpochDay, carryForwardOpeningMinor, hideCapturedInLists,
     autoDarkStartMinute, autoDarkEndMinute, autoBackupMinuteOfDay, smartCycleEnabled,
+    smartCycleResetDay,
 )
 
 private fun SnapshotSettings.toState() = SettingsState(
@@ -360,4 +361,5 @@ private fun SnapshotSettings.toState() = SettingsState(
     autoDarkEndMinute = autoDarkEndMinute,
     autoBackupMinuteOfDay = autoBackupMinuteOfDay,
     smartCycleEnabled = smartCycleEnabled,
+    smartCycleResetDay = smartCycleResetDay,
 )

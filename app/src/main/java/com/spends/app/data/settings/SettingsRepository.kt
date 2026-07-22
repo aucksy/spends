@@ -51,6 +51,10 @@ data class SettingsState(
     // Smart Cycle / Cards feature master switch (PRD §4.7/§4.8). OFF by default → the app behaves exactly
     // as before (no cards, no "Paid with", no Cards tab). ON reveals the cards machinery. Travels in backup.
     val smartCycleEnabled: Boolean = false,
+    // The day-of-month the Smart Cycle balance window restarts on. 0 = follow the salary day (the default,
+    // so changing the salary day moves the cycle too); 1..31 = an explicit day the user picked when turning
+    // Smart Cycle on (e.g. the day all their card bills have generated). Travels in backup.
+    val smartCycleResetDay: Int = 0,
     // Whether the daily recurring-materialisation worker posts a "recurring added" notification, and the
     // minute-of-day it runs/notifies (#15). Device-local (like the widget-eye pref) — not in the backup
     // snapshot, so it never needs a snapshot-schema bump. ON at 09:00 by default = the prior behaviour.
@@ -60,7 +64,11 @@ data class SettingsState(
     // (a payment-method id is meaningless across devices), so it's NOT in the backup snapshot. 0 in the
     // store means "unset" → null here.
     val defaultPaymentMethodId: Long? = null,
-)
+) {
+    /** The day the Smart Cycle window actually anchors on: the explicit reset day, else the salary day. */
+    val effectiveSmartResetDay: Int
+        get() = if (smartCycleResetDay in 1..31) smartCycleResetDay else salaryCycleStartDay
+}
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -90,6 +98,7 @@ class SettingsRepository @Inject constructor(
             hideCapturedInLists = prefs[Keys.HIDE_CAPTURED] ?: false,
             widgetEyeHidden = prefs[Keys.WIDGET_EYE_HIDDEN] ?: false,
             smartCycleEnabled = prefs[Keys.SMART_CYCLE_ENABLED] ?: false,
+            smartCycleResetDay = prefs[Keys.SMART_CYCLE_RESET_DAY] ?: 0,
             recurringNotifyEnabled = prefs[Keys.RECURRING_NOTIFY] ?: true,
             recurringNotifyMinute = prefs[Keys.RECURRING_NOTIFY_MINUTE] ?: (9 * 60),
             defaultPaymentMethodId = prefs[Keys.DEFAULT_PAYMENT_METHOD]?.takeIf { it > 0 },
@@ -115,6 +124,8 @@ class SettingsRepository @Inject constructor(
     suspend fun setHideCapturedInLists(value: Boolean) = edit { it[Keys.HIDE_CAPTURED] = value }
     suspend fun setWidgetEyeHidden(value: Boolean) = edit { it[Keys.WIDGET_EYE_HIDDEN] = value }
     suspend fun setSmartCycleEnabled(value: Boolean) = edit { it[Keys.SMART_CYCLE_ENABLED] = value }
+    /** 0 = follow the salary day; 1..31 = an explicit reset day. */
+    suspend fun setSmartCycleResetDay(day: Int) = edit { it[Keys.SMART_CYCLE_RESET_DAY] = day.coerceIn(0, 31) }
     suspend fun setRecurringNotifyEnabled(value: Boolean) = edit { it[Keys.RECURRING_NOTIFY] = value }
     suspend fun setRecurringNotifyTime(minuteOfDay: Int) = edit { it[Keys.RECURRING_NOTIFY_MINUTE] = minuteOfDay.coerceIn(0, 1439) }
     /** Set the default "Paid with" instrument for new expenses (#2); null = generic Bank (stored as 0). */
@@ -138,6 +149,7 @@ class SettingsRepository @Inject constructor(
             prefs[Keys.AUTO_BACKUP_MINUTE] = state.autoBackupMinuteOfDay
             prefs[Keys.HIDE_CAPTURED] = state.hideCapturedInLists
             prefs[Keys.SMART_CYCLE_ENABLED] = state.smartCycleEnabled
+            prefs[Keys.SMART_CYCLE_RESET_DAY] = state.smartCycleResetDay
         }
     }
 
@@ -173,6 +185,7 @@ class SettingsRepository @Inject constructor(
         val HIDE_CAPTURED = booleanPreferencesKey("hide_captured_in_lists")
         val WIDGET_EYE_HIDDEN = booleanPreferencesKey("widget_eye_hidden")
         val SMART_CYCLE_ENABLED = booleanPreferencesKey("smart_cycle_enabled")
+        val SMART_CYCLE_RESET_DAY = intPreferencesKey("smart_cycle_reset_day")
         val RECURRING_NOTIFY = booleanPreferencesKey("recurring_notify_enabled")
         val RECURRING_NOTIFY_MINUTE = intPreferencesKey("recurring_notify_minute")
         val DEFAULT_PAYMENT_METHOD = longPreferencesKey("default_payment_method_id")

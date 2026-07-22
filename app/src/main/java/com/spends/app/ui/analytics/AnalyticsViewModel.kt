@@ -20,6 +20,7 @@ import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.repo.RecurringRepository
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.RecurrenceFreq
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.cards.isCardInstrument
@@ -114,15 +115,22 @@ class AnalyticsViewModel @Inject constructor(
             paymentMethodRepository.observeConfirmed(),
         ) { sel, settings, earliest, cards ->
             val today = LocalDate.now(DateUtils.ZONE)
-            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
-                resolveComposite(sel, settings.salaryCycleStartDay, today, cards)
+            // Smart Cycle (all instruments) is ONE contiguous window anchored on the user's reset day
+            // (default = salary day) — a card's spends stay counted after its billing day passes. Only
+            // Single-Card mode still uses the composite (that one card's own billing cycle).
+            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE && sel.selectedCardId != null) {
+                resolveSingleCard(sel, settings, today, cards)
             } else {
-                val effType = if (sel.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else sel.type
+                val effType = if (!settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
+                    PeriodType.SALARY_CYCLE
+                } else {
+                    sel.type
+                }
                 val r = PeriodResolver.resolve(
                     type = effType,
                     range = sel.range,
                     salaryDay = settings.salaryCycleStartDay,
-                    smartDay = settings.salaryCycleStartDay,
+                    smartDay = settings.effectiveSmartResetDay,
                     today = today,
                     earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
                     customStartMillis = sel.customStartMillis,
@@ -151,14 +159,25 @@ class AnalyticsViewModel @Inject constructor(
 
     fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
 
-    private fun resolveComposite(sel: PeriodSelection, salaryDay: Int, today: LocalDate, cards: List<PaymentMethodEntity>): ResolvedB {
+    /** Single-Card mode: that one card's own billing cycle (falls back to the Smart window if it vanished). */
+    private fun resolveSingleCard(sel: PeriodSelection, settings: SettingsState, today: LocalDate, cards: List<PaymentMethodEntity>): ResolvedB {
         val infos = cards.map { CardCycleInfo(it.id, it.label, it.colorHex, it.last4, it.billingDay) }
-        val card = sel.selectedCardId?.let { id -> infos.firstOrNull { it.id == id } }
-        val period = if (card != null) {
-            CompositeCycleResolver.resolveSingleCard(card, salaryDay, today, sel.cycleOffset)
-        } else {
-            CompositeCycleResolver.resolveSmartCycle(infos, salaryDay, today, sel.cycleOffset)
-        }
+        val card = infos.firstOrNull { it.id == sel.selectedCardId }
+            ?: run {
+                val r = PeriodResolver.resolve(
+                    type = PeriodType.SMART_CYCLE,
+                    range = PeriodRange.CURRENT,
+                    salaryDay = settings.salaryCycleStartDay,
+                    smartDay = settings.effectiveSmartResetDay,
+                    today = today,
+                    earliestDataDay = null,
+                    customStartMillis = null,
+                    customEndExclusiveMillis = null,
+                    cycleOffset = sel.cycleOffset,
+                )
+                return ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
+            }
+        val period = CompositeCycleResolver.resolveSingleCard(card, settings.salaryCycleStartDay, today, sel.cycleOffset)
         return ResolvedB(period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period)
     }
 

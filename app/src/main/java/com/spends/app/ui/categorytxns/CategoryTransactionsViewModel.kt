@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import java.time.LocalDate
@@ -71,20 +72,22 @@ class CategoryTransactionsViewModel @Inject constructor(
     private val avgWindow = MutableStateFlow(AvgWindow.M6)
     fun setAvgWindow(window: AvgWindow) = avgWindow.update { window }
 
+    // Drives the compact selector's Smart pill (the drill-down offers Smart minus the card narrowing).
+    val smartCycleEnabled: StateFlow<Boolean> =
+        settingsRepository.settings.map { it.smartCycleEnabled }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     // A LOCAL cycle selector (#5), independent of the shared Transactions/Analytics cycle (user's choice):
     // changing it here NEVER writes back to the shared store. It's SEEDED from the cycle you were viewing so
     // the drill-down matches the number you tapped in Analytics (no mismatch). It's shown as a compact
     // single-line control: for a single current cycle (the usual case) it's a ‹ › prev/next stepper; for
     // All-time / Last-N / Custom it's a tappable name (those ranges have no prev/next). Tapping the name opens
-    // the full picker either way. Smart Cycle is a whole-portfolio composite that doesn't map onto a single
-    // category, so it falls back to the salary cycle here.
+    // the full picker either way. A Smart Cycle selection keeps its type (and offset) — since Smart is one
+    // contiguous window anchored on the reset day, this drill-down slices the EXACT window you tapped; only
+    // the single-card narrowing is dropped (a per-category list isn't per-card).
     private val period = MutableStateFlow(
         periodSelectionStore.selection.value.let { s ->
-            if (s.type == PeriodType.SMART_CYCLE) {
-                s.copy(type = PeriodType.SALARY_CYCLE, selectedCardId = null, cycleOffset = 0)
-            } else {
-                s
-            }
+            if (s.type == PeriodType.SMART_CYCLE) s.copy(selectedCardId = null) else s
         },
     )
     val periodSelection: StateFlow<PeriodSelection> = period.asStateFlow()
@@ -102,14 +105,20 @@ class CategoryTransactionsViewModel @Inject constructor(
         ) { allItems, window, sel, settings, earliest ->
             val now = DateUtils.nowMillis()
             val today = LocalDate.now(DateUtils.ZONE)
-            // Resolve the selected cycle to a concrete [start, end) window, the same way Analytics does
-            // (Smart already coerced to salary above, so the naive smartDay is never used).
-            val effType = if (sel.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else sel.type
+            // Resolve the selected cycle to a concrete [start, end) window, the same way Analytics does.
+            // A Smart selection anchors on the reset day (default = salary day), matching the tapped slice;
+            // a stale SMART selection while the feature is off coerces to the salary cycle (like every
+            // other consumer — the bar already displays it as Salary in that state).
+            val effType = if (sel.type == PeriodType.SMART_CYCLE && !settings.smartCycleEnabled) {
+                PeriodType.SALARY_CYCLE
+            } else {
+                sel.type
+            }
             val resolved = PeriodResolver.resolve(
                 type = effType,
                 range = sel.range,
                 salaryDay = settings.salaryCycleStartDay,
-                smartDay = settings.salaryCycleStartDay,
+                smartDay = settings.effectiveSmartResetDay,
                 today = today,
                 earliestDataDay = earliest?.let { DateUtils.toLocalDate(it) },
                 customStartMillis = sel.customStartMillis,

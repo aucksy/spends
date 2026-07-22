@@ -76,6 +76,41 @@ class PeriodResolverTest {
         assertThat(p.label).isEqualTo("Last 6 cycles")
     }
 
+    // ── Smart Cycle = ONE contiguous window anchored on the reset day (smartDay), which may differ from
+    // the salary day. This is the fix for the "balance improves when a card's billing day passes" bug:
+    // the window no longer depends on any card's billing day at all. ──
+
+    @Test fun smart_cycle_anchors_on_smart_day_not_salary_day() {
+        // salary 25th, reset day 10th; today = 25 Jun → the smart window is 10 Jun .. 9 Jul.
+        val p = resolve(PeriodType.SMART_CYCLE, PeriodRange.CURRENT, salaryDay = 25, smartDay = 10)
+        assertThat(p.startMillis).isEqualTo(startMillis(LocalDate.of(2026, 6, 10)))
+        assertThat(p.endExclusiveMillis).isEqualTo(startMillis(LocalDate.of(2026, 7, 10)))
+        assertThat(p.label).isEqualTo("10 Jun – 9 Jul")
+    }
+
+    @Test fun smart_cycle_equals_salary_cycle_when_reset_day_matches() {
+        val smart = resolve(PeriodType.SMART_CYCLE, PeriodRange.CURRENT, salaryDay = 25, smartDay = 25)
+        val salary = resolve(PeriodType.SALARY_CYCLE, PeriodRange.CURRENT, salaryDay = 25)
+        assertThat(smart.startMillis).isEqualTo(salary.startMillis)
+        assertThat(smart.endExclusiveMillis).isEqualTo(salary.endExclusiveMillis)
+    }
+
+    @Test fun smart_cycle_steps_whole_windows_on_the_reset_anchor() {
+        val p = PeriodResolver.resolve(
+            type = PeriodType.SMART_CYCLE,
+            range = PeriodRange.CURRENT,
+            salaryDay = 25,
+            smartDay = 10,
+            today = today,
+            earliestDataDay = null,
+            customStartMillis = null,
+            customEndExclusiveMillis = null,
+            cycleOffset = -1,
+        )
+        assertThat(p.startMillis).isEqualTo(startMillis(LocalDate.of(2026, 5, 10)))
+        assertThat(p.endExclusiveMillis).isEqualTo(startMillis(LocalDate.of(2026, 6, 10)))
+    }
+
     @Test fun all_starts_at_earliest_data_day() {
         val earliest = LocalDate.of(2024, 2, 3)
         val current = CycleUtils.windowFor(today, 25)

@@ -45,6 +45,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.category.ColorAssigner
 import com.spends.app.core.money.Money
+import com.spends.app.core.period.PeriodType
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
 import com.spends.app.ui.components.AutoSizeRupee
@@ -96,8 +97,10 @@ fun AnalyticsScreen(
         )
         Spacer(Modifier.height(8.dp))
 
-        // Smart Cycle composite (#4): the per-instrument breakdown lives here now (moved off the timeline).
-        if (state.isComposite) {
+        // Smart Cycle (#4): the per-instrument breakdown lives here now (moved off the timeline). Gated on
+        // the SELECTION (not state.isComposite) — the all-instruments Smart view is a contiguous window now,
+        // so isComposite only marks Single-Card, but the breakdown link belongs to both Smart modes.
+        if (smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE) {
             BreakdownLinkCard(onClick = onOpenBreakdown)
             Spacer(Modifier.height(12.dp))
         }

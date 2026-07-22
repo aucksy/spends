@@ -46,9 +46,10 @@ import com.spends.app.ui.components.rupeeText
 
 /**
  * Smart Cycle "per-instrument breakdown" (design Screen 2 · "My Cycle breakdown"): one teal TOTAL card,
- * then the credit cards (each on its own billing cycle) and the Bank/UPI bucket (on the salary cycle),
- * each showing its own current-cycle spend. The TOTAL is spend (expense only) — it reconciles with the
- * Analytics donut centre / total expense, not the timeline balance hero (income − expense).
+ * then the credit cards and the Bank/UPI bucket, each showing what it paid inside the ONE Smart Cycle
+ * window (anchored on the reset day) — so every row and the TOTAL reconcile with the timeline and
+ * Analytics. The TOTAL is spend (expense only) — it matches the Analytics donut centre / total expense,
+ * not the timeline balance hero (income − expense).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,7 +86,7 @@ fun CycleBreakdownScreen(
                 Spacer(Modifier.height(14.dp))
             }
             item {
-                SectionLabel("Credit cards · own billing cycle")
+                SectionLabel("Credit cards")
                 Spacer(Modifier.height(8.dp))
             }
             item {
@@ -104,7 +105,7 @@ fun CycleBreakdownScreen(
                 Spacer(Modifier.height(14.dp))
             }
             item {
-                SectionLabel("Bank / UPI · salary cycle")
+                SectionLabel("Bank / UPI")
                 Spacer(Modifier.height(8.dp))
                 InstrumentGroup(state.banks)
             }

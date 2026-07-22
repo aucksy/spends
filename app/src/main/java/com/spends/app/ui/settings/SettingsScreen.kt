@@ -85,6 +85,7 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var showSalaryDialog by remember { mutableStateOf(false) }
+    var showResetDayDialog by remember { mutableStateOf(false) }
     var showAnchorPicker by remember { mutableStateOf(false) }
     var showOpeningDialog by remember { mutableStateOf(false) }
     var showDarkStartPicker by remember { mutableStateOf(false) }
@@ -150,11 +151,25 @@ fun SettingsScreen(
                 RowDivider()
                 SwitchRow(
                     title = "Smart Cycle",
-                    subtitle = "Shows your true remaining salary — what's already left your bank, plus card spends you'll owe when each card's bill generates. Every card is tracked on its own billing cycle.",
+                    subtitle = "One balance across bank, UPI and cards — everything you spend counts in the cycle you spend it. You can still view each card on its own billing cycle.",
                     checked = state.smartCycleEnabled,
-                    onChange = viewModel::setSmartCycle,
+                    onChange = { on ->
+                        viewModel.setSmartCycle(on)
+                        // Turning it ON asks for the cycle reset day right away (default = salary day),
+                        // with a plain-words explanation of why the day matters.
+                        if (on) showResetDayDialog = true
+                    },
                 )
                 if (state.smartCycleEnabled) {
+                    ClickableRow(
+                        title = "Cycle reset day",
+                        value = if (state.smartCycleResetDay in 1..31) {
+                            "${ordinal(state.smartCycleResetDay)} of every month"
+                        } else {
+                            "Salary day (${ordinal(state.salaryCycleStartDay)})"
+                        },
+                        onClick = { showResetDayDialog = true },
+                    )
                     RowDivider()
                     ClickableRow(
                         title = "Banks & Cards",
@@ -294,6 +309,20 @@ fun SettingsScreen(
                 viewModel.setSalaryDay(it) { com.spends.app.widget.SummaryWidget.refresh(context) }
             },
             onDismiss = { showSalaryDialog = false },
+        )
+    }
+
+    if (showResetDayDialog) {
+        SmartResetDayDialog(
+            salaryDay = state.salaryCycleStartDay,
+            currentResetDay = state.smartCycleResetDay,
+            onSelect = { day ->
+                // Picking exactly the salary day stores 0 = "follow the salary day", so changing the salary
+                // day later moves the cycle with it. Any other day is pinned as an explicit choice.
+                val stored = if (day == state.salaryCycleStartDay) 0 else day
+                viewModel.setSmartCycleResetDay(stored) { com.spends.app.widget.SummaryWidget.refresh(context) }
+            },
+            onDismiss = { showResetDayDialog = false },
         )
     }
 
@@ -478,6 +507,52 @@ private fun ClickableRow(
             Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/**
+ * Asked when Smart Cycle is turned ON (and editable later via the "Cycle reset day" row): the one day of
+ * the month the Smart Cycle balance starts over. Explained in plain words — most people want their salary
+ * day, but someone whose card bills land around their salary date may prefer a different day.
+ */
+@Composable
+private fun SmartResetDayDialog(
+    salaryDay: Int,
+    currentResetDay: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selected by remember { mutableStateOf(if (currentResetDay in 1..31) currentResetDay else salaryDay) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("When should your cycle restart?") },
+        text = {
+            Column {
+                Text(
+                    "Smart Cycle shows one balance: everything you earn and spend between two reset days — " +
+                        "bank, UPI and cards together.\n\n" +
+                        "Most people pick their salary day (${ordinal(salaryDay)}), so the balance answers " +
+                        "“how much of this salary is left?”\n\n" +
+                        "Pick a different day if that fits you better — for example the day you sit down to " +
+                        "pay your card bills each month.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                NumberWheelPicker(
+                    value = selected,
+                    range = 1..31,
+                    onValueChange = { selected = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSelect(selected); onDismiss() }) { Text("Done") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

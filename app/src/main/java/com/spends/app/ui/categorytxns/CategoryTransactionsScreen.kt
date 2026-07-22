@@ -48,6 +48,7 @@ fun CategoryTransactionsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
+    val smartCycleEnabled by viewModel.smartCycleEnabled.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -73,6 +74,7 @@ fun CategoryTransactionsScreen(
                     CategoryHeader(
                         state = state,
                         selection = selection,
+                        smartCycleEnabled = smartCycleEnabled,
                         onSelectPeriod = viewModel::setPeriod,
                         onAvgWindow = viewModel::setAvgWindow,
                     )
@@ -91,6 +93,7 @@ fun CategoryTransactionsScreen(
 private fun CategoryHeader(
     state: CategoryTxnsUiState,
     selection: PeriodSelection,
+    smartCycleEnabled: Boolean,
     onSelectPeriod: (PeriodSelection) -> Unit,
     onAvgWindow: (AvgWindow) -> Unit,
 ) {
@@ -124,13 +127,15 @@ private fun CategoryHeader(
         // matches the number you tapped. For a single current cycle it's a ‹ › prev/next stepper; for
         // All-time / Last-N / Custom it's a tappable name. LOCAL: re-scopes the total, count and list without
         // touching the main Transactions/Analytics cycle. label="" keeps it to one line (dates on the count
-        // line above). Smart Cycle isn't offered here (a composite doesn't map to one category).
+        // line above). Smart Cycle IS offered (it's one contiguous window now, so it slices a category
+        // exactly), but without the card narrowing — a per-category list isn't per-card.
         Spacer(Modifier.height(14.dp))
         PeriodSelectorBar(
             selection = selection,
             label = "",
             onSelect = onSelectPeriod,
-            smartCycleEnabled = false,
+            smartCycleEnabled = smartCycleEnabled,
+            showCardSection = false,
         )
 
         Spacer(Modifier.height(18.dp))

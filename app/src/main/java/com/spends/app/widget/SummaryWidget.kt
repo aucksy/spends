@@ -93,38 +93,45 @@ class SummaryWidget : AppWidgetProvider() {
                 val selection = ep.periodSelectionStore().current()
                 val today = LocalDate.now(DateUtils.ZONE)
 
-                val income: Long
-                val expense: Long
-                val cycleName: String
-                val cycleLabel: String
-                if (settings.smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE) {
-                    // Smart Cycle composite (Round B): each instrument on its own cycle. Fetch the bounding
-                    // window once, then keep only rows inside their OWN instrument's window.
+                var income = 0L
+                var expense = 0L
+                var cycleName = ""
+                var cycleLabel = ""
+                val singleCard = settings.smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE &&
+                    selection.selectedCardId != null
+                var handledAsCard = false
+                if (singleCard) {
+                    // Single-Card mode: that one card's own billing cycle (composite machinery).
                     val cards = ep.paymentMethodRepository().observeConfirmed().first()
                     val infos = cards.map { CardCycleInfo(it.id, it.label, it.colorHex, it.last4, it.billingDay) }
-                    val card = selection.selectedCardId?.let { id -> infos.firstOrNull { it.id == id } }
-                    val composite = if (card != null) {
-                        CompositeCycleResolver.resolveSingleCard(card, settings.salaryCycleStartDay, today, selection.cycleOffset)
-                    } else {
-                        CompositeCycleResolver.resolveSmartCycle(infos, settings.salaryCycleStartDay, today, selection.cycleOffset)
+                    val card = infos.firstOrNull { it.id == selection.selectedCardId }
+                    if (card != null) {
+                        val composite = CompositeCycleResolver.resolveSingleCard(card, settings.salaryCycleStartDay, today, selection.cycleOffset)
+                        val items = ep.expenseRepository()
+                            .expensesBetweenOnce(composite.boundingStartMillis, composite.boundingEndExclusiveMillis)
+                            .filter { composite.contains(it.occurredAt, it.paymentMethodId) }
+                        income = items.filter { it.kind == TxnKind.INCOME }.sumOf { it.amountMinor }
+                        expense = items.filter { it.kind == TxnKind.EXPENSE }.sumOf { it.amountMinor }
+                        // Just the cycle name (a single card's label already carries its dates) (#1).
+                        cycleName = composite.label
+                        cycleLabel = ""
+                        handledAsCard = true
                     }
-                    val items = ep.expenseRepository()
-                        .expensesBetweenOnce(composite.boundingStartMillis, composite.boundingEndExclusiveMillis)
-                        .filter { composite.contains(it.occurredAt, it.paymentMethodId) }
-                    income = items.filter { it.kind == TxnKind.INCOME }.sumOf { it.amountMinor }
-                    expense = items.filter { it.kind == TxnKind.EXPENSE }.sumOf { it.amountMinor }
-                    // Just the cycle name (a single card's label already carries its dates); NO instrument
-                    // count on the widget (#1) — the composite has no single date range to show below it.
-                    cycleName = composite.label
-                    cycleLabel = ""
-                } else {
+                }
+                if (!handledAsCard) {
                     // A stale SMART_CYCLE selection while the feature is off falls back to the salary cycle.
-                    val effType = if (selection.type == PeriodType.SMART_CYCLE) PeriodType.SALARY_CYCLE else selection.type
+                    // With the feature ON, Smart Cycle is one contiguous window anchored on the reset day
+                    // (default = salary day) — same window the app's timeline shows.
+                    val effType = if (!settings.smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE) {
+                        PeriodType.SALARY_CYCLE
+                    } else {
+                        selection.type
+                    }
                     val resolved = PeriodResolver.resolve(
                         type = effType,
                         range = selection.range,
                         salaryDay = settings.salaryCycleStartDay,
-                        smartDay = settings.salaryCycleStartDay,
+                        smartDay = settings.effectiveSmartResetDay,
                         today = today,
                         earliestDataDay = null,
                         customStartMillis = selection.customStartMillis,
@@ -134,9 +141,11 @@ class SummaryWidget : AppWidgetProvider() {
                     val sums = ep.expenseRepository().kindSumsOnce(resolved.startMillis, resolved.endExclusiveMillis)
                     income = sums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0L
                     expense = sums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
-                    // Cycle NAME + dates (#11), reflecting the user's actual selection (#6).
-                    cycleName = selection.describe()
-                    cycleLabel = resolved.label
+                    // Cycle NAME + dates (#11), reflecting the user's actual selection (#6). A vanished
+                    // single card falls through to here — its describe() would say "Single Card" over
+                    // whole-cycle numbers, so show the window's dates instead.
+                    cycleName = if (singleCard) resolved.label else selection.describe()
+                    cycleLabel = if (singleCard) "" else resolved.label
                 }
                 val balance = income - expense
                 val store = ep.widgetMaskStore()

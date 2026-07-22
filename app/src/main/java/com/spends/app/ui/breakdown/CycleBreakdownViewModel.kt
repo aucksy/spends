@@ -2,8 +2,8 @@ package com.spends.app.ui.breakdown
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.spends.app.core.period.CardCycleInfo
-import com.spends.app.core.period.CompositeCycleResolver
+import com.spends.app.core.period.PeriodRange
+import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.ExpenseWithAllocations
@@ -24,9 +24,9 @@ import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import javax.inject.Inject
 
-/** One instrument's spend in its own current cycle: a card (own billing cycle) or the Bank/UPI bucket. */
+/** One instrument's spend inside the current Smart Cycle window: a card, a named bank, or Bank/UPI. */
 data class InstrumentRowUi(
-    val id: Long?, // null = the Bank / UPI bucket (salary cycle)
+    val id: Long?, // null = the Bank / UPI bucket (untagged spends)
     val name: String,
     val colorHex: String,
     val sub: String,
@@ -46,11 +46,11 @@ data class CycleBreakdownUiState(
 )
 
 /**
- * The Smart Cycle "per-instrument breakdown" (design Screen 2). Resolves the FULL composite (every card on
- * its own billing cycle + the Bank/UPI bucket on the salary cycle) at the selection's current offset, then
- * slices the bounding-window EXPENSE rows into each instrument. The total = the composite SPEND (expense
- * only), so it reconciles with the Analytics donut centre / total expense — NOT the timeline balance hero
- * (which is income − expense).
+ * The Smart Cycle "per-instrument breakdown" (design Screen 2): where this cycle's spend went, per card /
+ * bank. The cycle is the ONE contiguous Smart Cycle window (anchored on the user's reset day, default =
+ * salary day, stepped by the selection's offset) — the same window the timeline balance and Analytics use,
+ * so every number here reconciles with them. Expense rows are grouped by the instrument that paid them;
+ * untagged spends fall into the generic Bank/UPI bucket.
  */
 @HiltViewModel
 class CycleBreakdownViewModel @Inject constructor(
@@ -69,28 +69,40 @@ class CycleBreakdownViewModel @Inject constructor(
             Triple(sel, settings, cards)
         }.flatMapLatest { (sel, settings, cards) ->
             val today = LocalDate.now(DateUtils.ZONE)
-            val salaryDay = settings.salaryCycleStartDay
-            // The breakdown is always the union of instruments — step it by the selection's offset, but
-            // ignore any single-card narrowing (that's a separate view).
+            // The breakdown always shows the whole cycle — step it by the selection's offset, but ignore any
+            // single-card narrowing (that's a separate view).
             val offset = if (sel.type == PeriodType.SMART_CYCLE) sel.cycleOffset else 0
-            val infos = cards.map { CardCycleInfo(it.id, it.label, it.colorHex, it.last4, it.billingDay) }
-            val composite = CompositeCycleResolver.resolveSmartCycle(infos, salaryDay, today, offset)
-            expenseRepository.observeBetween(composite.boundingStartMillis, composite.boundingEndExclusiveMillis)
-                .map { boundingItems -> build(composite.label, composite, cards, boundingItems) }
+            val window = PeriodResolver.resolve(
+                type = PeriodType.SMART_CYCLE,
+                range = PeriodRange.CURRENT,
+                salaryDay = settings.salaryCycleStartDay,
+                // A retained back-stack entry can reach this screen with the feature just turned off —
+                // anchor on the salary day then, matching the coerced app-wide fallback.
+                smartDay = if (settings.smartCycleEnabled) settings.effectiveSmartResetDay else settings.salaryCycleStartDay,
+                today = today,
+                earliestDataDay = null,
+                customStartMillis = null,
+                customEndExclusiveMillis = null,
+                cycleOffset = offset,
+            )
+            expenseRepository.observeBetween(window.startMillis, window.endExclusiveMillis)
+                .map { items -> build(window.label, cards, items) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CycleBreakdownUiState())
 
     private fun build(
         label: String,
-        composite: com.spends.app.core.period.CompositePeriod,
         cards: List<PaymentMethodEntity>,
-        boundingItems: List<ExpenseWithAllocations>,
+        items: List<ExpenseWithAllocations>,
     ): CycleBreakdownUiState {
-        val expenses = boundingItems.filter {
-            it.expense.kind == TxnKind.EXPENSE && composite.contains(it.expense.occurredAt, it.expense.paymentMethodId)
+        val expenses = items.filter { it.expense.kind == TxnKind.EXPENSE }
+        // Group by the paying instrument; a txn tagged to an instrument that's no longer confirmed (deleted)
+        // counts under the generic Bank/UPI bucket, so the rows always sum to the window's total spend.
+        val knownIds = cards.map { it.id }.toSet()
+        val byInstrument = expenses.groupBy { e ->
+            e.expense.paymentMethodId?.takeIf { it in knownIds }
         }
-        val byInstrument = expenses.groupBy { composite.instrumentIdFor(it.expense.paymentMethodId) }
 
-        // Cards (own billing cycle) vs named banks (salary cycle) — split by instrument type (#2).
+        // Cards vs named banks — split by instrument type (#2).
         val cardEntities = cards.filter { it.isCardInstrument() }
         val bankEntities = cards.filter { !it.isCardInstrument() }
 
@@ -106,7 +118,7 @@ class CycleBreakdownViewModel @Inject constructor(
             )
         }.sortedByDescending { it.amountMinor }
 
-        // Named banks first, then the generic "Bank / UPI" bucket (null-tagged spend) — shown when it has
+        // Named banks first, then the generic "Bank / UPI" bucket (untagged spend) — shown when it has
         // spend, or when there are no named banks at all (the original single-bucket behaviour).
         val namedBankRows = bankEntities.map { bank ->
             val its = byInstrument[bank.id].orEmpty()
@@ -124,7 +136,7 @@ class CycleBreakdownViewModel @Inject constructor(
             id = null,
             name = "Bank / UPI",
             colorHex = BANK_COLOR,
-            sub = "Salary cycle · ${countLabel(genericItems.size)}",
+            sub = countLabel(genericItems.size),
             amountMinor = genericItems.sumOf { it.expense.amountMinor },
             isCard = false,
         )
@@ -145,10 +157,12 @@ class CycleBreakdownViewModel @Inject constructor(
         )
     }
 
+    // The sub-line describes the CARD (its last4 + billing day) plus its txn count in THIS cycle window —
+    // the count is per-window, not per-statement (statements get their own treatment in the dues feature).
     private fun cardSub(card: PaymentMethodEntity, txns: Int): String {
         val parts = buildList {
             card.last4?.let { add("·$it") }
-            add(card.billingDay?.let { "Bills ${ordinal(it)}" } ?: "Salary cycle")
+            card.billingDay?.let { add("Bills ${ordinal(it)}") }
             add(countLabel(txns))
         }
         return parts.joinToString("  ·  ")
@@ -157,7 +171,6 @@ class CycleBreakdownViewModel @Inject constructor(
     private fun bankSub(bank: PaymentMethodEntity, txns: Int): String {
         val parts = buildList {
             bank.last4?.let { add("·$it") }
-            add("Salary cycle")
             add(countLabel(txns))
         }
         return parts.joinToString("  ·  ")
