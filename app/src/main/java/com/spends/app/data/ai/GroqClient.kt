@@ -3,16 +3,25 @@ package com.spends.app.data.ai
 import com.spends.app.data.backup.SecureKeyStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /** The outcome of one Groq call. Everything else in the AI layer treats [Failed] as "behave like today". */
 sealed interface GroqResult {
@@ -26,7 +35,7 @@ sealed interface GroqResult {
  * EVERYTHING is wrapped so a network/parse/HTTP error can only ever yield [GroqResult.Failed] — never a crash,
  * never a thrown exception into the caller (the whole AI layer is strictly additive and fail-closed, see
  * docs/AI-RESEARCH.md §2.4/§2.6). This client only ever produces TEXT; it can't touch money, the ledger, or a
- * balance.
+ * balance. Key writes go through [setKey]/[clearKey] so [hasKeyFlow] stays reactive for the review/insights gates.
  */
 @Singleton
 class GroqClient @Inject constructor(
@@ -38,8 +47,25 @@ class GroqClient @Inject constructor(
 
     private val jsonType = "application/json; charset=UTF-8".toMediaType()
 
+    // Reactive key presence so a gate (review chip / insights card) re-evaluates the moment a key is saved or
+    // removed — without it a retained ViewModel wouldn't notice a just-saved key until its next data emission.
+    private val _hasKey = MutableStateFlow(secureKeyStore.hasApiKey())
+    val hasKeyFlow: StateFlow<Boolean> = _hasKey
+
     /** True when a usable key is present (presence check; the call itself still fails closed if it can't decrypt). */
     fun hasKey(): Boolean = secureKeyStore.hasApiKey()
+
+    /** Store a key (encrypted, device-local) and update [hasKeyFlow]. Blank clears. */
+    fun setKey(rawKey: String) {
+        secureKeyStore.setApiKey(rawKey)
+        _hasKey.value = secureKeyStore.hasApiKey()
+    }
+
+    /** Remove the stored key and update [hasKeyFlow]. */
+    fun clearKey() {
+        secureKeyStore.clearApiKey()
+        _hasKey.value = false
+    }
 
     /** One chat completion using the STORED key. [jsonObject] asks the model for strict JSON output. */
     suspend fun chat(
@@ -98,7 +124,9 @@ class GroqClient @Inject constructor(
                 .post(payload.toString().toRequestBody(jsonType))
                 .build()
 
-            client.newCall(request).execute().use { resp ->
+            // Cooperatively cancellable: if the coroutine is cancelled (e.g. the user switches cycles), the
+            // in-flight HTTP call is aborted instead of orphaned, freeing the connection + the rate budget.
+            awaitResponse(client.newCall(request)).use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
                     // Surface a compact reason (never the body — it can echo the key/errors). 401 = bad key.
@@ -117,6 +145,21 @@ class GroqClient @Inject constructor(
             if (e is CancellationException) throw e // never swallow structured cancellation
             GroqResult.Failed(e.message ?: "Network error")
         }
+    }
+
+    /** Suspend on an OkHttp call, aborting it if the coroutine is cancelled. */
+    private suspend fun awaitResponse(call: Call): Response = suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation { runCatching { call.cancel() } }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                // Resuming an already-cancelled continuation is a safe no-op.
+                cont.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                cont.resume(response)
+            }
+        })
     }
 
     companion object {

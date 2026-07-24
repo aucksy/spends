@@ -720,6 +720,36 @@ class SmsCaptureRepository @Inject constructor(
         learnedFor(merchant, allowFuzzy = true) != null
 
     /**
+     * A one-read snapshot predicate for G1 batch checks: reads the learned table ONCE and returns
+     * `merchant -> is-learned` (fuzzy, same widening as the review surfaces). Lets a caller test many rows
+     * without one full-table read per row (the AI review collector uses this over a scan's worth of rows).
+     */
+    suspend fun learnedMerchantPredicate(): (String?) -> Boolean {
+        val entries = normalizedLearned()
+        return predicate@{ merchant ->
+            val key = MerchantKeys.normalize(merchant) ?: return@predicate false
+            entries.any { (_, n) -> n == key || MerchantKeys.sameMerchant(key, n) }
+        }
+    }
+
+    /**
+     * The user's learned merchant→category shortcuts as (merchant, category-name) pairs, newest first, capped
+     * to [limit] — sent to the AI categorizer as reference so it can recognise a spelling variant of a merchant
+     * the user already tagged and REPRODUCE that category (enhancing the learned memory, never overriding it).
+     * Only mappings whose category still exists and isn't archived are included; names only (no amounts/dates).
+     */
+    suspend fun learnedCategoryPairs(limit: Int = 100): List<Pair<String, String>> {
+        val cats = categoryDao.getAllOnce().associateBy { it.id }
+        return merchantDao.getAllOnce()
+            .sortedByDescending { it.updatedAt }
+            .mapNotNull { e ->
+                val cat = cats[e.categoryId]?.takeIf { !it.isArchived } ?: return@mapNotNull null
+                e.merchantKey to cat.name
+            }
+            .take(limit)
+    }
+
+    /**
      * Remember this merchant's category/note so future captures pre-fill them.
      *
      * Category: [categoryId] is stored as-is when [categoryDeliberate] (the user picked it). A

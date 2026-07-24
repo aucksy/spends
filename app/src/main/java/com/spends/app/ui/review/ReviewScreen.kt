@@ -268,9 +268,11 @@ private fun ReviewCard(
             // (review-only, the user still confirms). Never auto-applied; absent when AI is off.
             if (row.aiSuggestedCategoryName != null) {
                 Spacer(Modifier.height(10.dp))
+                // "Same as before" when AI recognised a merchant you've tagged before; else a fresh "Suggested".
+                val chipPrefix = if (row.aiSuggestedFromKnown) "Same as before" else "Suggested"
                 SuggestionChip(
                     onClick = onAcceptSuggestion,
-                    label = { Text("Suggested: ${row.aiSuggestedCategoryName}") },
+                    label = { Text("$chipPrefix: ${row.aiSuggestedCategoryName}") },
                     icon = {
                         Icon(
                             Icons.Filled.AutoAwesome,

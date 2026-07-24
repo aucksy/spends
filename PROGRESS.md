@@ -4,12 +4,48 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.56.0** — versionCode **61**, versionName **"1.56.0"**
+- **Shipped: v1.56.1** — versionCode **62**, versionName **"1.56.1"**
   (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-24.
 - **DB schema: v16** (UNCHANGED — the AI helper is additive: in-memory suggestions + one read-only DAO query,
   no schema touch, no snapshot change).
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.56.0/Spends-v1.56.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.56.1/Spends-v1.56.1.apk
+
+## v1.56.1 — AI helper: end-to-end-assessment fixes + "reproduce my learned category" enhancement
+Owner asked for an end-to-end assessment of v1.56.0; 2 trace agents (regression + happy-path) + a Groq API contract
+check found feature #1 sound and no existing regression, but real issues in feature #2 + owner added a G1 enhancement.
+All fixed, delta-reviewed clean, shipped as v1.56.1. **No DB / snapshot / manifest / dependency change.** Detail +
+review outcomes in [`docs/AI-BUILD-PLAN.md`](docs/AI-BUILD-PLAN.md).
+
+**Assessment fixes:**
+- **⭐HIGH — insights card could hang on "Thinking…" forever.** The collector claimed the cycle fingerprint BEFORE
+  the network call under `collectLatest`, so unrelated churn (any DataStore write, a recurring-rule edit) cancelled
+  the in-flight call and the same-fingerprint restart skipped the finish. Fix: drive it off a `distinctUntilChanged`
+  fingerprint trigger (only a genuine cycle/data change cancels+reruns) + the ✕ dismiss is available during loading.
+- **MED (regression, everyone) — analytics DB flows stayed hot in the background with AI off.** The always-on
+  collector held a permanent `state` subscriber. Fix: `flatMapLatest` the gate so AI-off never subscribes to `state`
+  → the analytics queries idle again.
+- **MED — a cancelled Groq call didn't abort the HTTP request** (orphaned requests). Fix: `GroqClient` now uses
+  `suspendCancellableCoroutine` + `call.cancel()`.
+- **LOW — key wasn't reactive** (saving a key after enabling insights didn't show the card until the next data
+  change). Fix: `GroqClient.hasKeyFlow` (updated by `setKey`/`clearKey`) combined into the gate. **LOW —** per-row
+  learned-merchant lookup re-read the whole table → `learnedMerchantPredicate()` (one read). **LOW —** "Test key"
+  now labels 400/404 correctly.
+
+**⭐Owner enhancement — AI *reproduces* a learned category for a spelling variant (G1: enhance, never override).**
+For the unrecognized merchants AI does get, it's now given the user's learned merchant→category shortcuts
+(`SmsCaptureRepository.learnedCategoryPairs`, capped 100, names only, unarchived) and told to match a known merchant
+FIRST (bridging variants the exact matcher missed) and REPRODUCE that category, else guess from the list. A match sets
+`fromKnown` → chip reads **"Same as before: X ✨"** (vs "Suggested"); accepting learns the new spelling so the
+deterministic matcher covers it next time. **G1 preserved:** the deterministic learned match still runs first, so AI is
+only consulted for merchants it couldn't place — `known` lets it REPRODUCE, never replace. Privacy delta (learned
+merchant names now also leave the phone — names only, no amounts/dates) disclosed in the explainer + first-enable dialog.
+
+**Reviews:** delta agents on both the assessment fixes and the enhancement → **0 blockers**; compiles, G1 +
+money-safety hold, privacy bounded + disclosed, cancellation safe (no double-resume). Tests: `AiCategorizerTest`
+(+known-payload + fromKnown), `AiInsightsPayloadTest`, `ReviewEligibilityTest`. Files: `data/ai/{GroqClient,AiCategorizer}.kt`,
+`ui/settings/AiSettings{ViewModel,Screen}.kt`, `data/capture/SmsCaptureRepository.kt`, `ui/review/{ReviewViewModel,ReviewScreen}.kt`,
+`ui/analytics/{AnalyticsViewModel,AnalyticsScreen}.kt`.
 
 ## v1.56.0 — "AI helper" (Groq BYOK) — SHIPPED (owner said ship 2026-07-24)
 Built + reviewed + shipped same day. **No DB / snapshot / manifest change; no runtime dependency** (one

@@ -7,6 +7,7 @@ import com.spends.app.core.time.DateUtils
 import com.spends.app.data.ai.AiCatItem
 import com.spends.app.data.ai.AiCategorizer
 import com.spends.app.data.ai.GroqClient
+import com.spends.app.data.ai.LearnedMerchant
 import com.spends.app.data.capture.NotificationCaptureApps
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.db.entity.CategoryEntity
@@ -28,8 +29,14 @@ import javax.inject.Inject
 /** Review-queue kind filter (#7): show all rows, only expenses, or only income. */
 enum class ReviewFilter { ALL, EXPENSE, INCOME }
 
-/** An AI category suggestion for one review row (already mapped to a real, on-list category id). */
-data class ReviewAiSuggestion(val categoryId: Long, val categoryName: String, val cleanName: String?)
+/** An AI category suggestion for one review row (already mapped to a real, on-list category id). [fromKnown] =
+ *  AI recognised this as a variant of a merchant the user already tagged, so the chip reads "Same as before". */
+data class ReviewAiSuggestion(
+    val categoryId: Long,
+    val categoryName: String,
+    val cleanName: String?,
+    val fromKnown: Boolean = false,
+)
 
 data class ReviewRowUi(
     val id: Long,
@@ -51,6 +58,8 @@ data class ReviewRowUi(
     // the user still confirms). Null when AI is off / no suggestion / the row already has a real category.
     val aiSuggestedCategoryId: Long? = null,
     val aiSuggestedCategoryName: String? = null,
+    // True when AI matched this to a merchant the user tagged before → the chip reads "Same as before".
+    val aiSuggestedFromKnown: Boolean = false,
 )
 
 @HiltViewModel
@@ -119,31 +128,36 @@ class ReviewViewModel @Inject constructor(
             requestedIds.retainAll(liveIds)
 
             val names = cats.map { it.name }
+            // One learned-table read for the whole batch (not one per row).
+            val isLearned = captureRepository.learnedMerchantPredicate()
             // Eligible = a real merchant string + the rules landed on a fallback ("Other"/"Other Income", i.e.
             // no confident rule match) + NO learned mapping (G1: learned always wins, AI is never consulted for
-            // a taught merchant) + not already attempted this session. A plain loop because the learned-check is
-            // suspend.
+            // a taught merchant) + not already attempted this session.
             val eligible = ArrayList<PendingCaptureEntity>()
             for (p in pending) {
                 if (p.id in requestedIds) continue
                 val merchant = p.merchant
                 if (merchant.isNullOrBlank()) continue
                 if (!isFallbackCategory(cats.firstOrNull { it.id == p.categoryId }?.name)) continue
-                if (captureRepository.hasLearnedCategory(merchant)) continue
+                if (isLearned(merchant)) continue
                 eligible.add(p)
             }
             if (eligible.isEmpty()) return@collectLatest
+
+            // Only now (there's work) read the learned shortcuts, sent to AI so it can reproduce a prior choice
+            // for a spelling variant the deterministic matcher missed (enhances the learned memory, never overrides).
+            val learned = captureRepository.learnedCategoryPairs().map { LearnedMerchant(it.first, it.second) }
 
             eligible.chunked(BATCH_SIZE).forEach { batch ->
                 val batchIds = batch.map { it.id }
                 requestedIds.addAll(batchIds) // one attempt per row this session (marked up front)
                 try {
                     val batchItems = batch.map { AiCatItem(it.id, it.merchant!!.trim(), it.kind) }
-                    val result = aiCategorizer.suggest(batchItems, names)
+                    val result = aiCategorizer.suggest(batchItems, names, learned)
                     if (result.isNotEmpty()) {
                         val mapped = result.mapNotNull { (id, sug) ->
                             val catId = cats.firstOrNull { it.name.equals(sug.categoryName, ignoreCase = true) }?.id
-                            if (catId == null) null else id to ReviewAiSuggestion(catId, sug.categoryName, sug.cleanName)
+                            if (catId == null) null else id to ReviewAiSuggestion(catId, sug.categoryName, sug.cleanName, sug.fromKnown)
                         }.toMap()
                         if (mapped.isNotEmpty()) _suggestions.value = _suggestions.value + mapped
                     }
@@ -205,6 +219,7 @@ class ReviewViewModel @Inject constructor(
             searchText = searchText,
             aiSuggestedCategoryId = if (showSuggestion) suggestion!!.categoryId else null,
             aiSuggestedCategoryName = if (showSuggestion) suggestion!!.categoryName else null,
+            aiSuggestedFromKnown = showSuggestion && suggestion!!.fromKnown,
         )
     }
 

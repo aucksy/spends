@@ -175,6 +175,8 @@ private fun InsightsCard(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
                 )
+                // Refresh only when there's something to refresh; dismiss is ALWAYS available (an escape hatch
+                // even while a summary is generating, so a slow/stuck call is never a dead end).
                 if (!loading) {
                     IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
                         Icon(
@@ -185,14 +187,14 @@ private fun InsightsCard(
                         )
                     }
                     Spacer(Modifier.width(4.dp))
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            Icons.Filled.Close,
-                            contentDescription = "Dismiss insight",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Dismiss insight",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
             Spacer(Modifier.height(8.dp))

@@ -35,8 +35,8 @@ class AiSettingsViewModel @Inject constructor(
     val state: StateFlow<SettingsState> = settingsRepository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
 
-    private val _hasKey = MutableStateFlow(secureKeyStore.hasApiKey())
-    val hasKey: StateFlow<Boolean> = _hasKey
+    // Reactive: reflects a save/remove immediately, and stays consistent with the review/insights gates.
+    val hasKey: StateFlow<Boolean> = groqClient.hasKeyFlow
 
     private val _testStatus = MutableStateFlow<KeyTestStatus>(KeyTestStatus.Idle)
     val testStatus: StateFlow<KeyTestStatus> = _testStatus
@@ -45,18 +45,16 @@ class AiSettingsViewModel @Inject constructor(
     fun setCategorize(value: Boolean) = viewModelScope.launch { settingsRepository.setAiCategorize(value) }
     fun setInsights(value: Boolean) = viewModelScope.launch { settingsRepository.setAiInsights(value) }
 
-    /** Persist a pasted key (encrypted, device-local). Blank is ignored. */
+    /** Persist a pasted key (encrypted, device-local) through GroqClient so hasKeyFlow updates. Blank is ignored. */
     fun saveKey(raw: String) = viewModelScope.launch {
         val key = raw.trim()
         if (key.isEmpty()) return@launch
-        withContext(Dispatchers.IO) { secureKeyStore.setApiKey(key) }
-        _hasKey.value = secureKeyStore.hasApiKey()
+        withContext(Dispatchers.IO) { groqClient.setKey(key) }
         _testStatus.value = KeyTestStatus.Idle
     }
 
     fun removeKey() = viewModelScope.launch {
-        withContext(Dispatchers.IO) { secureKeyStore.clearApiKey() }
-        _hasKey.value = false
+        withContext(Dispatchers.IO) { groqClient.clearKey() }
         _testStatus.value = KeyTestStatus.Idle
     }
 
@@ -80,6 +78,8 @@ class AiSettingsViewModel @Inject constructor(
     private fun friendlyError(reason: String): String = when {
         reason.contains("401") || reason.contains("403") -> "That key was rejected — double-check you pasted it correctly."
         reason.contains("429") -> "Groq is busy right now — wait a moment and try again."
+        reason.contains("404") -> "The AI model is unavailable right now — try again later."
+        reason.contains("400") -> "The request was rejected — please try again."
         reason.contains("No API key") -> "Enter a key first, then test it."
         reason.startsWith("HTTP 5") -> "Groq had a temporary problem — try again shortly."
         else -> "Couldn't reach Groq — check your internet connection."

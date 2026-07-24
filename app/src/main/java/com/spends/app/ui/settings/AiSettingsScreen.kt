@@ -141,7 +141,10 @@ fun AiSettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp, bottom = 6.dp),
                 )
-                BulletLine("Suggestions: the merchant text from a detected SMS + your category names.")
+                BulletLine(
+                    "Suggestions: the merchant text from a detected SMS, your category names, and your saved " +
+                        "merchant→category shortcuts (names only) so it can recognise a merchant you've tagged before.",
+                )
                 BulletLine("Insights: your category totals for the cycle.")
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -164,9 +167,10 @@ fun AiSettingsScreen(
             text = {
                 Text(
                     "This is the first time any of your data would leave your phone. With it on — and only for the " +
-                        "features you enable — a detected SMS's merchant name (for category suggestions) and your " +
-                        "category totals (for insights) are sent to Groq. Never your messages, amounts, balances, " +
-                        "or account numbers. You'll paste your own free key next.",
+                        "features you enable — a detected SMS's merchant name plus your saved merchant→category " +
+                        "shortcuts (for category suggestions) and your category totals (for insights) are sent to " +
+                        "Groq. Never your messages, amounts, balances, or account numbers. You'll paste your own " +
+                        "free key next.",
                 )
             },
             confirmButton = {

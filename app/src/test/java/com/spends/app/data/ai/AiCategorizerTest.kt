@@ -76,4 +76,38 @@ class AiCategorizerTest {
         val res = AiCategorizer.parseResponse("""{"results":[{"id":"42","category":"Food"}]}""", items, cats)
         assertEquals("Food", res[42]?.categoryName)
     }
+
+    // ---- learned-merchant reference (enhance, don't override) ----
+
+    @Test fun `learned shortcuts are included as 'known' but still carry no amount or date`() {
+        val items = listOf(AiCatItem(1, "RAZ*FURLENCO", TxnKind.EXPENSE))
+        val learned = listOf(LearnedMerchant("furlenco", "Food"), LearnedMerchant("swiggy", "Food"))
+        val json = AiCategorizer.buildUserPayload(items, cats, learned)
+        val obj = JSONObject(json)
+        assertEquals(setOf("categories", "items", "known"), obj.keys().asSequence().toSet())
+        val known0 = obj.getJSONArray("known").getJSONObject(0)
+        assertEquals(setOf("merchant", "category"), known0.keys().asSequence().toSet())
+        assertEquals("furlenco", known0.getString("merchant"))
+        assertEquals("Food", known0.getString("category"))
+        listOf("amount", "date", "balance", "last4", "occurredAt").forEach {
+            assertFalse("payload must not contain '$it'", json.contains(it, ignoreCase = true))
+        }
+    }
+
+    @Test fun `no 'known' key when there are no learned shortcuts`() {
+        val items = listOf(AiCatItem(1, "x", TxnKind.EXPENSE))
+        assertFalse(JSONObject(AiCategorizer.buildUserPayload(items, cats, emptyList())).has("known"))
+    }
+
+    @Test fun `parseResponse reads the fromKnown flag so the chip can say 'Same as before'`() {
+        val items = listOf(AiCatItem(1, "RAZ*FURLENCO", TxnKind.EXPENSE))
+        val matched = AiCategorizer.parseResponse(
+            """{"results":[{"id":1,"category":"Food","fromKnown":true}]}""", items, cats,
+        )
+        assertEquals("Food", matched[1]?.categoryName)
+        assertTrue(matched[1]!!.fromKnown)
+        // Absent flag defaults to false (a fresh guess, not a recognised repeat merchant).
+        val fresh = AiCategorizer.parseResponse("""{"results":[{"id":1,"category":"Food"}]}""", items, cats)
+        assertFalse(fresh[1]!!.fromKnown)
+    }
 }

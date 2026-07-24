@@ -160,3 +160,50 @@ compile/Hilt/Room and logic/data-safety/privacy, both scanning `app/src/test`.
   (sourced from the on-screen totals).
 - **G2 master-off gating** is verified by the review (it lives in the flow collectors) but not unit-tested;
   the fail-closed + privacy + eligibility cores ARE unit-tested.
+
+---
+
+## End-to-end assessment + fixes (2026-07-24, post-v1.56.0)
+
+Owner asked for an end-to-end assessment. Two independent trace agents (regression + happy-path) + a Groq API
+contract check confirmed: **feature #1 (chips) is sound end-to-end, and nothing existing regressed in
+correctness / money / data / backup** (AI-off = identical results). They found real issues in feature #2 +
+some efficiency nits, all **fixed and re-verified by a delta agent** (correct, compile-safe, no new
+regression). Shipped as **v1.56.1**.
+
+1. **HIGH — insights card could hang on "Thinking…" forever.** The collector claimed the cycle fingerprint
+   *before* the network call and ran under `collectLatest`, so unrelated churn (any DataStore write, a
+   recurring-rule edit) could cancel the in-flight call and the same-fingerprint restart skipped the finish.
+   **Fix:** drive the collector off a `distinctUntilChanged` fingerprint trigger so only a genuine cycle/data
+   change cancels+reruns; unrelated churn is dropped and the call completes. Plus the ✕ dismiss is now
+   available during loading (escape hatch).
+2. **MED (regression, everyone) — analytics DB flows stayed hot in the background even with AI off.** The new
+   always-on collector held a permanent subscriber on `state`. **Fix:** `flatMapLatest` the gate so when AI is
+   off we never subscribe to `state` → the analytics queries idle again for AI-off users.
+3. **MED — a cancelled Groq call didn't abort the HTTP request** (orphaned requests wasting the rate budget).
+   **Fix:** `GroqClient` now uses `suspendCancellableCoroutine` + `call.cancel()` on cancellation.
+4. **LOW — key wasn't reactive** (saving a key after enabling insights didn't light the card until the next
+   data change). **Fix:** `GroqClient.hasKeyFlow` (updated by `setKey`/`clearKey`), combined into the insights
+   gate → the card appears the moment a key is saved.
+5. **LOW — per-row learned-merchant lookup re-read the whole table.** **Fix:**
+   `SmsCaptureRepository.learnedMerchantPredicate()` = one read → in-memory predicate, used by the review
+   collector. **LOW — "Test key" mislabelled a 400/404** → sharpened the messages.
+
+Files touched: `data/ai/GroqClient.kt`, `ui/settings/AiSettingsViewModel.kt`, `data/capture/SmsCaptureRepository.kt`,
+`ui/review/ReviewViewModel.kt`, `ui/analytics/AnalyticsViewModel.kt`, `ui/analytics/AnalyticsScreen.kt`. No DB /
+snapshot / manifest / dependency change. Money-safety + privacy re-verified intact.
+
+### Owner enhancement — AI *reproduces* a learned category for a spelling variant (G1: enhance, never override)
+
+Owner requirement (2026-07-24): AI must not override a learned category, but should **extend** it — a merchant
+you tagged "Food" before, appearing spelled a little differently (and missed by the app's exact matcher), should
+come back as **Food** with AI's help. Implemented as: the categorizer is now given the user's learned
+merchant→category shortcuts (`SmsCaptureRepository.learnedCategoryPairs`, capped 100, names only, unarchived) and
+told to **match a known merchant first, else guess from the list**. A matched suggestion is flagged `fromKnown`
+→ the review chip reads **"Same as before: Food ✨"** (vs "Suggested"). Accepting it learns the new spelling, so
+the deterministic matcher catches it next time. **G1 preserved:** the deterministic learned match still runs
+first, so AI is only ever consulted for merchants it *couldn't* place — `known` lets it REPRODUCE, never replace.
+Review-verified: compiles, G1 + money-safety hold, privacy delta bounded (merchant keys + category names only,
+capped) and disclosed in the "what leaves your phone" explainer + first-enable dialog. Files: `data/ai/AiCategorizer.kt`,
+`data/capture/SmsCaptureRepository.kt`, `ui/review/ReviewViewModel.kt`, `ui/review/ReviewScreen.kt`,
+`ui/settings/AiSettingsScreen.kt`, `AiCategorizerTest.kt`.

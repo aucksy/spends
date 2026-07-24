@@ -36,8 +36,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -210,24 +212,35 @@ class AnalyticsViewModel @Inject constructor(
     // ---- AI insights (#2) — read-only, aggregates only, cached per cycle ----
     private val _insights = MutableStateFlow(InsightsUiState())
     val insights: StateFlow<InsightsUiState> = _insights
-    // The current-cycle content fingerprint we last summarised — skip re-work (and a DB read) on identical re-emits.
-    private var lastInsightFp: String? = null
 
     init {
         viewModelScope.launch {
-            combine(state, settingsRepository.settings.map { it.aiEnabled && it.aiInsights }) { st, on -> st to on }
-                .collectLatest { (st, on) ->
-                    val gateOn = on && groqClient.hasKey() // G2: master + sub-toggle + a key, else nothing runs
-                    if (!gateOn || st.loading || st.isEmpty) {
-                        lastInsightFp = null
+            // Gate = master + sub-toggle + a key, all REACTIVE. When OFF, flatMapLatest yields flowOf(null) and we
+            // never subscribe to `state`, so the analytics DB flows stay idle for AI-off users (no battery cost).
+            combine(
+                settingsRepository.settings.map { it.aiEnabled && it.aiInsights }.distinctUntilChanged(),
+                groqClient.hasKeyFlow,
+            ) { on, hasKey -> on && hasKey }
+                .distinctUntilChanged()
+                .flatMapLatest { gateOn ->
+                    if (!gateOn) {
+                        flowOf<String?>(null)
+                    } else {
+                        // ONLY the fingerprint drives re-summarising. Unrelated churn (a recurring edit, an
+                        // unrelated DataStore write) keeps the fingerprint the same → distinctUntilChanged drops
+                        // it → the in-flight call is NOT cancelled and completes (fixes the "stuck on Thinking…"
+                        // hang). null = an empty/loading cycle → hide the card.
+                        state.map { st -> if (st.loading || st.isEmpty) null else insightFingerprint(st) }
+                            .distinctUntilChanged()
+                    }
+                }
+                .collectLatest { fp ->
+                    if (fp == null) {
                         if (_insights.value.visible) _insights.value = InsightsUiState(visible = false)
                         return@collectLatest
                     }
-                    val fp = insightFingerprint(st)
-                    if (fp == lastInsightFp) return@collectLatest // unchanged cycle → keep the current card
-                    lastInsightFp = fp
                     _insights.value = InsightsUiState(visible = true, loading = true)
-                    val text = aiInsights.summarize(buildInsightPayload(st))
+                    val text = aiInsights.summarize(buildInsightPayload(state.value))
                     _insights.value = InsightsUiState(visible = true, loading = false, text = text, failed = text == null)
                 }
         }
@@ -240,7 +253,6 @@ class AnalyticsViewModel @Inject constructor(
         if (!(s.aiEnabled && s.aiInsights) || !groqClient.hasKey() || st.loading || st.isEmpty) return@launch
         _insights.value = InsightsUiState(visible = true, loading = true)
         val text = aiInsights.summarize(buildInsightPayload(st), forceRefresh = true)
-        lastInsightFp = insightFingerprint(st)
         _insights.value = InsightsUiState(visible = true, loading = false, text = text, failed = text == null)
     }
 
