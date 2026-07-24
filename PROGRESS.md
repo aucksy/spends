@@ -4,11 +4,31 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.54.0** — versionCode **58**, versionName **"1.54.0"**
+- **Shipped: v1.54.1** — versionCode **59**, versionName **"1.54.1"**
   (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-24.
-- **DB schema: v16** (UNCHANGED — this release is pure period-bucketing logic + UI, no schema touch).
+- **DB schema: v16** (UNCHANGED — pure UI/layout tweak, no schema touch).
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.54.0/Spends-v1.54.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.54.1/Spends-v1.54.1.apk
+
+## v1.54.1 — Make the carry-over box discoverable (timeline summary strip)
+Owner-requested 2026-07-24; built + reviewed + shipped same day. **Pure layout; no logic/DB/money change.**
+- **Problem:** The timeline summary strip (`ui/transactions/SummaryHeader.kt`) sizes tiles so exactly TWO
+  (Expense + Income) fill the row width; when a THIRD tile (Carry forward, shown only when
+  `state.carryForward != null` = carry-forward setting ON) is present it sat fully off-screen to the right
+  with no hint it existed. Owner didn't know there was a carry-over box.
+- **Fix:** In the `BoxWithConstraints`, when `tiles.size > 2` the tile width becomes
+  `(maxWidth - gap*2 - peek) / 2` with `peek = 40.dp`, so the third tile PEEKS in from the right edge — the
+  standard "scroll for more →" affordance. The two-tile default path (carry-forward OFF, the common case)
+  is byte-identical (`(maxWidth - gap) / 2`). Peek is a fixed 40dp sliver independent of screen width
+  (`2*tileW + 2*gap = maxWidth - peek`). Shared font style still measured from the one `tileW` → all tiles
+  stay one matched size (just slightly smaller when 3 show).
+- **Reviews (ritual honored):** 2 parallel adversarial agents (compile + logic/layout, both told to scan
+  `app/src/test`) → **compile CLEAN, logic GO, 0 findings.** No test asserts tile sizing; only consumer
+  `TransactionsScreen.kt` uses the unchanged public signature. RTL: peek mirrors to the left edge (correct).
+- **Ship glitch (fixed):** first `git commit` here-string broke on inner quotes → the commit silently didn't
+  happen and the tag landed on the OLD v1.54.0 commit. Caught it (main push said "up-to-date"), deleted the
+  tag local+remote, committed via a `-F` message file (commit `decd47b`), re-tagged. LESSON: commit multi-line
+  messages via `git commit -F <file>`, not PowerShell here-strings with embedded quotes.
 
 ## v1.54.0 — Card-billing-aware Smart Cycle ("billed card spends roll to the next cycle")
 Owner-requested 2026-07-24; built + reviewed + shipped same day. **No DB / snapshot change** (pure
