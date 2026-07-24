@@ -194,6 +194,10 @@ fun TransactionsScreen(
                 searchActive = searchActive,
                 smartCycleEnabled = smartCycleEnabled,
                 cards = cardChoices,
+                // Card-billing-aware Smart Cycle: spends past a card's billing day sit in the NEXT cycle, so the
+                // forward arrow is enabled to reach them and a one-per-card badge names which cards moved.
+                canGoForwardToNext = state.canGoForwardToNext,
+                shiftedCardNames = state.shiftedCardNames,
                 // #1: only in All-time (with data, not mid-search) does the calendar icon pop + open the jumper.
                 onJumpToMonth = if (isAllTime && !searchActive && state.groups.isNotEmpty()) ({ showJump = true }) else null,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),

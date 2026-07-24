@@ -10,6 +10,8 @@ import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
+import com.spends.app.core.period.SmartCardCycle
+import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.CategorySpend
 import com.spends.app.data.db.entity.ExpenseWithAllocations
@@ -33,7 +35,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
+import kotlin.math.abs
 import kotlin.math.ceil
 
 /** Totals of active recurring rules in one frequency bucket (cycle-independent). */
@@ -81,6 +86,18 @@ private data class ResolvedB(
     val endExclusiveMillis: Long,
     val label: String,
     val composite: CompositePeriod? = null,
+    // Card-billing-aware Smart Cycle. When set, [startMillis, endExclusiveMillis) is the DISPLAY cycle, and
+    // [smartCard] carries the WIDE fetch range + the per-card billing days used to bucket each txn in memory
+    // (a card purchase counts in the cycle where its statement bills). null for every other view.
+    val smartCard: SmartCardCtx? = null,
+)
+
+/** In-memory bucketing context for the card-billing-aware Smart Cycle (see [SmartCardCycle]). */
+private data class SmartCardCtx(
+    val fetchStartMillis: Long,
+    val fetchEndExclusiveMillis: Long,
+    val resetDay: Int,
+    val cardBillingDays: Map<Long, Int?>,
 )
 
 @HiltViewModel
@@ -118,9 +135,14 @@ class AnalyticsViewModel @Inject constructor(
             // Smart Cycle (all instruments) is ONE contiguous window anchored on the user's reset day
             // (default = salary day) — a card's spends stay counted after its billing day passes. Only
             // Single-Card mode still uses the composite (that one card's own billing cycle).
-            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE && sel.selectedCardId != null) {
-                resolveSingleCard(sel, settings, today, cards)
-            } else {
+            when {
+                settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE && sel.selectedCardId != null ->
+                    resolveSingleCard(sel, settings, today, cards)
+                // Smart Cycle across ALL cards: bucket each card's spends by its billing day (billed spends
+                // roll into the next cycle), computed in memory — reconciles with the timeline.
+                settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE ->
+                    resolveSmartCardComposite(settings, today, cards, sel.cycleOffset)
+                else -> {
                 val effType = if (!settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
                     PeriodType.SALARY_CYCLE
                 } else {
@@ -138,11 +160,21 @@ class AnalyticsViewModel @Inject constructor(
                     cycleOffset = sel.cycleOffset,
                 )
                 ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
+                }
             }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, currentCycle())
 
     val state: StateFlow<AnalyticsUiState> =
         resolvedFlow.flatMapLatest { resolved ->
+            val sc = resolved.smartCard
+            if (sc != null) {
+                // Card-billing-aware Smart Cycle: fetch the wide range, bucket to the display cycle in memory
+                // via the SAME rule as the timeline, then derive the donut + weekly + totals from those items.
+                return@flatMapLatest combine(
+                    expenseRepository.observeBetween(sc.fetchStartMillis, sc.fetchEndExclusiveMillis),
+                    recurringRepository.observeAll(),
+                ) { items, rules -> buildStateSmartCard(resolved, items, rules) }
+            }
             combine(
                 expenseRepository.observeCategorySpend(resolved.startMillis, resolved.endExclusiveMillis),
                 expenseRepository.observeKindSums(resolved.startMillis, resolved.endExclusiveMillis),
@@ -181,6 +213,33 @@ class AnalyticsViewModel @Inject constructor(
         return ResolvedB(period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period)
     }
 
+    /**
+     * Smart Cycle across ALL cards, card-billing-aware. [startMillis, endExclusiveMillis) is the DISPLAY cycle;
+     * [smartCard] carries the wide fetch range (previous cycle start → this cycle end, so pulled-forward card
+     * spends are included) + the per-card billing days, used to bucket in memory. Reconciles with the timeline.
+     */
+    private fun resolveSmartCardComposite(settings: SettingsState, today: LocalDate, cards: List<PaymentMethodEntity>, cycleOffset: Int): ResolvedB {
+        val reset = settings.effectiveSmartResetDay
+        var cycleWin = CycleUtils.windowFor(today, reset)
+        repeat(abs(cycleOffset)) {
+            cycleWin = if (cycleOffset < 0) CycleUtils.previousWindow(cycleWin, reset) else CycleUtils.nextWindow(cycleWin, reset)
+        }
+        val prevWin = CycleUtils.previousWindow(cycleWin, reset)
+        val dayFmt = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+        val label = "${dayFmt.format(cycleWin.start)} – ${dayFmt.format(cycleWin.endInclusive)}"
+        return ResolvedB(
+            startMillis = cycleWin.startMillis(),
+            endExclusiveMillis = cycleWin.endExclusiveMillis(),
+            label = label,
+            smartCard = SmartCardCtx(
+                fetchStartMillis = prevWin.startMillis(),
+                fetchEndExclusiveMillis = cycleWin.endExclusiveMillis(),
+                resetDay = reset,
+                cardBillingDays = cards.associate { it.id to it.billingDay },
+            ),
+        )
+    }
+
     private fun currentCycle(): ResolvedB {
         val r = PeriodResolver.resolve(
             type = PeriodType.SALARY_CYCLE,
@@ -216,6 +275,35 @@ class AnalyticsViewModel @Inject constructor(
             KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
         )
         return buildState(resolved, catSpend, kindSums, items, rules).copy(isComposite = true)
+    }
+
+    /** Card-billing-aware Smart Cycle analytics — donut, weekly + totals from the items bucketed to this cycle. */
+    private fun buildStateSmartCard(
+        resolved: ResolvedB,
+        fetched: List<ExpenseWithAllocations>,
+        rules: List<RecurringRuleEntity>,
+    ): AnalyticsUiState {
+        val ctx = resolved.smartCard!!
+        val items = SmartCardCycle.filterToWindow(
+            items = fetched,
+            windowStartMillis = resolved.startMillis,
+            resetDay = ctx.resetDay,
+            occurredAtOf = { it.expense.occurredAt },
+            billingDayOf = { ctx.cardBillingDays[it.expense.paymentMethodId] },
+        )
+        val catSpend = items.filter { it.expense.kind == TxnKind.EXPENSE }
+            .flatMap { it.allocations }
+            .groupBy { it.category.id }
+            .map { (id, allocs) ->
+                val c = allocs.first().category
+                CategorySpend(categoryId = id, name = c.name, colorHex = c.colorHex, iconKey = c.iconKey, total = allocs.sumOf { it.allocation.amountMinor })
+            }
+            .sortedByDescending { it.total }
+        val kindSums = listOf(
+            KindSum(TxnKind.INCOME, items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor }),
+            KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
+        )
+        return buildState(resolved, catSpend, kindSums, items, rules)
     }
 
     private fun buildState(

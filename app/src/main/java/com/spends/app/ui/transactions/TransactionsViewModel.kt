@@ -11,9 +11,12 @@ import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.period.ResolvedPeriod
+import com.spends.app.core.period.SmartCardCycle
 import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.DateUtils
 import kotlin.math.abs
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -64,6 +67,27 @@ class TransactionsViewModel @Inject constructor(
         // the headline, so a single card doesn't read as a bare negative. 0/0 = no override (use own totals).
         val headlineStart: Long = 0,
         val headlineEnd: Long = 0,
+        // Smart Cycle across ALL instruments, card-billing-aware (the "card bills before reset" fix). When set,
+        // [startMillis, endExclusiveMillis) is a WIDE fetch range (prev cycle → next cycle end, plus carry
+        // history); the actual current cycle + carry + next-cycle presence are computed in memory from the
+        // per-transaction billing-day rule ([SmartCardCycle]). null for every other view.
+        val smartCard: SmartCardInfo? = null,
+    )
+
+    /**
+     * Everything the in-memory Smart-Cycle card bucketing needs. A card purchase counts in the cycle where its
+     * statement is billed (its billing day is the card's cut-off): purchases on/after the billing day roll into
+     * the NEXT cycle. Bank/UPI + cards with no billing day follow [resetDay] unchanged. See [SmartCardCycle].
+     */
+    private data class SmartCardInfo(
+        val windowStartMillis: Long,
+        val windowEndExclusiveMillis: Long,
+        val nextWindowStartMillis: Long,
+        val resetDay: Int,
+        // paymentMethodId → its billing day (null = Bank/UPI or a card with no known billing day → no shift).
+        val cardBillingDays: Map<Long, Int?>,
+        // paymentMethodId → display label, for the "spends moved to next cycle" badge (one entry per card).
+        val cardLabels: Map<Long, String>,
     )
 
     /** Categories (most-used first) for the bulk change-category picker (multi-select). */
@@ -101,9 +125,14 @@ class TransactionsViewModel @Inject constructor(
             paymentMethodRepository.observeConfirmed(),
         ) { sel, settings, earliest, cards ->
             val today = LocalDate.now(DateUtils.ZONE)
-            if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE && sel.selectedCardId != null) {
-                resolveSingleCard(sel, settings, today, cards)
-            } else {
+            when {
+                settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE && sel.selectedCardId != null ->
+                    resolveSingleCard(sel, settings, today, cards)
+                // Smart Cycle across ALL cards: one window anchored on the reset day, but each card's spends are
+                // bucketed by that card's billing day (billed spends roll into the next cycle). Computed in memory.
+                settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE ->
+                    resolveSmartCardComposite(settings, today, cards, sel.cycleOffset)
+                else -> {
                 // A stale SMART_CYCLE selection while the feature is off falls back to the salary cycle.
                 val effType = if (!settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
                     PeriodType.SALARY_CYCLE
@@ -122,6 +151,7 @@ class TransactionsViewModel @Inject constructor(
                     cycleOffset = sel.cycleOffset,
                 )
                 ResolvedB(r.startMillis, r.endExclusiveMillis, r.label)
+                }
             }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, currentSalaryCycle())
 
@@ -129,6 +159,14 @@ class TransactionsViewModel @Inject constructor(
         combine(resolvedFlow, settingsRepository.settings, searchQuery) { resolved, settings, query ->
             Triple(resolved, settings, query)
         }.flatMapLatest { (resolved, settings, query) ->
+            if (resolved.smartCard != null) {
+                // Card-billing-aware Smart Cycle: ONE wide fetch (prev cycle → next cycle end, plus carry
+                // history), then the current cycle's list, totals, carry-forward and next-cycle presence are all
+                // computed in memory from the per-card billing rule — so every rupee lands in exactly one cycle.
+                return@flatMapLatest expenseRepository
+                    .observeBetween(resolved.startMillis, resolved.endExclusiveMillis)
+                    .map { items -> buildStateSmartCard(resolved, settings, query, items) }
+            }
             val anchorMillis = if (settings.carryForwardAnchorEpochDay > 0) {
                 DateUtils.startOfDayMillis(LocalDate.ofEpochDay(settings.carryForwardAnchorEpochDay))
             } else {
@@ -189,6 +227,56 @@ class TransactionsViewModel @Inject constructor(
         return ResolvedB(
             period.boundingStartMillis, period.boundingEndExclusiveMillis, period.label, period,
             headlineStart = cycleWin.startMillis(), headlineEnd = cycleWin.endExclusiveMillis(),
+        )
+    }
+
+    /**
+     * Smart Cycle across ALL cards, card-billing-aware. Returns a WIDE fetch range plus the metadata needed to
+     * bucket each transaction by its paying card's billing day in memory (see [buildStateSmartCard]). The
+     * visible cycle is [cycleWin] stepped by [cycleOffset]; we also reach the PREVIOUS cycle (a card's spends
+     * from just before the reset can belong to this cycle) and through the NEXT cycle's end (spends that rolled
+     * forward past a billing day), plus back near the carry-forward anchor when carry-forward is on.
+     */
+    private fun resolveSmartCardComposite(
+        settings: SettingsState,
+        today: LocalDate,
+        cards: List<com.spends.app.data.db.entity.PaymentMethodEntity>,
+        cycleOffset: Int,
+    ): ResolvedB {
+        val reset = settings.effectiveSmartResetDay
+        var cycleWin = CycleUtils.windowFor(today, reset)
+        repeat(abs(cycleOffset)) {
+            cycleWin = if (cycleOffset < 0) CycleUtils.previousWindow(cycleWin, reset) else CycleUtils.nextWindow(cycleWin, reset)
+        }
+        val prevWin = CycleUtils.previousWindow(cycleWin, reset)
+        val nextWin = CycleUtils.nextWindow(cycleWin, reset)
+        val anchorMillis = if (settings.carryForwardEnabled && settings.carryForwardAnchorEpochDay > 0) {
+            DateUtils.startOfDayMillis(LocalDate.ofEpochDay(settings.carryForwardAnchorEpochDay))
+        } else {
+            0L
+        }
+        // Carry-forward sums whole cycles from the anchor; a card spend dated up to ~a cycle before a cycle's
+        // start can belong to it, so reach ~45 days before the anchor to fetch every contributor.
+        val carryLower = if (anchorMillis > 0) {
+            DateUtils.startOfDayMillis(DateUtils.toLocalDate(anchorMillis).minusDays(45))
+        } else {
+            prevWin.startMillis()
+        }
+        val fetchStart = minOf(prevWin.startMillis(), carryLower)
+        val dayFmt = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+        val label = "${dayFmt.format(cycleWin.start)} – ${dayFmt.format(cycleWin.endInclusive)}"
+        return ResolvedB(
+            startMillis = fetchStart,
+            endExclusiveMillis = nextWin.endExclusiveMillis(),
+            label = label,
+            smartCard = SmartCardInfo(
+                windowStartMillis = cycleWin.startMillis(),
+                windowEndExclusiveMillis = cycleWin.endExclusiveMillis(),
+                nextWindowStartMillis = nextWin.startMillis(),
+                resetDay = reset,
+                cardBillingDays = cards.associate { it.id to it.billingDay },
+                cardLabels = cards.associate { it.id to it.label },
+            ),
         )
     }
 
@@ -275,6 +363,73 @@ class TransactionsViewModel @Inject constructor(
             } else {
                 null
             },
+        )
+    }
+
+    /**
+     * Build the timeline for the card-billing-aware Smart Cycle. [fetched] is the WIDE range; every transaction
+     * is assigned to exactly ONE cycle by [SmartCardCycle] (a card purchase counts in the cycle where its
+     * statement bills). The current cycle's list + totals come from the items assigned to it; carry-forward
+     * sums the cycles between the anchor and this one (same rule → carry + totals reconcile to an honest
+     * running balance); the next cycle's presence drives the forward arrow + the "moved to next cycle" badge.
+     */
+    private fun buildStateSmartCard(
+        resolved: ResolvedB,
+        settings: SettingsState,
+        query: String,
+        fetched: List<ExpenseWithAllocations>,
+    ): TransactionsUiState {
+        val info = resolved.smartCard!!
+        fun cycleStartOf(e: ExpenseWithAllocations): Long =
+            SmartCardCycle.effectiveWindowStartMillis(
+                e.expense.occurredAt,
+                info.cardBillingDays[e.expense.paymentMethodId],
+                info.resetDay,
+            )
+        val items = fetched.filter { cycleStartOf(it) == info.windowStartMillis }
+        val totals = SummaryTotals(
+            income = items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor },
+            expense = items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor },
+        )
+        val anchorMillis = if (settings.carryForwardAnchorEpochDay > 0) {
+            DateUtils.startOfDayMillis(LocalDate.ofEpochDay(settings.carryForwardAnchorEpochDay))
+        } else {
+            0L
+        }
+        val carryForward = when {
+            !settings.carryForwardEnabled -> null
+            anchorMillis <= 0 -> null
+            // This cycle starts before the anchor → no carry-in (opening applies from the anchor onward only).
+            info.windowStartMillis < anchorMillis -> null
+            // Opening + the net of every cycle from the anchor up to (not including) this one, bucketed by the
+            // SAME rule as the list — so carry-forward and this cycle's totals never disagree.
+            else -> settings.carryForwardOpeningMinor + fetched
+                .filter { val s = cycleStartOf(it); s in anchorMillis until info.windowStartMillis }
+                .sumOf { it.signedBalanceContribution() }
+        }
+        val nextItems = fetched.filter { cycleStartOf(it) == info.nextWindowStartMillis }
+        // Cards whose billed spends have rolled into the NEXT cycle — one entry per card (not per transaction).
+        val shiftedCardNames = nextItems
+            .mapNotNull { it.expense.paymentMethodId }
+            .filter { info.cardBillingDays[it] != null }
+            .toSet()
+            .mapNotNull { info.cardLabels[it] }
+            .sorted()
+        val trimmed = query.trim().lowercase()
+        val searched = if (trimmed.isEmpty()) items else items.filter { it.matches(trimmed) }
+        val filtered = if (settings.hideCapturedInLists) searched.filter { it.expense.source != TxnSource.SMS } else searched
+        return TransactionsUiState(
+            loading = false,
+            window = null,
+            periodLabel = resolved.label,
+            canStepForward = false,
+            canGoForwardToNext = nextItems.isNotEmpty(),
+            shiftedCardNames = shiftedCardNames,
+            search = query,
+            totals = totals,
+            carryForward = carryForward,
+            groups = buildGroups(items, filtered),
+            isComposite = false,
         )
     }
 

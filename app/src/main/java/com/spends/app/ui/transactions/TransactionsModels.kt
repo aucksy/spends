@@ -58,6 +58,11 @@ data class TransactionsUiState(
     val window: CycleWindow? = null,
     val periodLabel: String = "",
     val canStepForward: Boolean = false,
+    // Card-billing-aware Smart Cycle: the NEXT cycle already holds spends that rolled forward past a card's
+    // billing day, so the ‹›-forward arrow is enabled from the current cycle to reach them (normally forward
+    // is capped at the present). [shiftedCardNames] names those cards for a one-per-card "moved to next" badge.
+    val canGoForwardToNext: Boolean = false,
+    val shiftedCardNames: List<String> = emptyList(),
     val search: String = "",
     val totals: SummaryTotals = SummaryTotals(),
     val carryForward: Long? = null,

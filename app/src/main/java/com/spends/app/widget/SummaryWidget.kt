@@ -16,6 +16,8 @@ import com.spends.app.core.period.CardCycleInfo
 import com.spends.app.core.period.CompositeCycleResolver
 import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodType
+import com.spends.app.core.period.SmartCardCycle
+import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.repo.PaymentMethodRepository
@@ -31,6 +33,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * Home-screen summary widget (#2): Income / Expense / Balance for the CURRENT salary cycle, with a
@@ -117,6 +122,28 @@ class SummaryWidget : AppWidgetProvider() {
                         cycleLabel = ""
                         handledAsCard = true
                     }
+                }
+                // Smart Cycle across ALL cards, card-billing-aware: bucket each spend by its card's billing day
+                // (billed spends roll into the next cycle) — the SAME rule + numbers as the app's timeline.
+                val smartComposite = !handledAsCard && settings.smartCycleEnabled &&
+                    selection.type == PeriodType.SMART_CYCLE && selection.selectedCardId == null
+                if (smartComposite) {
+                    val reset = settings.effectiveSmartResetDay
+                    var cycleWin = CycleUtils.windowFor(today, reset)
+                    repeat(abs(selection.cycleOffset)) {
+                        cycleWin = if (selection.cycleOffset < 0) CycleUtils.previousWindow(cycleWin, reset) else CycleUtils.nextWindow(cycleWin, reset)
+                    }
+                    val prevWin = CycleUtils.previousWindow(cycleWin, reset)
+                    val billingDays = ep.paymentMethodRepository().observeConfirmed().first().associate { it.id to it.billingDay }
+                    val items = ep.expenseRepository()
+                        .expensesBetweenOnce(prevWin.startMillis(), cycleWin.endExclusiveMillis())
+                        .filter { SmartCardCycle.belongsToWindow(cycleWin.startMillis(), it.occurredAt, billingDays[it.paymentMethodId], reset) }
+                    income = items.filter { it.kind == TxnKind.INCOME }.sumOf { it.amountMinor }
+                    expense = items.filter { it.kind == TxnKind.EXPENSE }.sumOf { it.amountMinor }
+                    val dayFmt = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+                    cycleName = selection.describe()
+                    cycleLabel = "${dayFmt.format(cycleWin.start)} – ${dayFmt.format(cycleWin.endInclusive)}"
+                    handledAsCard = true
                 }
                 if (!handledAsCard) {
                     // A stale SMART_CYCLE selection while the feature is off falls back to the salary cycle.

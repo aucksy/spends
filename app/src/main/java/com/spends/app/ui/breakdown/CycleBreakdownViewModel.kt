@@ -2,9 +2,9 @@ package com.spends.app.ui.breakdown
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.spends.app.core.period.PeriodRange
-import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodType
+import com.spends.app.core.period.SmartCardCycle
+import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.PaymentMethodEntity
@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
+import kotlin.math.abs
 
 /** One instrument's spend inside the current Smart Cycle window: a card, a named bank, or Bank/UPI. */
 data class InstrumentRowUi(
@@ -70,23 +73,35 @@ class CycleBreakdownViewModel @Inject constructor(
         }.flatMapLatest { (sel, settings, cards) ->
             val today = LocalDate.now(DateUtils.ZONE)
             // The breakdown always shows the whole cycle — step it by the selection's offset, but ignore any
-            // single-card narrowing (that's a separate view).
+            // single-card narrowing (that's a separate view). A retained back-stack entry can reach this screen
+            // with the feature just turned off — anchor on the salary day then (matching the app-wide fallback).
+            val reset = if (settings.smartCycleEnabled) settings.effectiveSmartResetDay else settings.salaryCycleStartDay
             val offset = if (sel.type == PeriodType.SMART_CYCLE) sel.cycleOffset else 0
-            val window = PeriodResolver.resolve(
-                type = PeriodType.SMART_CYCLE,
-                range = PeriodRange.CURRENT,
-                salaryDay = settings.salaryCycleStartDay,
-                // A retained back-stack entry can reach this screen with the feature just turned off —
-                // anchor on the salary day then, matching the coerced app-wide fallback.
-                smartDay = if (settings.smartCycleEnabled) settings.effectiveSmartResetDay else settings.salaryCycleStartDay,
-                today = today,
-                earliestDataDay = null,
-                customStartMillis = null,
-                customEndExclusiveMillis = null,
-                cycleOffset = offset,
-            )
-            expenseRepository.observeBetween(window.startMillis, window.endExclusiveMillis)
-                .map { items -> build(window.label, cards, items) }
+            var cycleWin = CycleUtils.windowFor(today, reset)
+            repeat(abs(offset)) {
+                cycleWin = if (offset < 0) CycleUtils.previousWindow(cycleWin, reset) else CycleUtils.nextWindow(cycleWin, reset)
+            }
+            // A card's spend counts in the cycle where its statement bills, so a spend from just before the reset
+            // can belong here — fetch the previous cycle too and bucket in memory (the SAME rule as the timeline).
+            val prevWin = CycleUtils.previousWindow(cycleWin, reset)
+            val dayFmt = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+            val label = "${dayFmt.format(cycleWin.start)} – ${dayFmt.format(cycleWin.endInclusive)}"
+            val billingDays = cards.associate { it.id to it.billingDay }
+            expenseRepository.observeBetween(prevWin.startMillis(), cycleWin.endExclusiveMillis())
+                .map { fetched ->
+                    val items = if (settings.smartCycleEnabled) {
+                        SmartCardCycle.filterToWindow(
+                            items = fetched,
+                            windowStartMillis = cycleWin.startMillis(),
+                            resetDay = reset,
+                            occurredAtOf = { it.expense.occurredAt },
+                            billingDayOf = { billingDays[it.expense.paymentMethodId] },
+                        )
+                    } else {
+                        fetched.filter { it.expense.occurredAt >= cycleWin.startMillis() && it.expense.occurredAt < cycleWin.endExclusiveMillis() }
+                    }
+                    build(label, cards, items)
+                }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CycleBreakdownUiState())
 
     private fun build(
@@ -157,8 +172,8 @@ class CycleBreakdownViewModel @Inject constructor(
         )
     }
 
-    // The sub-line describes the CARD (its last4 + billing day) plus its txn count in THIS cycle window —
-    // the count is per-window, not per-statement (statements get their own treatment in the dues feature).
+    // The sub-line describes the CARD (its last4 + billing day) plus its txn count in THIS Smart Cycle — the
+    // count now honours the card's billing day (spends past it roll into the next cycle), matching the timeline.
     private fun cardSub(card: PaymentMethodEntity, txns: Int): String {
         val parts = buildList {
             card.last4?.let { add("·$it") }

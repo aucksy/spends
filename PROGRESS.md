@@ -4,11 +4,58 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.53.0** — versionCode **57**, versionName **"1.53.0"**
-  (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-22 (same day as v1.52.0).
-- **DB schema: v16.** (MIGRATION_15_16 = `pending_captures.sourceApp`, additive nullable TEXT.)
+- **Shipped: v1.54.0** — versionCode **58**, versionName **"1.54.0"**
+  (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-24.
+- **DB schema: v16** (UNCHANGED — this release is pure period-bucketing logic + UI, no schema touch).
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.53.0/Spends-v1.53.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.54.0/Spends-v1.54.0.apk
+
+## v1.54.0 — Card-billing-aware Smart Cycle ("billed card spends roll to the next cycle")
+Owner-requested 2026-07-24; built + reviewed + shipped same day. **No DB / snapshot change** (pure
+period-bucketing logic + UI). Refines the v1.52.0 Smart-Cycle rework.
+
+- **RCA (owner):** After v1.52.0, Smart Cycle = ONE reset-day window; a credit card's billing day was
+  ignored, so a card purchase that had already *billed* (its statement closed) still counted against the
+  current cycle's balance until the reset day. Owner wants: a card purchase counts in the cycle where its
+  **statement bills** — on/after the card's billing day it rolls into the **NEXT** Smart Cycle (navigable
+  via the ›-forward arrow + a one-per-card "moved to next" dot). HARD constraint: must NOT reintroduce the
+  v1.52.0-era "spend vanishes when the billing day passes" bug.
+- **The rule (single source of truth):** `core/period/SmartCardCycle.kt` — `effectiveWindowStartMillis
+  (occurredAt, billingDay, resetDay)` = the reset-window containing `statementCloseDate` (the next
+  billing-day occurrence strictly after the purchase; month-end clamped). Bank/UPI + null/out-of-range
+  billingDay → no shift. **Partition:** every txn → exactly ONE window (never zero = vanish, never two =
+  double-count). **⭐Shift is CAPPED at one window forward** (`cap = nextWindow(rawWindow)`) — the month-end
+  double-clamp case (e.g. bills 30 / resets 31) could otherwise push a spend TWO windows ahead, past every
+  consumer's one-window-back fetch → vanish. Cap keeps the ≤1-window invariant TRUE so the spend lands in
+  the adjacent, always-fetched, navigable cycle. Owner decision (asked interactively): **shift them all** —
+  a card billing mid-cycle moves its whole post-billing tail forward (not only near-reset billers).
+- **Consumers (all 5 reconcile via the shared `belongsToWindow`/`filterToWindow`):** timeline
+  (`TransactionsViewModel.buildStateSmartCard`: list + totals + carry-forward + next-cycle badge, computed
+  in memory from ONE wide fetch = prev cycle → next cycle end, plus carry history), Analytics
+  (`AnalyticsViewModel.buildStateSmartCard`), per-instrument breakdown (`CycleBreakdownViewModel`), category
+  drill-down (`CategoryTransactionsViewModel` — also coerces range=CURRENT for Smart), home widget
+  (`SummaryWidget` smart-composite branch). Salary / Month / Single-Card paths UNCHANGED; all shift logic
+  gated on `smartCycleEnabled && type==SMART_CYCLE && selectedCardId==null`.
+- **UI:** `PeriodSelectorBar` forward arrow now enabled when the next cycle holds rolled-forward spends
+  (`canGoForwardToNext`; normally forward is capped at the present) + a small primary-color dot on › at the
+  current cycle when cards have shifted (`shiftedCardNames`, one per card). `TransactionsUiState` gained
+  `canGoForwardToNext` + `shiftedCardNames`.
+- **Reviews (ritual honored):** 2 parallel adversarial agents (compile CLEAN; logic found **1 BLOCKER**) →
+  ⭐BLOCKER = the 2-window month-end-double-clamp vanish (bills 30 / resets 31: a 30 Mar purchase → +2
+  windows → below the fetch bound → dropped from the balance on 4/5 surfaces). Fixed = the cap. Also fixed:
+  widened the test sweep into the clamp zone {resets 29/30/31 × billings 28/29/30/31} + explicit regression
+  tests (they were structurally unable to catch it), and the CategoryTransactions range=CURRENT coercion.
+  → delta-verification agent re-ran a 2024–2028 × 31×31 sweep: **0 shifts ≥2, 0 backward, no double-count,
+  no new vanish** (`previousWindow(nextWindow(W))==W` round-trip proven), reconciliation intact → safe to ship.
+- **Tests:** `SmartCardCycleTest` — owner's 23rd/25th example, open-statement pull-forward, mid-cycle card,
+  billing≥reset, month-end clamp + leap year, the ≤1-window sweep (now incl. the clamp zone), the
+  double-clamp regression guard, and a partition/conservation check.
+- **Accepted residuals (owner told):** (1) carry-forward (OFF by default) with a NON-cycle-boundary anchor
+  can be off-by-a-hair on the first cycle for card spends in the last day or two before the anchor — no
+  double-count, no vanish; (2) the rare month-end double-clamp purchase counts in the *adjacent* cycle (the
+  cap) — a minor attribution approximation chosen over vanishing; (3) the "moved to next" indicator is a
+  plain dot, not the card name — refinement candidate. **This roll-to-next approach also largely addresses
+  the concern behind the ⏸PARKED Step-2 card-dues idea (different mechanism).**
 
 ## v1.52.0 — Smart Cycle Step 1 ("balance improves on billing day" fix)
 Feature commit `32cca4f` + bump `eff095a`.

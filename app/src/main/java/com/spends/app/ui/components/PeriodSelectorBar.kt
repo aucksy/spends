@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -87,6 +88,11 @@ fun PeriodSelectorBar(
     searchActive: Boolean = false,
     smartCycleEnabled: Boolean = false,
     cards: List<CardChoice> = emptyList(),
+    // Card-billing-aware Smart Cycle: the NEXT cycle already holds spends that rolled forward past a card's
+    // billing day, so enable the forward arrow from the present (normally capped there). [shiftedCardNames]
+    // names those cards for a small one-per-card badge on the arrow.
+    canGoForwardToNext: Boolean = false,
+    shiftedCardNames: List<String> = emptyList(),
     // The category drill-down offers the Smart pill (so its window matches the slice you tapped) but hides
     // the card narrowing — a per-category list isn't per-card. Everything else keeps the section.
     showCardSection: Boolean = true,
@@ -176,9 +182,24 @@ fun PeriodSelectorBar(
                     }
                 }
                 if (navigable) {
-                    // Can't step into the future — › is disabled once back at the current cycle.
-                    CycleArrow(Icons.Filled.ChevronRight, "Next cycle", enabled = effective.cycleOffset < 0) {
-                        onSelect(effective.copy(cycleOffset = effective.cycleOffset + 1))
+                    // Forward is normally capped at the present (cycleOffset < 0). But the card-billing-aware
+                    // Smart Cycle can push spends into the NEXT cycle before the reset day, so allow forward when
+                    // there's something there. A dot on › flags it (once, while those spends sit in next).
+                    val forwardEnabled = effective.cycleOffset < 0 || canGoForwardToNext
+                    val showShiftBadge = canGoForwardToNext && effective.cycleOffset == 0 && shiftedCardNames.isNotEmpty()
+                    Box(contentAlignment = Alignment.TopEnd) {
+                        CycleArrow(Icons.Filled.ChevronRight, "Next cycle", enabled = forwardEnabled) {
+                            onSelect(effective.copy(cycleOffset = effective.cycleOffset + 1))
+                        }
+                        if (showShiftBadge) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 5.dp, end = 5.dp)
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
                     }
                     // No trailing dropdown caret when the stepper arrows are present — the pill is tappable and
                     // the arrows already read as interactive, so dropping the caret frees width for the full

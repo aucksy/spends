@@ -3,13 +3,16 @@ package com.spends.app.ui.categorytxns
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.period.PeriodRange
 import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodSelection
 import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
+import com.spends.app.core.period.SmartCardCycle
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.repo.ExpenseRepository
+import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.navigation.Routes
@@ -64,6 +67,7 @@ class CategoryTransactionsViewModel @Inject constructor(
     expenseRepository: ExpenseRepository,
     settingsRepository: SettingsRepository,
     periodSelectionStore: PeriodSelectionStore,
+    paymentMethodRepository: PaymentMethodRepository,
 ) : ViewModel() {
 
     private val categoryId: Long = savedStateHandle[Routes.ARG_CATEGORY_ID] ?: -1L
@@ -101,8 +105,12 @@ class CategoryTransactionsViewModel @Inject constructor(
             avgWindow,
             period,
             settingsRepository.settings,
-            expenseRepository.observeEarliestDay(),
-        ) { allItems, window, sel, settings, earliest ->
+            // Pair earliest-day with the confirmed cards (their billing days) so the Smart Cycle slice can bucket
+            // each txn by its paying card — combine tops out at 5 typed flows, so nest these two.
+            combine(expenseRepository.observeEarliestDay(), paymentMethodRepository.observeConfirmed()) { e, c -> e to c },
+        ) { allItems, window, sel, settings, earliestAndCards ->
+            val earliest = earliestAndCards.first
+            val cards = earliestAndCards.second
             val now = DateUtils.nowMillis()
             val today = LocalDate.now(DateUtils.ZONE)
             // Resolve the selected cycle to a concrete [start, end) window, the same way Analytics does.
@@ -114,9 +122,13 @@ class CategoryTransactionsViewModel @Inject constructor(
             } else {
                 sel.type
             }
+            val isSmartCard = settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE
             val resolved = PeriodResolver.resolve(
                 type = effType,
-                range = sel.range,
+                // Smart Cycle is always the single CURRENT cycle (stepped by the arrows) — force it so a stray
+                // Last-N/All range can't make `resolved.startMillis` the oldest cycle in a span and shrink the
+                // card-aware filter below to just that one cycle. Matches Analytics/Transactions.
+                range = if (isSmartCard) PeriodRange.CURRENT else sel.range,
                 salaryDay = settings.salaryCycleStartDay,
                 smartDay = settings.effectiveSmartResetDay,
                 today = today,
@@ -125,8 +137,21 @@ class CategoryTransactionsViewModel @Inject constructor(
                 customEndExclusiveMillis = sel.customEndExclusiveMillis,
                 cycleOffset = sel.cycleOffset,
             )
-            val periodItems = allItems.filter {
-                it.expense.occurredAt >= resolved.startMillis && it.expense.occurredAt < resolved.endExclusiveMillis
+            // In Smart Cycle, bucket each txn by its paying card's billing day (same rule as the timeline), so
+            // this drill-down reconciles with the Analytics slice you tapped. Otherwise slice by plain date.
+            val periodItems = if (isSmartCard) {
+                val billingDays = cards.associate { it.id to it.billingDay }
+                SmartCardCycle.filterToWindow(
+                    items = allItems,
+                    windowStartMillis = resolved.startMillis,
+                    resetDay = settings.effectiveSmartResetDay,
+                    occurredAtOf = { it.expense.occurredAt },
+                    billingDayOf = { billingDays[it.expense.paymentMethodId] },
+                )
+            } else {
+                allItems.filter {
+                    it.expense.occurredAt >= resolved.startMillis && it.expense.occurredAt < resolved.endExclusiveMillis
+                }
             }
             val rows = periodItems.map { it.toRow() }
             val total = rows.sumOf { it.amountMinor }
