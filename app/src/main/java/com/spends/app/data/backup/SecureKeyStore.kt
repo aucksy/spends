@@ -80,6 +80,46 @@ class SecureKeyStore @Inject constructor(
         )
     }
 
+    // ---- Groq API key (BYOK) — encrypted at rest, device-local, NEVER in the backup snapshot ----
+
+    /**
+     * Store the user's Groq API key encrypted by the same hardware-wrapped master key the DEK uses, in
+     * the device-local `spends_secure` prefs. Like the DEK it never leaves the device and is NOT part of
+     * any backup snapshot. A blank key clears it. See [AI-RESEARCH.md] §2.5.
+     */
+    fun setApiKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isEmpty()) {
+            clearApiKey()
+            return
+        }
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, masterKey())
+        val ct = cipher.doFinal(trimmed.toByteArray(Charsets.UTF_8))
+        val blob = cipher.iv + ct
+        prefs.edit().putString(KEY_API_KEY_BLOB, blob.b64()).apply()
+    }
+
+    /** The stored Groq API key, or null if none is set or it can't be decrypted (fail-closed). */
+    fun apiKey(): String? {
+        val blob = prefs.getString(KEY_API_KEY_BLOB, null)?.unb64() ?: return null
+        return runCatching {
+            val iv = blob.copyOfRange(0, IV_LEN)
+            val ct = blob.copyOfRange(IV_LEN, blob.size)
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, masterKey(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(ct), Charsets.UTF_8)
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    /** True when a Groq API key is stored (presence only — the actual call fails closed if it can't decrypt). */
+    fun hasApiKey(): Boolean = prefs.contains(KEY_API_KEY_BLOB)
+
+    /** Remove the stored Groq API key. */
+    fun clearApiKey() {
+        prefs.edit().remove(KEY_API_KEY_BLOB).apply()
+    }
+
     /** Adopt a DEK + wrap bundle recovered from a password-restore on a new device (re-arms zero-hassle). */
     fun importRecovered(dek: ByteArray, bundle: BackupCrypto.WrapBundle) {
         storeDek(dek)
@@ -144,6 +184,7 @@ class SecureKeyStore @Inject constructor(
         const val IV_LEN = 12
 
         const val KEY_DEK_BLOB = "dek_blob"
+        const val KEY_API_KEY_BLOB = "groq_api_key_blob"
         const val KEY_WRAP_SALT = "wrap_salt"
         const val KEY_WRAP_IV = "wrap_iv"
         const val KEY_WRAPPED_DEK = "wrapped_dek"

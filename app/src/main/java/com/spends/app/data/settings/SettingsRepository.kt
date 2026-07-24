@@ -75,6 +75,14 @@ data class SettingsState(
     // forward to view that next cycle, it's dismissed FOR GOOD (a teaching nudge, not a persistent indicator).
     // Device-local UI state (like [widgetEyeHidden]) → deliberately NOT in the backup snapshot.
     val smartShiftBadgeSeen: Boolean = false,
+    // "AI helper" (Groq BYOK, docs/AI-RESEARCH.md). Master switch + two independent sub-features. All default
+    // OFF → the app behaves exactly as before (G2: zero Groq calls, no ✨ chip, no insights card). These are
+    // DEVICE-LOCAL (a pasted personal key is meaningless across devices) → deliberately NOT in the backup
+    // snapshot / restore(), same as [widgetEyeHidden] and the notification-capture prefs. The Groq key itself
+    // lives ENCRYPTED in SecureKeyStore, not here.
+    val aiEnabled: Boolean = false,
+    val aiCategorize: Boolean = false,
+    val aiInsights: Boolean = false,
 ) {
     /** The day the Smart Cycle window actually anchors on: the explicit reset day, else the salary day. */
     val effectiveSmartResetDay: Int
@@ -116,6 +124,9 @@ class SettingsRepository @Inject constructor(
             notificationCaptureEnabled = prefs[Keys.NOTIFICATION_CAPTURE] ?: false,
             notificationCaptureApps = prefs[Keys.NOTIFICATION_CAPTURE_APPS] ?: emptySet(),
             smartShiftBadgeSeen = prefs[Keys.SMART_SHIFT_BADGE_SEEN] ?: false,
+            aiEnabled = prefs[Keys.AI_ENABLED] ?: false,
+            aiCategorize = prefs[Keys.AI_CATEGORIZE] ?: false,
+            aiInsights = prefs[Keys.AI_INSIGHTS] ?: false,
         )
     }
 
@@ -146,6 +157,12 @@ class SettingsRepository @Inject constructor(
     suspend fun setDefaultPaymentMethodId(id: Long?) = edit { it[Keys.DEFAULT_PAYMENT_METHOD] = id ?: 0L }
     /** Dismiss the one-time "spends rolled to next cycle" dot FOR GOOD (first forward-tap). Device-local. */
     suspend fun setSmartShiftBadgeSeen(value: Boolean) = edit { it[Keys.SMART_SHIFT_BADGE_SEEN] = value }
+    /** AI helper master switch (G2). OFF (default) = today's exact behaviour, zero Groq calls. Device-local. */
+    suspend fun setAiEnabled(value: Boolean) = edit { it[Keys.AI_ENABLED] = value }
+    /** Sub-toggle: smart category suggestions on the review queue (#1). Device-local. */
+    suspend fun setAiCategorize(value: Boolean) = edit { it[Keys.AI_CATEGORIZE] = value }
+    /** Sub-toggle: plain-English spending insights on Analytics (#2). Device-local. */
+    suspend fun setAiInsights(value: Boolean) = edit { it[Keys.AI_INSIGHTS] = value }
     suspend fun setNotificationCaptureEnabled(value: Boolean) = edit { it[Keys.NOTIFICATION_CAPTURE] = value }
     /** Replace the watched-app package set for notification capture. */
     suspend fun setNotificationCaptureApps(packages: Set<String>) = edit { it[Keys.NOTIFICATION_CAPTURE_APPS] = packages }
@@ -216,5 +233,8 @@ class SettingsRepository @Inject constructor(
         val NOTIFICATION_CAPTURE_APPS = stringSetPreferencesKey("notification_capture_apps")
         val NOTIFICATION_CAPTURE_SEEDED = booleanPreferencesKey("notification_capture_seeded")
         val SMART_SHIFT_BADGE_SEEN = booleanPreferencesKey("smart_shift_badge_seen")
+        val AI_ENABLED = booleanPreferencesKey("ai_enabled")
+        val AI_CATEGORIZE = booleanPreferencesKey("ai_categorize")
+        val AI_INSIGHTS = booleanPreferencesKey("ai_insights")
     }
 }

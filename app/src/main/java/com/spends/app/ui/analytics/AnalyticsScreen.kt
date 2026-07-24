@@ -24,14 +24,23 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,7 +80,11 @@ fun AnalyticsScreen(
     val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
     val smartCycleEnabled by viewModel.smartCycleEnabled.collectAsStateWithLifecycle()
     val cardChoices by viewModel.cardChoices.collectAsStateWithLifecycle()
+    val insights by viewModel.insights.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
+    // Dismiss hides the insight until a fresh one arrives (new cycle / refresh) — resets when the text changes.
+    var insightsDismissed by remember { mutableStateOf(false) }
+    LaunchedEffect(insights.text) { if (insights.text != null) insightsDismissed = false }
     // The cycle these numbers belong to (#5): the selection name, plus the concrete date range when it adds
     // information (a composite's label already IS its name). Passed to the drill-down so it updates per cycle.
     val cycleLabel = selection.describe().let { name ->
@@ -96,6 +109,18 @@ fun AnalyticsScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
+
+        // AI insights (#2): a read-only, plain-English summary of this cycle. Hidden unless AI + the sub-toggle
+        // + a key are on; never shown for an empty cycle or a failed call (fail-closed).
+        if (insights.visible && !insightsDismissed && (insights.loading || insights.text != null)) {
+            InsightsCard(
+                loading = insights.loading,
+                text = insights.text,
+                onRefresh = viewModel::refreshInsights,
+                onDismiss = { insightsDismissed = true },
+            )
+            Spacer(Modifier.height(12.dp))
+        }
 
         // Smart Cycle (#4): the per-instrument breakdown lives here now (moved off the timeline). Gated on
         // the SELECTION (not state.isComposite) — the all-instruments Smart view is a contiguous window now,
@@ -122,6 +147,69 @@ fun AnalyticsScreen(
 
         RecurringCard(state.recurring, onOpenRecurring)
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** The AI insights card (#2): a plain-English summary of the cycle, with refresh + dismiss. Read-only text. */
+@Composable
+private fun InsightsCard(
+    loading: Boolean,
+    text: String?,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    SpendsCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Insights",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!loading) {
+                    IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = "Refresh insight",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Dismiss insight",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (loading) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "Thinking about your spending…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (text != null) {
+                Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
     }
 }
 

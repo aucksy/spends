@@ -711,6 +711,15 @@ class SmsCaptureRepository @Inject constructor(
         learnedFor(merchant, allowFuzzy)?.note?.takeIf { it.isNotBlank() }
 
     /**
+     * G1 (docs/AI-RESEARCH.md): true when this merchant already has a learned category mapping. The AI
+     * categorizer is consulted ONLY when this is false — a learned pick always wins outright and AI never
+     * competes with it. Uses fuzzy matching (the same widening the review surfaces use) so a merchant the
+     * user taught under a sibling spelling still counts as "learned" and is left alone.
+     */
+    suspend fun hasLearnedCategory(merchant: String?): Boolean =
+        learnedFor(merchant, allowFuzzy = true) != null
+
+    /**
      * Remember this merchant's category/note so future captures pre-fill them.
      *
      * Category: [categoryId] is stored as-is when [categoryDeliberate] (the user picked it). A

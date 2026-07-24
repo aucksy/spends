@@ -21,6 +21,7 @@ import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
 import com.spends.app.ui.recurring.RecurringScreen
 import com.spends.app.ui.review.ReviewScreen
+import com.spends.app.ui.settings.AiSettingsScreen
 import com.spends.app.ui.settings.AppearanceSettingsScreen
 import com.spends.app.ui.settings.AutomaticSettingsScreen
 import com.spends.app.ui.settings.BackupSettingsScreen
@@ -160,7 +161,12 @@ fun SpendsNavHost(
                 onBack = { navController.popBackStack() },
                 onOpenCapture = { navController.navigate(Routes.CAPTURE) },
                 onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+                onOpenAi = { navController.navigate(Routes.SETTINGS_AI) },
             )
+        }
+
+        composable(Routes.SETTINGS_AI) {
+            AiSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.SETTINGS_APPEARANCE) {

@@ -4,11 +4,58 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.55.0** — versionCode **60**, versionName **"1.55.0"**
+- **Shipped: v1.56.0** — versionCode **61**, versionName **"1.56.0"**
   (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-24.
-- **DB schema: v16** (UNCHANGED — UI restructure + one device-local pref, no schema touch).
+- **DB schema: v16** (UNCHANGED — the AI helper is additive: in-memory suggestions + one read-only DAO query,
+  no schema touch, no snapshot change).
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.55.0/Spends-v1.55.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.56.0/Spends-v1.56.0.apk
+
+## v1.56.0 — "AI helper" (Groq BYOK) — SHIPPED (owner said ship 2026-07-24)
+Built + reviewed + shipped same day. **No DB / snapshot / manifest change; no runtime dependency** (one
+test-only `org.json` dep). Two features in one opt-in "AI helper", **master switch OFF by default → today's app
+byte-for-byte (G2)**. Full plan + review outcome + accepted residuals: [`docs/AI-BUILD-PLAN.md`](docs/AI-BUILD-PLAN.md);
+locked spec: [`docs/AI-RESEARCH.md`](docs/AI-RESEARCH.md).
+
+**What it does:** (#1) a `Suggested: X ✨` chip on **review-queue** rows the rules left on "Other" — tap to
+accept (fills the pending row's category + learns it; you STILL confirm via Review-and-Add/Add-all; never
+auto-applied). (#2) a dismissible **✨ Insights** card on Analytics: a 2–4 sentence plain-English summary of the
+viewed cycle, with refresh. Key = **BYOK**: owner pastes their own free Groq key in Settings → Automatic Entries
+→ AI helper (a first-enable privacy dialog + Test-key button).
+
+**Money-safe by construction (traced + review-confirmed):** amount/kind/date stay 100% on `SmsParser` (golden
+tests untouched); AI only produces a category NAME (#1) or summary TEXT (#2). AI is called ONLY from
+`ReviewViewModel`/`AnalyticsViewModel` (review + read-only surfaces) — NEVER from `captureReturningId` /
+`confirmPending` / `confirmAllPending` / `confirmPendingEdited` / `commitDraft`. Accepting a chip →
+`setPendingCategory` (pending-row UPDATE, no ledger write). **G1:** eligibility requires no learned mapping
+(`SmsCaptureRepository.hasLearnedCategory`) AND a rules-fallback category → AI never overrides a learned/confident
+pick. **Fail-closed:** no key / offline / timeout / non-2xx / bad JSON / off-list category → today's behaviour,
+no crash, no UI block.
+
+**Privacy — only two things leave the phone:** (#1) merchant string + category names; (#2) category totals +
+income/expense totals (cycle label is the descriptive name, e.g. "Current Salary Cycle" — no dates). NEVER: SMS
+bodies, amounts+balances, account/card numbers, last4, dates, individual rows. Groq key stored ENCRYPTED via
+`SecureKeyStore` (AndroidKeyStore-wrapped), device-local, **not in the backup snapshot** (like `widgetEyeHidden`);
+AI toggles are device-local too (not in `restore()`).
+
+**New:** `data/ai/{GroqClient,AiCategorizer,AiInsights}.kt`, `ui/settings/AiSettings{Screen,ViewModel}.kt`.
+**Edited:** `SecureKeyStore` (encrypted key), `SettingsRepository` (3 device-local AI prefs), `SmsCaptureRepository`
+(`hasLearnedCategory`), `ExpenseDao`+`ExpenseRepository` (one-shot `categorySpendOnce`), `ReviewViewModel`+`ReviewScreen`
+(chip), `AnalyticsViewModel`+`AnalyticsScreen` (card), `AutomaticSettingsScreen`+`Routes`+`SpendsNavHost` (SETTINGS_AI).
+Models: `llama-3.1-8b-instant` (categorize, batched JSON) + `llama-3.3-70b-versatile` (insights, cached per cycle)
+— both verified as current Groq production models.
+
+**Reviews (ritual honored):** 2 parallel adversarial agents (compile/Hilt/Room + logic/data-safety/privacy, both
+scanned `app/src/test`, explicit money-safety check) → **0 blockers, 0 HIGH/MED; all guarantees CONFIRMED.** Fixed
+4 LOW/NIT: (1) `GroqClient` no longer swallows `CancellationException`; (2) review collector un-marks a batch on
+mid-scan cancellation so chips retry; (3) `AiInsights` cache bounded (64); (4) added `ReviewEligibilityTest`.
+**Tests:** `AiCategorizerTest` (name→id map, off-list/null/hallucinated-id/malformed → dropped), `AiInsightsPayloadTest`
+(aggregates-only payload, rupee conversion, `parseSummary` fail-closed), `ReviewEligibilityTest` (fallback-only rule).
+
+**Accepted residuals (owner-told, read-only prose, no money/privacy impact):** insights "vs last cycle" can read
+stale after editing a *previous*-cycle txn (refresh button fixes it); for a card-heavy Smart Cycle the "vs last"
+number uses the plain previous window (current-cycle figures always exact); G2 master-off gating is review-verified
+but not unit-tested (fail-closed + privacy + eligibility cores ARE).
 
 ## v1.55.0 — Settings hub (categories to tap into) + one-time "moved to next" dot
 Owner-requested 2026-07-24; built + reviewed + shipped same day. **No DB / snapshot change** (one new

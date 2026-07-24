@@ -59,6 +59,10 @@ class ExpenseRepository @Inject constructor(
     fun observeCategorySpend(startMillis: Long, endExclusiveMillis: Long): Flow<List<CategorySpend>> =
         dao.observeCategorySpend(startMillis, endExclusiveMillis)
 
+    /** One-shot per-category spend for the AI insights previous-cycle read (aggregates only). */
+    suspend fun categorySpendOnce(startMillis: Long, endExclusiveMillis: Long): List<CategorySpend> =
+        dao.categorySpendOnce(startMillis, endExclusiveMillis)
+
     /** Earliest active transaction time (null if none) — lower bound for the "All" range. */
     fun observeEarliestDay(): Flow<Long?> = dao.observeEarliestOccurredAt()
 

@@ -119,6 +119,20 @@ interface ExpenseDao {
     )
     fun observeCategorySpend(start: Long, end: Long): Flow<List<CategorySpend>>
 
+    /** One-shot per-category spend for [start, end) — the previous-cycle read for the AI insights payload
+     *  (aggregates only; no Flow needed). Same shape as [observeCategorySpend]. */
+    @Query(
+        "SELECT c.id AS categoryId, c.name AS name, c.colorHex AS colorHex, c.iconKey AS iconKey, " +
+            "SUM(a.amountMinor) AS total " +
+            "FROM allocations a " +
+            "JOIN expenses e ON e.id = a.expenseId " +
+            "JOIN categories c ON c.id = a.categoryId " +
+            "WHERE e.deletedAt IS NULL AND e.kind = 'EXPENSE' " +
+            "AND e.occurredAt >= :start AND e.occurredAt < :end " +
+            "GROUP BY c.id ORDER BY total DESC",
+    )
+    suspend fun categorySpendOnce(start: Long, end: Long): List<CategorySpend>
+
     /** Running balance (income − expense) for everything strictly before [before] — for Carry Forward. */
     @Query(
         "SELECT COALESCE(SUM(CASE kind WHEN 'INCOME' THEN amountMinor WHEN 'EXPENSE' THEN -amountMinor ELSE 0 END), 0) " +

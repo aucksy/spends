@@ -38,8 +38,8 @@ android {
         applicationId = "com.spends.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 60
-        versionName = "1.55.0"
+        versionCode = 61
+        versionName = "1.56.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -183,6 +183,9 @@ dependencies {
     testImplementation(libs.google.truth)
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
+    // Real org.json on the unit-test classpath (the android.jar stub returns empty defaults under
+    // isReturnDefaultValues), so the AI layer's JSON parse/build helpers can be tested for real.
+    testImplementation("org.json:json:20231013")
 
     // Instrumentation testing
     androidTestImplementation(libs.androidx.junit)

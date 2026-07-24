@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +37,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -153,6 +156,9 @@ fun ReviewScreen(
                                 onEdit = { onEditPending(row.id) },
                                 onViewSms = { smsFor = row },
                                 onReject = { rejectFor = row },
+                                onAcceptSuggestion = {
+                                    row.aiSuggestedCategoryId?.let { viewModel.acceptSuggestion(row.id, it) }
+                                },
                             )
                         }
                     }
@@ -215,6 +221,7 @@ private fun ReviewCard(
     onEdit: () -> Unit,
     onViewSms: () -> Unit,
     onReject: () -> Unit,
+    onAcceptSuggestion: () -> Unit,
 ) {
     val semantic = LocalSemanticColors.current
     // Tapping the card opens the full editor prefilled — same as "Review and Add" (#9).
@@ -256,6 +263,23 @@ private fun ReviewCard(
                 CategoryAvatar(row.iconKey ?: "tag", row.colorHex ?: "#78716C", size = 32.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(row.categoryName ?: "Uncategorized", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            }
+            // AI helper (#1): a suggestion for a row the rules couldn't place. Tapping fills the category
+            // (review-only, the user still confirms). Never auto-applied; absent when AI is off.
+            if (row.aiSuggestedCategoryName != null) {
+                Spacer(Modifier.height(10.dp))
+                SuggestionChip(
+                    onClick = onAcceptSuggestion,
+                    label = { Text("Suggested: ${row.aiSuggestedCategoryName}") },
+                    icon = {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.size(SuggestionChipDefaults.IconSize),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                )
             }
             Spacer(Modifier.height(12.dp))
             // Single primary action (#6) — the category is changed inside the editor it opens, so there's

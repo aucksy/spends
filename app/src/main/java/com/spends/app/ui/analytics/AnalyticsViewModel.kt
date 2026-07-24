@@ -13,6 +13,9 @@ import com.spends.app.core.period.PeriodType
 import com.spends.app.core.period.SmartCardCycle
 import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.ai.AiInsights
+import com.spends.app.data.ai.GroqClient
+import com.spends.app.data.ai.InsightPayload
 import com.spends.app.data.db.entity.CategorySpend
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -28,12 +31,16 @@ import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.cards.isCardInstrument
 import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -80,6 +87,15 @@ data class AnalyticsUiState(
     val isEmpty: Boolean get() = !loading && expenseMinor == 0L && incomeMinor == 0L
 }
 
+/** AI insights card state (#2). Read-only text; hidden unless AI + the sub-toggle + a key are on, and never
+ *  present for an empty cycle. [failed] = the call didn't return usable text (fail-closed → the card hides). */
+data class InsightsUiState(
+    val visible: Boolean = false,
+    val loading: Boolean = false,
+    val text: String? = null,
+    val failed: Boolean = false,
+)
+
 /** A resolved Analytics period — [composite] is non-null for the Smart Cycle composite (Round B). */
 private data class ResolvedB(
     val startMillis: Long,
@@ -107,6 +123,8 @@ class AnalyticsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val periodSelectionStore: PeriodSelectionStore,
     private val paymentMethodRepository: PaymentMethodRepository,
+    private val aiInsights: AiInsights,
+    private val groqClient: GroqClient,
 ) : ViewModel() {
 
     // Shared with the Transactions screen (#8) so the cycle/range stays in sync across both.
@@ -188,6 +206,80 @@ class AnalyticsViewModel @Inject constructor(
                 }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
+
+    // ---- AI insights (#2) — read-only, aggregates only, cached per cycle ----
+    private val _insights = MutableStateFlow(InsightsUiState())
+    val insights: StateFlow<InsightsUiState> = _insights
+    // The current-cycle content fingerprint we last summarised — skip re-work (and a DB read) on identical re-emits.
+    private var lastInsightFp: String? = null
+
+    init {
+        viewModelScope.launch {
+            combine(state, settingsRepository.settings.map { it.aiEnabled && it.aiInsights }) { st, on -> st to on }
+                .collectLatest { (st, on) ->
+                    val gateOn = on && groqClient.hasKey() // G2: master + sub-toggle + a key, else nothing runs
+                    if (!gateOn || st.loading || st.isEmpty) {
+                        lastInsightFp = null
+                        if (_insights.value.visible) _insights.value = InsightsUiState(visible = false)
+                        return@collectLatest
+                    }
+                    val fp = insightFingerprint(st)
+                    if (fp == lastInsightFp) return@collectLatest // unchanged cycle → keep the current card
+                    lastInsightFp = fp
+                    _insights.value = InsightsUiState(visible = true, loading = true)
+                    val text = aiInsights.summarize(buildInsightPayload(st))
+                    _insights.value = InsightsUiState(visible = true, loading = false, text = text, failed = text == null)
+                }
+        }
+    }
+
+    /** Re-generate the insight bypassing the per-cycle cache (the card's refresh button). */
+    fun refreshInsights() = viewModelScope.launch {
+        val st = state.value
+        val s = settingsRepository.settings.first()
+        if (!(s.aiEnabled && s.aiInsights) || !groqClient.hasKey() || st.loading || st.isEmpty) return@launch
+        _insights.value = InsightsUiState(visible = true, loading = true)
+        val text = aiInsights.summarize(buildInsightPayload(st), forceRefresh = true)
+        lastInsightFp = insightFingerprint(st)
+        _insights.value = InsightsUiState(visible = true, loading = false, text = text, failed = text == null)
+    }
+
+    private fun insightFingerprint(st: AnalyticsUiState): String = buildString {
+        append(st.windowStartMillis).append('|').append(st.windowEndExclusiveMillis)
+        append('|').append(st.incomeMinor).append('|').append(st.expenseMinor)
+        st.categories.forEach { append('|').append(it.categoryId).append(':').append(it.amountMinor) }
+    }
+
+    /**
+     * Build the aggregates-only insight payload from the reconciled on-screen [st] (so the card's ₹ figures match
+     * the charts) plus a one-shot previous-cycle read. Sends NO dates, NO rows, NO merchants, NO balances — the
+     * cycle label is the descriptive name (e.g. "Current Salary Cycle"), never concrete transaction dates.
+     */
+    private suspend fun buildInsightPayload(st: AnalyticsUiState): InsightPayload {
+        val sel = selection.value
+        val byCategory = st.categories.map { InsightPayload.CategoryTotal(it.name, it.amountMinor) }
+        // "vs last cycle" only for a single navigable cycle; the previous window is the equal-length span
+        // immediately before this one (a universal approximation across Month / Salary / Smart).
+        var lastExpense: Long? = null
+        var lastByCategory: List<InsightPayload.CategoryTotal>? = null
+        if (sel.range == PeriodRange.CURRENT && st.windowEndExclusiveMillis > st.windowStartMillis) {
+            val span = st.windowEndExclusiveMillis - st.windowStartMillis
+            val prevStart = st.windowStartMillis - span
+            val prevEnd = st.windowStartMillis
+            lastExpense = expenseRepository.kindSumsOnce(prevStart, prevEnd)
+                .firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
+            lastByCategory = expenseRepository.categorySpendOnce(prevStart, prevEnd)
+                .map { InsightPayload.CategoryTotal(it.name, it.total) }
+        }
+        return InsightPayload(
+            cycleLabel = sel.describe(),
+            incomeMinor = st.incomeMinor,
+            expenseMinor = st.expenseMinor,
+            byCategory = byCategory,
+            lastCycleExpenseMinor = lastExpense,
+            lastCycleByCategory = lastByCategory,
+        )
+    }
 
     fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
 

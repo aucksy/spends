@@ -18,6 +18,7 @@ object Routes {
     const val SETTINGS_APPEARANCE = "settings_appearance"
     const val SETTINGS_BACKUP = "settings_backup"
     const val SETTINGS_DATA = "settings_data"
+    const val SETTINGS_AI = "settings_ai"
     const val CATEGORIES = "categories"
     const val RECURRING = "recurring"
     const val REVIEW = "review"
