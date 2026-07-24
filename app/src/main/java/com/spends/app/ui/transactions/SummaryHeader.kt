@@ -67,7 +67,13 @@ fun SummaryHeader(
         // Stat tiles — exactly two fill the row; any extras (carry forward / transfers) scroll.
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
             val gap = 10.dp
-            val tileW = (maxWidth - gap) / 2
+            // With only Expense + Income, two tiles fill the row exactly. But when a THIRD tile (Carry
+            // forward) is present it would otherwise sit fully off-screen with no hint it exists — the owner
+            // didn't know there was a carry-over box to scroll to. So when there's a third tile, narrow the
+            // tiles just enough that it PEEKS in from the right edge: the standard "there's more, scroll →"
+            // cue, so the carry-over box is discoverable. Two-tile layout (the default) is unchanged.
+            val peek = 40.dp
+            val tileW = if (tiles.size > 2) (maxWidth - gap * 2 - peek) / 2 else (maxWidth - gap) / 2
             // All tiles share ONE font scale (#12): every figure is measured at the tile's inner width and
             // the smallest fit is applied to all — so Expense/Income (and any extra tiles) are always the
             // SAME size, never one shrunk and one full-size.
