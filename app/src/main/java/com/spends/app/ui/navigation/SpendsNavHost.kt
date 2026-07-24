@@ -21,6 +21,11 @@ import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
 import com.spends.app.ui.recurring.RecurringScreen
 import com.spends.app.ui.review.ReviewScreen
+import com.spends.app.ui.settings.AppearanceSettingsScreen
+import com.spends.app.ui.settings.AutomaticSettingsScreen
+import com.spends.app.ui.settings.BackupSettingsScreen
+import com.spends.app.ui.settings.DataSettingsScreen
+import com.spends.app.ui.settings.MoneySettingsScreen
 import com.spends.app.ui.settings.SettingsScreen
 import com.spends.app.ui.trash.TrashScreen
 
@@ -134,12 +139,43 @@ fun SpendsNavHost(
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
-                onOpenTrash = { navController.navigate(Routes.TRASH) },
+                onOpenMoney = { navController.navigate(Routes.SETTINGS_MONEY) },
+                onOpenAutomatic = { navController.navigate(Routes.SETTINGS_AUTOMATIC) },
                 onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
-                onOpenImport = { navController.navigate(Routes.importRoute(fromOnboarding = false)) },
-                onOpenRecurring = { navController.navigate(Routes.RECURRING) },
-                onOpenCapture = { navController.navigate(Routes.CAPTURE) },
+                onOpenAppearance = { navController.navigate(Routes.SETTINGS_APPEARANCE) },
+                onOpenBackup = { navController.navigate(Routes.SETTINGS_BACKUP) },
+                onOpenData = { navController.navigate(Routes.SETTINGS_DATA) },
+            )
+        }
+
+        composable(Routes.SETTINGS_MONEY) {
+            MoneySettingsScreen(
+                onBack = { navController.popBackStack() },
                 onOpenBanksCards = { navController.navigate(Routes.BANKS_CARDS) },
+            )
+        }
+
+        composable(Routes.SETTINGS_AUTOMATIC) {
+            AutomaticSettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenCapture = { navController.navigate(Routes.CAPTURE) },
+                onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+            )
+        }
+
+        composable(Routes.SETTINGS_APPEARANCE) {
+            AppearanceSettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.SETTINGS_BACKUP) {
+            BackupSettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.SETTINGS_DATA) {
+            DataSettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenImport = { navController.navigate(Routes.importRoute(fromOnboarding = false)) },
+                onOpenTrash = { navController.navigate(Routes.TRASH) },
             )
         }
 

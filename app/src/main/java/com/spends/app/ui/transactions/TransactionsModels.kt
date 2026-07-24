@@ -63,6 +63,9 @@ data class TransactionsUiState(
     // is capped at the present). [shiftedCardNames] names those cards for a one-per-card "moved to next" badge.
     val canGoForwardToNext: Boolean = false,
     val shiftedCardNames: List<String> = emptyList(),
+    // The one-time "spends rolled to next cycle" dot is dismissed for good once the user taps forward to view
+    // that cycle. True = already seen → the › arrow shows no dot (the forward arrow itself stays enabled).
+    val shiftBadgeSeen: Boolean = false,
     val search: String = "",
     val totals: SummaryTotals = SummaryTotals(),
     val carryForward: Long? = null,

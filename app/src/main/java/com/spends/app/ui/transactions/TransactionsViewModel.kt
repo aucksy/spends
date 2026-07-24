@@ -282,6 +282,10 @@ class TransactionsViewModel @Inject constructor(
 
     fun applySelection(sel: PeriodSelection) = periodSelectionStore.set(sel)
 
+    /** The user tapped › forward to view the cycle that holds rolled-forward card spends: dismiss the
+     *  one-time "moved to next" dot for good (a teaching nudge, seen once). */
+    fun markShiftBadgeSeen() = viewModelScope.launch { settingsRepository.setSmartShiftBadgeSeen(true) }
+
     fun setSearch(value: String) = searchQuery.update { value }
 
     fun moveToTrash(id: Long) = viewModelScope.launch { expenseRepository.moveToTrash(id) }
@@ -425,6 +429,7 @@ class TransactionsViewModel @Inject constructor(
             canStepForward = false,
             canGoForwardToNext = nextItems.isNotEmpty(),
             shiftedCardNames = shiftedCardNames,
+            shiftBadgeSeen = settings.smartShiftBadgeSeen,
             search = query,
             totals = totals,
             carryForward = carryForward,

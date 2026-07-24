@@ -71,6 +71,10 @@ data class SettingsState(
     // app list is meaningless on another phone — so neither field is in the backup snapshot.
     val notificationCaptureEnabled: Boolean = false,
     val notificationCaptureApps: Set<String> = emptySet(),
+    // The one-time "card spends rolled into the next cycle" dot on the timeline's › arrow. Once the user taps
+    // forward to view that next cycle, it's dismissed FOR GOOD (a teaching nudge, not a persistent indicator).
+    // Device-local UI state (like [widgetEyeHidden]) → deliberately NOT in the backup snapshot.
+    val smartShiftBadgeSeen: Boolean = false,
 ) {
     /** The day the Smart Cycle window actually anchors on: the explicit reset day, else the salary day. */
     val effectiveSmartResetDay: Int
@@ -111,6 +115,7 @@ class SettingsRepository @Inject constructor(
             defaultPaymentMethodId = prefs[Keys.DEFAULT_PAYMENT_METHOD]?.takeIf { it > 0 },
             notificationCaptureEnabled = prefs[Keys.NOTIFICATION_CAPTURE] ?: false,
             notificationCaptureApps = prefs[Keys.NOTIFICATION_CAPTURE_APPS] ?: emptySet(),
+            smartShiftBadgeSeen = prefs[Keys.SMART_SHIFT_BADGE_SEEN] ?: false,
         )
     }
 
@@ -139,6 +144,8 @@ class SettingsRepository @Inject constructor(
     suspend fun setRecurringNotifyTime(minuteOfDay: Int) = edit { it[Keys.RECURRING_NOTIFY_MINUTE] = minuteOfDay.coerceIn(0, 1439) }
     /** Set the default "Paid with" instrument for new expenses (#2); null = generic Bank (stored as 0). */
     suspend fun setDefaultPaymentMethodId(id: Long?) = edit { it[Keys.DEFAULT_PAYMENT_METHOD] = id ?: 0L }
+    /** Dismiss the one-time "spends rolled to next cycle" dot FOR GOOD (first forward-tap). Device-local. */
+    suspend fun setSmartShiftBadgeSeen(value: Boolean) = edit { it[Keys.SMART_SHIFT_BADGE_SEEN] = value }
     suspend fun setNotificationCaptureEnabled(value: Boolean) = edit { it[Keys.NOTIFICATION_CAPTURE] = value }
     /** Replace the watched-app package set for notification capture. */
     suspend fun setNotificationCaptureApps(packages: Set<String>) = edit { it[Keys.NOTIFICATION_CAPTURE_APPS] = packages }
@@ -208,5 +215,6 @@ class SettingsRepository @Inject constructor(
         val NOTIFICATION_CAPTURE = booleanPreferencesKey("notification_capture_enabled")
         val NOTIFICATION_CAPTURE_APPS = stringSetPreferencesKey("notification_capture_apps")
         val NOTIFICATION_CAPTURE_SEEDED = booleanPreferencesKey("notification_capture_seeded")
+        val SMART_SHIFT_BADGE_SEEN = booleanPreferencesKey("smart_shift_badge_seen")
     }
 }

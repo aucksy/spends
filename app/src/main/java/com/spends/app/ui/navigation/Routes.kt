@@ -12,6 +12,12 @@ object Routes {
     const val HOME = "home"
     const val TRASH = "trash"
     const val SETTINGS = "settings"
+    // Settings hub sub-pages (the one long settings page was split into tappable category sub-screens).
+    const val SETTINGS_MONEY = "settings_money"
+    const val SETTINGS_AUTOMATIC = "settings_automatic"
+    const val SETTINGS_APPEARANCE = "settings_appearance"
+    const val SETTINGS_BACKUP = "settings_backup"
+    const val SETTINGS_DATA = "settings_data"
     const val CATEGORIES = "categories"
     const val RECURRING = "recurring"
     const val REVIEW = "review"

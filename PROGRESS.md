@@ -4,11 +4,48 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.54.1** — versionCode **59**, versionName **"1.54.1"**
+- **Shipped: v1.55.0** — versionCode **60**, versionName **"1.55.0"**
   (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-24.
-- **DB schema: v16** (UNCHANGED — pure UI/layout tweak, no schema touch).
+- **DB schema: v16** (UNCHANGED — UI restructure + one device-local pref, no schema touch).
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.54.1/Spends-v1.54.1.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.55.0/Spends-v1.55.0.apk
+
+## v1.55.0 — Settings hub (categories to tap into) + one-time "moved to next" dot
+Owner-requested 2026-07-24; built + reviewed + shipped same day. **No DB / snapshot change** (one new
+device-local DataStore pref + a UI restructure).
+
+**A) "Moved to next cycle" dot is now a one-time nudge (owner: "should go away after first use").**
+- New device-local pref `smartShiftBadgeSeen` (`SettingsRepository`/`SettingsState`, key `smart_shift_badge_seen`,
+  default false) — like `widgetEyeHidden`, deliberately NOT in the backup snapshot/`restore()`.
+- `PeriodSelectorBar` gains `shiftBadgeSeen` + `onShiftBadgeSeen`; `showShiftBadge` now also requires
+  `!shiftBadgeSeen`, and the forward-arrow onClick fires `onShiftBadgeSeen()` (only when the dot is actually
+  showing: offset 0, cards shifted). `TransactionsUiState.shiftBadgeSeen` sourced from settings in
+  `buildStateSmartCard`; `TransactionsViewModel.markShiftBadgeSeen()` persists true. Owner decision (asked):
+  **gone for good after the first forward-tap** — a teaching nudge, does NOT re-arm for a new card's shift next
+  cycle. The forward ARROW stays enabled (`forwardEnabled` independent of the flag) — only the dot goes away.
+  Other `PeriodSelectorBar` callers (Analytics, category drill-down) pass neither shift field → dot never shows
+  there → new defaults are inert.
+
+**B) Settings split from one long scroll into a 6-category HUB (owner: "different categories to tap into…
+it's intimidating").** Owner picked the 6-group layout interactively.
+- `SettingsScreen.kt` is now the HUB: 6 tappable cards (Money & Cycles / Automatic Entries / Categories /
+  Appearance / Backup & Restore / Data & Trash), each an icon-chip + title + one-line subtitle + chevron.
+- Shared look extracted to **`SettingsCommon.kt`** (public, same package): `SettingsSubScaffold` (titled
+  back-arrow scaffold), `SectionHeader`, `SettingsSection`, `RowDivider`, `SwitchRow`, `ClickableRow`,
+  `SettingsHubRow`, `ordinal`, `formatMinuteOfDay`. Old private copies removed from `SettingsScreen.kt`.
+- 5 new sub-screens (each `hiltViewModel<SettingsViewModel>()` → same singleton repo/DataStore, no split-brain):
+  `MoneySettingsScreen` (salary day, carry-forward +anchor+opening, Smart Cycle +reset day +Banks&Cards;
+  owns the Salary/Reset dialogs, anchor picker, opening dialog), `AutomaticSettingsScreen` (SMS/notif capture,
+  Recurring), `AppearanceSettingsScreen` (theme +auto-dark window +dialog, Open-on, widget eye),
+  `BackupSettingsScreen` (`BackupSection`), `DataSettingsScreen` (`SpreadsheetSection` + Trash). Categories =
+  the hub card jumps straight to the existing `CATEGORIES` route.
+- Routes `SETTINGS_MONEY/AUTOMATIC/APPEARANCE/BACKUP/DATA` + `SpendsNavHost` wiring; every moved control keeps
+  its exact side effects (widget refresh AFTER the write; Smart-Cycle-ON opens reset dialog; carry-forward
+  auto-anchor). **Feature-complete parity** with the old page — nothing dropped or duplicated.
+- **Reviews (ritual honored):** 2 parallel adversarial agents (compile/Hilt + logic/UX, both scanned
+  `app/src/test`+`androidTest`) → **compile CLEAN, logic GO, 0 findings.** Verified: no duplicate top-level
+  decls, all `SettingsViewModel` calls exist, all icons in `material-icons-extended`, dot persists/never
+  re-arms, forward arrow stays enabled, full old→new control mapping. No tests reference the old structure.
 
 ## v1.54.1 — Make the carry-over box discoverable (timeline summary strip)
 Owner-requested 2026-07-24; built + reviewed + shipped same day. **Pure layout; no logic/DB/money change.**

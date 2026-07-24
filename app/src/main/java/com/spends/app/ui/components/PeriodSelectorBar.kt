@@ -93,6 +93,11 @@ fun PeriodSelectorBar(
     // names those cards for a small one-per-card badge on the arrow.
     canGoForwardToNext: Boolean = false,
     shiftedCardNames: List<String> = emptyList(),
+    // The "moved to next" dot is a ONE-TIME teaching nudge: once seen (the user has tapped › forward to view
+    // that cycle), it's gone for good. [shiftBadgeSeen] hides it; [onShiftBadgeSeen] is fired the first time
+    // the user taps › forward while the dot is showing, so the ViewModel can persist "seen".
+    shiftBadgeSeen: Boolean = false,
+    onShiftBadgeSeen: () -> Unit = {},
     // The category drill-down offers the Smart pill (so its window matches the slice you tapped) but hides
     // the card narrowing — a per-category list isn't per-card. Everything else keeps the section.
     showCardSection: Boolean = true,
@@ -186,9 +191,14 @@ fun PeriodSelectorBar(
                     // Smart Cycle can push spends into the NEXT cycle before the reset day, so allow forward when
                     // there's something there. A dot on › flags it (once, while those spends sit in next).
                     val forwardEnabled = effective.cycleOffset < 0 || canGoForwardToNext
-                    val showShiftBadge = canGoForwardToNext && effective.cycleOffset == 0 && shiftedCardNames.isNotEmpty()
+                    // The dot is a one-time nudge: shown only until the user has viewed the next cycle once.
+                    val showShiftBadge = canGoForwardToNext && effective.cycleOffset == 0 &&
+                        shiftedCardNames.isNotEmpty() && !shiftBadgeSeen
                     Box(contentAlignment = Alignment.TopEnd) {
                         CycleArrow(Icons.Filled.ChevronRight, "Next cycle", enabled = forwardEnabled) {
+                            // Tapping forward while the dot shows = the user is viewing the rolled-forward
+                            // spends → dismiss the nudge for good.
+                            if (showShiftBadge) onShiftBadgeSeen()
                             onSelect(effective.copy(cycleOffset = effective.cycleOffset + 1))
                         }
                         if (showShiftBadge) {

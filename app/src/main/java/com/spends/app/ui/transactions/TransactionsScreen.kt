@@ -198,6 +198,8 @@ fun TransactionsScreen(
                 // forward arrow is enabled to reach them and a one-per-card badge names which cards moved.
                 canGoForwardToNext = state.canGoForwardToNext,
                 shiftedCardNames = state.shiftedCardNames,
+                shiftBadgeSeen = state.shiftBadgeSeen,
+                onShiftBadgeSeen = viewModel::markShiftBadgeSeen,
                 // #1: only in All-time (with data, not mid-search) does the calendar icon pop + open the jumper.
                 onJumpToMonth = if (isAllTime && !searchActive && state.groups.isNotEmpty()) ({ showJump = true }) else null,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
