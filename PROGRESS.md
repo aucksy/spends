@@ -4,12 +4,68 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.56.1** — versionCode **62**, versionName **"1.56.1"**
-  (`app/build.gradle.kts` lines 41–42). Owner said ship 2026-07-24.
-- **DB schema: v16** (UNCHANGED — the AI helper is additive: in-memory suggestions + one read-only DAO query,
-  no schema touch, no snapshot change).
+- **Shipped: v1.57.0** — versionCode **63**, versionName **"1.57.0"**
+  (`app/build.gradle.kts` lines 41–42). Shipped 2026-07-26 under the new standing
+  "ship after major fixes without asking" rule (see `CONTEXT.md` working agreement).
+- **DB schema: v16** (UNCHANGED — no schema touch, no snapshot change, no manifest or dependency change).
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.56.1/Spends-v1.56.1.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.57.0/Spends-v1.57.0.apk
+
+## v1.57.0 — notification-capture reconnect fix + temporary owner-facing diagnostic
+Owner-reported 2026-07-26: **Truecaller alerts never become captures** — and on questioning, notification
+capture has **never once** produced a capture from either watched app since it shipped in v1.53.0. Full
+code trace found no single broken link but four silent failure modes and one real gap. Detail, hypothesis
+table and the removal checklist: [`docs/NOTIFICATION-CAPTURE-DEBUG.md`](docs/NOTIFICATION-CAPTURE-DEBUG.md).
+
+**A) The permanent fix — the listener now reconnects itself.** Android's notification-access GRANT and the
+live service BINDING are different things: the grant survives forever, the binding is lost on every app
+update (owner installed 5 releases since v1.53.0) and can be dropped by an OEM battery killer, without
+reliably returning. The only proactive rebind was the Settings switch, and `onListenerDisconnected →
+requestRebind` only runs while our process is alive. So the toggle and the grant both read "on" while
+nothing is captured. New `service/NotificationListenerControl.kt` (`hasAccess` / `requestRebind: Boolean` /
+`ensureBound` / `openAccessSettings` / the `connected` flag) — called from `SpendsApp.onCreate` (gated on
+the setting, after a 5 s grace so a healthy install skips a pointless unbind/rebind) and from
+`BootReceiver`. **Honest caveat:** `requestRebind` routes through `ManagedServices.setComponentState` and
+does nothing for a component that was never *snoozed*, so for an update-lost binding it may be a no-op —
+hence the screen also offers "Open Android settings", since toggling access off/on is the reliable remedy.
+
+**B) The diagnostic (TEMPORARY — remove per the doc's checklist).** `data/capture/NotificationDebugLog.kt`
+(@Singleton, **in memory only**, never persisted / never in the snapshot, 60-entry ring + 80-package cap),
+`NotificationCapture.diagnose()` (pure), listener recording at every drop point, and
+`ui/capture/NotificationDebug{Screen,ViewModel}.kt` at `Routes.NOTIFICATION_DEBUG` (Settings → Automatic
+Entries → Detect from SMS & notifications → **Notification debug**, deliberately outside the enabled-only
+block). Verdict line + access/connected/seen counters + Reconnect + every package that posted a
+notification + per-alert detail + **Copy report**.
+
+**Reviews (ritual honored):** 2 parallel adversarial agents (compile/Hilt/Room + logic/data-safety, both
+scanned `app/src/test`) → **COMPILE: CLEAN, LOGIC: GO, 0 blockers**; all four claims CONFIRMED (capture
+behaviour byte-identical, review-only intact, no DB/snapshot change, diagnostic memory-only + bounded).
+Fixed everything else they found:
+- **⭐The diagnostic would have closed the investigation on the one FIXABLE hypothesis.** Textless
+  MessagingStyle messages make `candidates()` commit to the messages branch and never try `bigText`, so a
+  readable alert in `bigText` reported as `NO_READABLE_TEXT` → rendered as "this is the RCS limit" → doc
+  maps to "not fixable". That's H3b, **our** bug. New `MESSAGES_SHADOWED_BIG_TEXT` value separates them,
+  with a regression test asserting it is never reported as `NO_READABLE_TEXT`.
+- **Crash:** `shapeSkipEntry` read extras with no `runCatching`, on the main looper in a system callback —
+  an unparcelable Bundle would kill the listener, the exact failure this build diagnoses. Both `record()`
+  calls wrapped, extras null-guarded.
+- **Self-erasing log:** `ALREADY_SEEN` no longer recorded — a conversation reposts up to 25 retained
+  messages, so repost noise would evict the whole ring before the owner opened the screen.
+- **Privacy:** `recordSeen` gated on the capture toggle; **Copy report withholds message BODIES** for
+  entries whose sender didn't resolve to a tracked bank (a watched app is Google Messages, and the report
+  is designed to be pasted off-device). Sender strings kept; recognised bank alerts export intact; the
+  on-device screen still shows everything.
+- **Structural:** `connected` moved off `NotificationDebugLog` onto `NotificationListenerControl` —
+  `SpendsApp` read it off the log, so following the documented removal checklist would have broken the
+  build. `CaptureSection`'s 3 duplicate helpers now delegate. `SKIPPED_SHAPE` reason order mirrors
+  `looksReadable`; the `NotificationDecision` `when` is exhaustive; entries stamped with the MESSAGE's own
+  time + body; cold-launch verdict no longer cries "bug" for the first few seconds.
+- **⭐CI caught one the agents didn't:** an optimization skipping `publish()` when nothing was collecting
+  left `state.value` stale for non-subscribing readers (the test read it with no collector). Removed the
+  trap rather than patching the test — `publish()` always runs and no longer sorts; `Snapshot.packageCounts`
+  is a `Map` that consumers sort at display time. Added a defensive-copy test.
+- **Tests:** `NotificationDebugLogTest` — ring cap, newest-first, counters readable with no collector,
+  defensive copies, `clear()` must not lie about the live connection, and the five `diagnose()` verdicts.
 
 ## v1.56.1 — AI helper: end-to-end-assessment fixes + "reproduce my learned category" enhancement
 Owner asked for an end-to-end assessment of v1.56.0; 2 trace agents (regression + happy-path) + a Groq API contract

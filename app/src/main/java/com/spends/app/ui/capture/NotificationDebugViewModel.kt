@@ -10,7 +10,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -18,8 +17,12 @@ data class NotificationDebugUiState(
     val captureEnabled: Boolean = false,
     val watchedApps: Set<String> = emptySet(),
     val log: NotificationDebugLog.Snapshot =
-        NotificationDebugLog.Snapshot(false, null, 0, emptyList(), emptyList()),
-)
+        NotificationDebugLog.Snapshot(false, null, 0, emptyMap(), emptyList()),
+) {
+    /** Busiest app first — sorted here rather than on the notification hot path. */
+    val packagesByCount: List<Pair<String, Int>> =
+        log.packageCounts.entries.sortedByDescending { it.value }.map { it.key to it.value }
+}
 
 /**
  * TEMPORARY: backs the owner-facing "Notification debug" screen. Read-only over
@@ -38,10 +41,7 @@ class NotificationDebugViewModel @Inject constructor(
                 watchedApps = s.notificationCaptureApps,
                 log = log,
             )
-        }
-            // The log skips publishing while nobody is watching, so pull a fresh snapshot on subscribe.
-            .onStart { debugLog.refresh() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NotificationDebugUiState())
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NotificationDebugUiState())
 
     fun clear() = debugLog.clear()
 
@@ -74,10 +74,10 @@ class NotificationDebugViewModel @Inject constructor(
             appendLine("Notifications seen (all apps): ${log.totalSeen}")
             appendLine()
             appendLine("APPS THAT POSTED NOTIFICATIONS (${log.packageCounts.size})")
-            if (log.packageCounts.isEmpty()) {
+            if (s.packagesByCount.isEmpty()) {
                 appendLine("  (none)")
             } else {
-                log.packageCounts.forEach { (pkg, n) -> appendLine("  $n × $pkg") }
+                s.packagesByCount.forEach { (pkg, n) -> appendLine("  $n × $pkg") }
             }
             appendLine()
             appendLine("WATCHED-APP EVENTS (${log.entries.size}, newest first)")

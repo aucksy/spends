@@ -198,7 +198,7 @@ fun NotificationDebugScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                log.packageCounts.forEach { (pkg, n) ->
+                state.packagesByCount.forEach { (pkg, n) ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                         Text(
                             pkg,

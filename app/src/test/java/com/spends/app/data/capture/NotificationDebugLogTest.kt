@@ -22,6 +22,8 @@ class NotificationDebugLogTest {
             detail = null,
         )
 
+    /** The counters must be readable from `state.value` with NO collector attached — the debug screen
+     *  is opened long after the notifications were recorded. */
     @Test fun counts_every_notification_but_keeps_only_package_names() {
         val log = NotificationDebugLog()
         repeat(3) { log.recordSeen("com.truecaller") }
@@ -29,7 +31,22 @@ class NotificationDebugLogTest {
 
         val s = log.state.value
         assertThat(s.totalSeen).isEqualTo(4)
-        assertThat(s.packageCounts).containsExactly("com.truecaller" to 3, "com.whatsapp" to 1).inOrder()
+        assertThat(s.packageCounts).containsExactly("com.truecaller", 3, "com.whatsapp", 1)
+    }
+
+    @Test fun snapshots_are_defensive_copies() {
+        val log = NotificationDebugLog()
+        log.recordSeen("com.truecaller")
+        val first = log.state.value
+
+        log.recordSeen("com.truecaller")
+        log.record(entry(outcome = NotificationDebugLog.Outcome.QUEUED))
+
+        // The earlier snapshot must not mutate under the caller.
+        assertThat(first.packageCounts).containsExactly("com.truecaller", 1)
+        assertThat(first.entries).isEmpty()
+        assertThat(log.state.value.packageCounts).containsExactly("com.truecaller", 2)
+        assertThat(log.state.value.entries).hasSize(1)
     }
 
     @Test fun entries_are_newest_first_and_bounded() {

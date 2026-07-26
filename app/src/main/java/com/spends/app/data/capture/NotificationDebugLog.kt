@@ -74,13 +74,14 @@ class NotificationDebugLog @Inject constructor() {
         val lastConnectedAt: Long?,
         /** Every notification from every app the listener was handed (proof the reader is alive). */
         val totalSeen: Int,
-        /** Package name → how many notifications it posted. Package names only, no content. */
-        val packageCounts: List<Pair<String, Int>>,
+        /** Package name → how many notifications it posted. Package names only, no content.
+         *  Insertion-ordered; consumers sort for display (kept off the notification hot path). */
+        val packageCounts: Map<String, Int>,
         /** Newest first. Watched apps only. */
         val entries: List<Entry>,
     )
 
-    private val _state = MutableStateFlow(Snapshot(false, null, 0, emptyList(), emptyList()))
+    private val _state = MutableStateFlow(Snapshot(false, null, 0, emptyMap(), emptyList()))
     val state: StateFlow<Snapshot> = _state.asStateFlow()
 
     private val entries = ArrayDeque<Entry>()
@@ -98,8 +99,9 @@ class NotificationDebugLog @Inject constructor() {
 
     /**
      * Called for EVERY notification the listener is handed — package name and a count, never content.
-     * Runs on the main looper inside a system callback, so it skips the (sorting, copying) publish
-     * when nobody is watching the debug screen; the next [record] or screen open republishes anyway.
+     * This runs on the main looper inside a system callback, so [publish] deliberately does no sorting;
+     * it always publishes, because a snapshot that goes stale whenever nobody happens to be collecting
+     * is a trap for every non-subscribing reader of [state].
      */
     @Synchronized
     fun recordSeen(packageName: String) {
@@ -107,7 +109,7 @@ class NotificationDebugLog @Inject constructor() {
         if (counts.size < MAX_PACKAGES || counts.containsKey(packageName)) {
             counts[packageName] = (counts[packageName] ?: 0) + 1
         }
-        if (_state.subscriptionCount.value > 0) publish()
+        publish()
     }
 
     /** Called for a notification from a WATCHED app, with what the listener read and where it stopped. */
@@ -117,11 +119,6 @@ class NotificationDebugLog @Inject constructor() {
         while (entries.size > MAX_ENTRIES) entries.removeLast()
         publish()
     }
-
-    /** Republish the current state — call when the screen subscribes, since [recordSeen] skips the
-     *  publish while nobody is watching and the last emitted value can therefore be stale. */
-    @Synchronized
-    fun refresh() = publish()
 
     @Synchronized
     fun clear() {
@@ -136,7 +133,7 @@ class NotificationDebugLog @Inject constructor() {
             connected = connected,
             lastConnectedAt = lastConnectedAt,
             totalSeen = totalSeen,
-            packageCounts = counts.entries.sortedByDescending { it.value }.map { it.key to it.value },
+            packageCounts = LinkedHashMap(counts),
             entries = entries.toList(),
         )
     }
