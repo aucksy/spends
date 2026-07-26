@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.theme.SpendsTheme
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.receiver.CaptureActionReceiver
+import com.spends.app.ui.components.DemoModeWrapper
 import com.spends.app.ui.navigation.SpendsNavHost
 import com.spends.app.ui.onboarding.SplashScreenContent
 import dagger.hilt.android.AndroidEntryPoint
@@ -73,13 +74,17 @@ class MainActivity : ComponentActivity() {
                     label = "splash-reveal",
                 ) { appVisible ->
                     if (appVisible) {
-                        SpendsNavHost(
-                            settings = state.settings,
-                            pendingCaptureDraft = pendingCaptureDraft,
-                            onCaptureDraftConsumed = viewModel::consumeCaptureDraft,
-                            pendingQuickAdd = pendingQuickAdd,
-                            onQuickAddConsumed = viewModel::consumeQuickAdd,
-                        )
+                        // In demo mode this adds the permanent "sample data" strip above everything; in normal
+                        // mode it emits the nav host unchanged.
+                        DemoModeWrapper {
+                            SpendsNavHost(
+                                settings = state.settings,
+                                pendingCaptureDraft = pendingCaptureDraft,
+                                onCaptureDraftConsumed = viewModel::consumeCaptureDraft,
+                                pendingQuickAdd = pendingQuickAdd,
+                                onQuickAddConsumed = viewModel::consumeQuickAdd,
+                            )
+                        }
                     } else {
                         SplashScreenContent()
                     }

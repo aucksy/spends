@@ -11,6 +11,7 @@ import com.spends.app.data.capture.NotificationCapture
 import com.spends.app.data.capture.NotificationDebugLog
 import com.spends.app.data.capture.RecentCaptureGuard
 import com.spends.app.data.capture.SmsCaptureRepository
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -74,6 +75,10 @@ class CaptureNotificationListenerService : NotificationListenerService() {
         // alerts are still sitting in the shade get queued for review — silently, never prompted, so
         // a reconnect can't dump a stack of heads-ups at once.
         scope.launch {
+            // Demo mode: the shade sweep is the ONLY recovery path notifications have, so an alert captured
+            // into the sandbox here is permanently lost when the demo resets. Skip the sweep entirely — the
+            // alert stays in the shade and is picked up on the next real connect.
+            if (DemoMode.isEnabled(this@CaptureNotificationListenerService)) return@launch
             val s = runCatching { settingsRepository.settings.first() }.getOrNull() ?: return@launch
             if (!s.notificationCaptureEnabled) return@launch
             val active = runCatching { activeNotifications }.getOrNull() ?: return@launch
@@ -106,6 +111,9 @@ class CaptureNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (!enabled) return
+        // Same reasoning as SmsReceiver: while demo mode is on the app writes to the demo database, so a real
+        // bank alert captured here would be wiped by the next demo reset. Ignore everything, record nothing.
+        if (DemoMode.isEnabled(this)) return
         // Counted for EVERY app the listener is handed, package name only, no content (TEMPORARY
         // diagnostic): if this stays at zero the listener isn't bound at all, which no other signal on
         // the phone reveals. Gated on `enabled` so an owner who never turned capture on is never tallied.

@@ -27,6 +27,8 @@ fun DataSettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     SettingsSubScaffold(title = "Data & Trash", onBack = onBack) {
+        DemoModeSection()
+
         SettingsSection("Spreadsheet (Excel / CSV)") {
             SpreadsheetSection(onImport = onOpenImport)
         }

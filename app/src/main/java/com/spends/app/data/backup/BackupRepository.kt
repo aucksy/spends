@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.withTransaction
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.SpendsDatabase
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.ExpenseEntity
@@ -75,7 +76,27 @@ class BackupRepository @Inject constructor(
 
     // ---- Snapshot build / apply (local) ----
 
+    /**
+     * Backup and restore are both disabled while demo mode is on, and this is where that is enforced.
+     *
+     * [buildSnapshot] and [applySnapshot] are the only two chokepoints — every public path (Drive backup,
+     * Drive restore, local `.spsenc` export, local import, the daily worker) funnels through one of them, so
+     * guarding the pair covers all of them without six separate checks that a later edit could forget.
+     *
+     * Why it matters in both directions:
+     *  - **Backing up** in demo mode would upload fabricated data to the user's real Drive folder, where it
+     *    would sit in the restore picker looking exactly like a genuine snapshot.
+     *  - **Restoring** in demo mode would unpack real financial data into the demo sandbox, which the next
+     *    "Reset demo data" then destroys.
+     *
+     * The Backup & Restore settings section is hidden in demo mode too; this is the guarantee behind it.
+     */
+    private fun requireNotDemo(action: String) {
+        check(!DemoMode.isEnabled(context)) { "$action is not available in demo mode" }
+    }
+
     suspend fun buildSnapshot(): Snapshot {
+        requireNotDemo("Backup")
         val settings = settingsRepository.settings.first()
         return Snapshot(
             schemaVersion = Snapshot.CURRENT_SCHEMA,
@@ -93,6 +114,7 @@ class BackupRepository @Inject constructor(
     }
 
     suspend fun applySnapshot(snapshot: Snapshot) {
+        requireNotDemo("Restore")
         // The "transfer" kind was removed from the app. An OLD backup can still hold kind="TRANSFER"
         // rows; blindly restoring them would coerce each to an EXPENSE (see the toEntity fallback) and
         // WRONGLY subtract it from the balance. Transfers were always balance-neutral, so we DROP them on

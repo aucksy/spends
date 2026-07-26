@@ -1,6 +1,5 @@
 package com.spends.app.data.settings
 
-import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -9,11 +8,9 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.SmsCaptureMode
 import com.spends.app.domain.model.ThemeMode
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -89,13 +86,17 @@ data class SettingsState(
         get() = if (smartCycleResetDay in 1..31) smartCycleResetDay else salaryCycleStartDay
 }
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
-
+/**
+ * All user preferences.
+ *
+ * The [DataStore] is injected rather than created from a `Context` delegate so **demo mode can point it at a
+ * different file** (see `SettingsModule`) — demo settings never touch the real ones. The live file name is
+ * unchanged, so existing installs keep their preferences.
+ */
 @Singleton
 class SettingsRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    private val store: DataStore<Preferences>,
 ) {
-    private val store = context.dataStore
 
     val settings: Flow<SettingsState> = store.data.map { prefs ->
         SettingsState(

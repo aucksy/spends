@@ -7,7 +7,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.preferencesDataStoreFile
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.widget.SummaryWidget
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -22,17 +24,28 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.periodStore: DataStore<Preferences> by preferencesDataStore(name = "period_selection")
-
 /**
  * Process-wide holder for the cycle/range the user picked, so the Transactions and Analytics screens stay
  * in sync. It is **persisted** (DataStore) so the selection survives a cold start AND the home-screen
  * widget can mirror it (#6): changing the period in the app updates the widget's cycle name/dates too.
+ *
+ * The store file is demo-aware. It holds `selectedCardId` — a `payment_methods` row id — and row ids in the
+ * live and demo databases are unrelated. Sharing one file would mean demoing the Single-Card view on the
+ * demo's "Axis Magnus" (id 2) left the real app opening on whichever real card happens to be id 2. Demo mode
+ * must not change how the real app behaves, so this file is swapped like the settings one.
  */
 @Singleton
 class PeriodSelectionStore @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
+    // Built here rather than via a Context delegate so the file name can depend on the mode. Safe because
+    // this class is @Singleton: exactly one live DataStore instance per file, which DataStore requires.
+    private val periodStore: DataStore<Preferences> = PreferenceDataStoreFactory.create {
+        context.preferencesDataStoreFile(
+            if (DemoMode.isEnabled(context)) "period_selection_demo" else "period_selection",
+        )
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _selection = MutableStateFlow(PeriodSelection())
     val selection: StateFlow<PeriodSelection> = _selection.asStateFlow()
@@ -56,7 +69,7 @@ class PeriodSelectionStore @Inject constructor(
     suspend fun current(): PeriodSelection = readPersisted()
 
     private suspend fun readPersisted(): PeriodSelection {
-        val p = context.periodStore.data.first()
+        val p = periodStore.data.first()
         val type = p[Keys.TYPE]?.let { runCatching { PeriodType.valueOf(it) }.getOrNull() } ?: PeriodType.SALARY_CYCLE
         val range = p[Keys.RANGE]?.let { runCatching { PeriodRange.valueOf(it) }.getOrNull() } ?: PeriodRange.CURRENT
         return PeriodSelection(
@@ -70,7 +83,7 @@ class PeriodSelectionStore @Inject constructor(
     }
 
     private suspend fun persist(s: PeriodSelection) {
-        context.periodStore.edit { e ->
+        periodStore.edit { e ->
             e[Keys.TYPE] = s.type.name
             e[Keys.RANGE] = s.range.name
             e[Keys.CUSTOM_START] = s.customStartMillis ?: 0L

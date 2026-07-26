@@ -8,4 +8,8 @@
     <exclude domain="file" path="." />
     <include domain="database" path="spends.db" />
     <include domain="sharedpref" path="." />
+    <!-- Demo mode must never travel to a new device. Restoring a phone whose backup was taken mid-demo
+         would boot straight into the sandbox: the real data is there and intact but invisible, and
+         anything entered before noticing is destroyed by the next demo re-seed. -->
+    <exclude domain="sharedpref" path="spends_demo.xml" />
 </full-backup-content>

@@ -7,6 +7,7 @@ import android.provider.Telephony
 import com.spends.app.data.capture.CaptureNotifier
 import com.spends.app.data.capture.RecentCaptureGuard
 import com.spends.app.data.capture.SmsCaptureRepository
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -37,6 +38,10 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        // Demo mode points the whole app at the demo database. A real bank alert arriving now would be
+        // captured into a throwaway sandbox and then destroyed by the next "Reset demo data" — a genuinely
+        // lost transaction. Drop out entirely; the message stays in the inbox and a later scan can find it.
+        if (DemoMode.isEnabled(context)) return
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
         if (messages.isEmpty()) return
 

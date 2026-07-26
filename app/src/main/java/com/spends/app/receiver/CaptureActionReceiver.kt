@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
 import com.spends.app.data.capture.SmsCaptureRepository
+import com.spends.app.data.demo.DemoMode
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -31,6 +32,12 @@ class CaptureActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val notifId = intent.getIntExtra(EXTRA_NOTIF_ID, 0)
         NotificationManagerCompat.from(context).cancel(notifId)
+
+        // A prompt posted BEFORE demo mode was switched on stays in the tray — switching doesn't clear the
+        // shade. Tapping Add now would write a REAL transaction into the demo sandbox, where it is mixed in
+        // with fabricated data and then destroyed by the next reset. The notification is already cancelled
+        // above, so the alert can still be recovered by a scan once demo mode is off.
+        if (DemoMode.isEnabled(context)) return
 
         val sender = intent.getStringExtra(EXTRA_SENDER)
         val body = intent.getStringExtra(EXTRA_BODY)

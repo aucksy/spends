@@ -7,6 +7,7 @@ import androidx.room.withTransaction
 import com.spends.app.core.category.IconAssigner
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.SpendsDatabase
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.db.entity.IgnoredPatternEntity
 import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
@@ -357,6 +358,10 @@ class SmsCaptureRepository @Inject constructor(
      */
     suspend fun scanHistory(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): ScanResult =
         withContext(Dispatchers.IO) {
+            // Demo mode: this reads the REAL inbox. Queuing genuine bank alerts — raw bodies, balances,
+            // card digits — into the demo sandbox would both display them on screen mid-demo and destroy
+            // them at the next reset. Refuse; the messages stay in the inbox for a scan after demo mode.
+            if (DemoMode.isEnabled(context)) return@withContext ScanResult(0, 0, 0)
             captureMutex.withLock {
                 val seenHashes = (expenseDao.allDedupeHashes() + pendingDao.allHashes()).toHashSet()
                 val liveExpenses = expenseDao.getAllExpensesOnce().filter { it.deletedAt == null }
@@ -444,6 +449,9 @@ class SmsCaptureRepository @Inject constructor(
      */
     suspend fun scanInboxForCards(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): Int =
         withContext(Dispatchers.IO) {
+            // Same reasoning as scanHistory — this reads the real inbox and would write the user's genuine
+            // card last4 + institution into a database that gets deleted.
+            if (DemoMode.isEnabled(context)) return@withContext 0
             // Serialise with the rest of capture (matching scanHistory) so two scans — or a scan racing
             // another card-discovery — can't both pass discoverCard's read-then-insert check and double-add.
             captureMutex.withLock {

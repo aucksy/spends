@@ -24,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.spends.app.data.demo.DemoMode
 
 /**
  * Settings HUB. The old single long-scroll page was split into a small set of tappable category cards, each
@@ -88,12 +90,18 @@ fun SettingsScreen(
                 subtitle = "Theme, the screen you open on, and the widget",
                 onClick = onOpenAppearance,
             )
-            SettingsHubRow(
-                icon = Icons.Filled.Backup,
-                title = "Backup & Restore",
-                subtitle = "Back up, restore and auto-backup",
-                onClick = onOpenBackup,
-            )
+            // Backup and restore are unavailable in demo mode — backing up would upload fabricated data to
+            // the user's real Drive folder, and restoring would unpack real data into a sandbox that the next
+            // demo reset deletes. `BackupRepository` refuses both outright; this keeps the door shut so the
+            // refusal is never something the user has to discover by tapping.
+            if (!DemoMode.isEnabled(LocalContext.current)) {
+                SettingsHubRow(
+                    icon = Icons.Filled.Backup,
+                    title = "Backup & Restore",
+                    subtitle = "Back up, restore and auto-backup",
+                    onClick = onOpenBackup,
+                )
+            }
             SettingsHubRow(
                 icon = Icons.Filled.Storage,
                 title = "Data & Trash",

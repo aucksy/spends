@@ -16,6 +16,7 @@ import com.spends.app.core.period.CardCycleInfo
 import com.spends.app.core.period.CompositeCycleResolver
 import com.spends.app.core.period.PeriodResolver
 import com.spends.app.core.period.PeriodType
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.core.period.SmartCardCycle
 import com.spends.app.core.time.CycleUtils
 import com.spends.app.core.time.DateUtils
@@ -177,10 +178,15 @@ class SummaryWidget : AppWidgetProvider() {
                 val balance = income - expense
                 val store = ep.widgetMaskStore()
                 val eyeHidden = settings.widgetEyeHidden
+                // The widget lives OUTSIDE the app, so DemoModeWrapper's "sample data" strip can't reach it —
+                // and the home screen is exactly where someone glances at a balance without opening anything.
+                // In demo mode the figures are force-masked and the header says so, then the real numbers come
+                // back on the next refresh after leaving. Nothing fabricated is ever readable as real money.
+                val demo = DemoMode.isEnabled(context)
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        buildViews(context, id, cycleName, cycleLabel, income, expense, balance, store.isMasked(id), eyeHidden),
+                        buildViews(context, id, cycleName, cycleLabel, income, expense, balance, demo || store.isMasked(id), eyeHidden, demo),
                     )
                 }
             } catch (e: Exception) {
@@ -201,11 +207,16 @@ class SummaryWidget : AppWidgetProvider() {
         balance: Long,
         masked: Boolean,
         eyeHidden: Boolean,
+        demo: Boolean = false,
     ): RemoteViews {
         fun money(v: Long) = if (masked) MASK else Money.formatRupees(v, alwaysTwoDecimals = false)
         // Show "Name · dates" when there's a concrete date range; just the name when there isn't (e.g. the
         // Smart Cycle composite, whose instruments each have their own window — #1/#5).
-        val cycleHeader = if (cycleLabel.isBlank()) cycleName else "$cycleName · $cycleLabel"
+        val cycleHeader = when {
+            demo -> "DEMO MODE — sample data"
+            cycleLabel.isBlank() -> cycleName
+            else -> "$cycleName · $cycleLabel"
+        }
         return RemoteViews(context.packageName, R.layout.widget_summary).apply {
             setTextViewText(R.id.widget_summary_cycle, cycleHeader)
             setTextViewText(R.id.widget_summary_balance, money(balance))

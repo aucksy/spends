@@ -4,12 +4,115 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.57.0** — versionCode **63**, versionName **"1.57.0"**
-  (`app/build.gradle.kts` lines 41–42). Shipped 2026-07-26 under the new standing
+- **Shipped: v1.59.0** — versionCode **65**, versionName **"1.59.0"**
+  (`app/build.gradle.kts` lines 41–42). Demo mode. **No DB schema change (still v16), no snapshot change,
+  no dependency change**; manifest untouched, but `res/xml/backup_rules.xml` +
+  `res/xml/data_extraction_rules.xml` now exclude the demo flag from device backup.
+- Previous: **v1.58.0** — versionCode **64**, versionName **"1.58.0"**
+  (`app/build.gradle.kts` lines 41–42). Shipped 2026-07-26 under the standing
   "ship after major fixes without asking" rule (see `CONTEXT.md` working agreement).
 - **DB schema: v16** (UNCHANGED — no schema touch, no snapshot change, no manifest or dependency change).
 - **Branch:** `main`, clean. Tag-driven CI.
-- APK: https://github.com/aucksy/spends/releases/download/v1.57.0/Spends-v1.57.0.apk
+- APK: https://github.com/aucksy/spends/releases/download/v1.58.0/Spends-v1.58.0.apk
+
+## v1.59.0 — Demo mode (owner-requested 2026-07-26)
+Owner: *"a toggle under data settings which hides all of current live data and replaces it with demo of
+3 months enough data covering all scenarios which can help me demo every single feature."* Full technical
+detail + the safety model: [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md).
+
+**Owner decisions (AskUserQuestion):** restart-on-toggle accepted in exchange for the hard safety guarantee ·
+history extended 3 → ~14 months (Year-on-Year, which the owner asked for in the same round, is impossible to
+demo with 3) · demo mode ships BEFORE the AI-insights round.
+
+**The safety model — swap the storage layer, don't filter rows.** Demo mode points Room at `spends-demo.db`,
+the settings DataStore at `settings_demo`, and the period-selection store at `period_selection_demo`. **The
+live database file is never opened while demo mode is on.** The alternative (an `isDemo` column + a filter on
+every query) puts invented money in the same tables as real money, where one missed `WHERE` is a wrong
+balance. Decided in two expressions: `DatabaseModule` + `SettingsModule`. The flag lives in SharedPreferences
+because it must be read **synchronously before Hilt builds the graph**; flipping it kills and relaunches the
+process, because `SpendsDatabase`/`SettingsRepository` are `@Singleton`s that every repo and Flow already
+holds. `DemoDataSeeder` refuses to run unless `DemoMode.isEnabled()` **and**
+`db.openHelper.databaseName == DEMO_DB_NAME` — the second check inspects the file actually open, not a flag.
+
+**~14 months of scripted data** (`DemoScript`, pure + deterministic + unit-tested): 2 cards on different
+billing days, bank + UPI, 7 recurring rules, a 7-row review queue, splits, trash, learned merchants, custom +
+archived categories. ⭐**Volume is uniform across all 14 months on purpose** — a denser recent window would
+make *every* category read as "up 80% three months ago" and drown the one real anomaly; recency is expressed
+as richer *kinds* of data, not more rows. Planted, findable stories for each future insight: an anomaly
+burst, a one-off outlier, a duplicate pair, a 6-month trend, a YoY gap, payday/weekend habits, a quiet win.
+
+**Reviews (ritual honored):** 2 parallel adversarial agents (compile/Hilt/Room + logic/money-safety, both
+scanned `app/src/test`; both independently ported `DemoScript` **and** `kotlin.random.XorWowRandom` to Python
+to actually execute the new tests) → **COMPILE: CLEAN, LOGIC: NO-GO**. All findings fixed:
+- **⭐BLOCKER (mine, would have red-CI'd)** — the fuel-outlier test was a coin flip: the planted ₹9,850 charge
+  sat only ~4× the Fuel plan's own median, and `typical` is a 34-sample order statistic. The two agents
+  *disagreed* on whether it passed (one measured 3.96 worst-case, the other 2.76 and failing on 4 of 5 dates).
+  Rather than pick a side, the guarantee was made **structural**: Fuel band narrowed to ₹900–2,600 so no
+  organic charge can exceed ~₹3,950, and the outlier raised to ₹12,500 = ≥3× *every possible* organic charge,
+  for every seed and date. **LESSON: a statistical assertion over generated data is a latent red build; size
+  the fixture so the invariant is provable.**
+- **⭐HIGH — four more paths reached real data.** Gating live SMS + notification capture is the obvious half;
+  **"Scan past SMS"** (`scanHistory`), **"Scan for cards"** (`scanInboxForCards`), the **shade sweep** on
+  `onListenerConnected`, and a **stale tray prompt's Add/Ignore/Edit** all reach the same place by other
+  routes. In demo mode the scans would have queued the owner's genuine bank alerts — raw bodies, balances,
+  card digits — into the demo review queue, rendered them on screen mid-demo, then destroyed them at the next
+  reset. All four now gated.
+- **HIGH — the home-screen widget** rendered fabricated Income/Expense/Balance with no marker, outside
+  `DemoModeWrapper`'s reach, and is exactly where someone glances at a balance without opening the app. Now
+  force-masked with a "DEMO MODE — sample data" header.
+- **MED** — the demo flag rode Android cloud backup (restore a phone backed up mid-demo → boots into the
+  sandbox with the real data invisible) → excluded from both backup rule files. **MED** — `period_selection`
+  carried `selectedCardId` across the boundary, so demoing Single-Card left the *real* app opening on
+  whichever real card shared that row id → store swapped. **MED** — the launch chores raced the seeder →
+  `seedJob.join()`. **MED** — `DemoDataSeeder` dragged `GroqClient` (OkHttp + SecureKeyStore) onto the cold
+  start of **every** user via `MainViewModel` → both now `Provider<>`, so non-demo launches build neither.
+- **MED** — a failed seed left `onboardingComplete=false` inside demo, dropping into the welcome flow where
+  "Restore from Drive" is a dead end → settings are now written *before* the data, so a failure still leaves
+  a usable app. **MED** — `restartInto` killed the process even if the relaunch was refused → now rolls the
+  flag back, returns false and explains. **LOW** — seeded recurring rows carried no `dedupeHash`, leaving
+  `nextRunAt` as the single defence against double-generating rent/EMI → they now carry the same hash the
+  materialiser would produce. Plus the `Science` icon (unverifiable, used nowhere else) swapped for `Info`,
+  integer-division burst spacing made explicit, and `rememberSaveable` on the reset confirmation.
+- **Tests:** `DemoScriptTest` — money conserved across splits, nothing future-dated, every category name real,
+  review-queue rows distinguishable (they share a UNIQUE index), determinism, and — the valuable half — that
+  **the scripted stories are actually present**: the anomaly is anomalous, the quiet win is quieter, the trend
+  climbs, volume is flat. Without those, generator drift would leave demo mode silently claiming to
+  demonstrate anomaly detection with nothing to find. Five fixed dates incl. a 31st and a leap day.
+
+## v1.58.0 — merchant extraction fix + AI message context + privacy-disclosure corrections
+Commits `6d74cfe` (fix) + `43fa248` (review fixes) + `00a99e1` (disclosure sweep) + `c3ff6a3` (money-safety
+review fixes + bump). **This entry was backfilled 2026-07-26** — the release shipped without a PROGRESS.md
+section, so for a while the live-state pointer read one version behind. Detail lives in the commit bodies.
+
+- **⭐RCA (a PARSER bug, not an AI gap).** The owner's real Axis card fuel alert categorised as "Other".
+  Indian bank alerts end with a fraud-report trailer ("Not you? SMS BLOCK 4094 to 919951860002"); with no
+  "at <merchant>" in the message, `extractMerchant` fell through to the " to <X>" rule and recorded the
+  merchant as **the phone number**. The real merchant ("Hello Fuels") sat on its own line and was never read.
+  Worse than the missed category: the number was shown on the row AND learned into `merchant_categories` as
+  a key that can never match again. With the merchant read correctly the seeded Fuel keyword rules categorise
+  it deterministically, offline, **with the AI helper OFF** — fixing only the AI would have left the default
+  path broken.
+- **Parser (`extractMerchant` only** — amount/kind/last4/date/ref still read the full text, so no money field
+  can shift): strip the report trailer before extraction; new pattern for the Axis shape
+  `\bIST\s+([^.]{2,40}?)\s+(?:Ref\b|Avl\b)`; " to <X>" now stops at " on " like " at <X>" already did;
+  `looksLikeMerchant()` rejects bare numbers and fragments.
+- **⭐HIGH found in review — duplicate re-capture was genuinely possible.** The dedupe key is
+  `last4 ?: merchant`, so for messages with NO last4 the merchant IS the hash; improving merchant extraction
+  shifts those hashes, so `seenHashes` stops recognising a transaction a previous scan already added — and
+  `manualKeys` deliberately excludes `source == SMS`, i.e. exactly the rows a previous scan-confirm created.
+  Re-running "Scan past SMS" would re-queue them and one "Add all" would genuinely duplicate LEDGER rows.
+  0 of 51 golden fixtures affected (all 6 whose merchant changed carry a last4) but 8 of 26 realistic
+  last4-less shapes drifted. **Fix:** when `parsed.last4 == null` the scan also skips on the coarse
+  day|amount|kind key against live rows from ANY source — the same conservative stance
+  `relaxedNoRefDuplicate` already takes.
+- **MED** — the merchant guard was eating real shops (`^(?:your|the|a)\b` killed "The Body Shop", "The Souled
+  Store", "A One Sweets"); narrowed to `^your\b`, dropped bare "account" (was killing "Amazon Account
+  Services"). **MED** — the new Axis rule over-captured without a sentence/Ref stop.
+- **Privacy/disclosure:** the AI mask leaked shape and missed non-ASCII digits (Kotlin `\d` is ASCII-only, so
+  a Devanagari digit survived; digit-by-digit masking turned `Rs.5,59,393.44` into `Rs.#,#,#.#`, leaking
+  magnitude) → one whole numeral now masks to a single `#`. `kind` was being sent undisclosed, and "masking
+  removes reference numbers" was false for alphanumeric refs. Both corrected in Settings **and** the privacy
+  policy.
 
 ## v1.57.0 — notification-capture reconnect fix + temporary owner-facing diagnostic
 Owner-reported 2026-07-26: **Truecaller alerts never become captures** — and on questioning, notification

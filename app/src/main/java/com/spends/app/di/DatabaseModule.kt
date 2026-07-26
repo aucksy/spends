@@ -3,6 +3,7 @@ package com.spends.app.di
 import android.content.Context
 import androidx.room.Room
 import com.spends.app.data.db.SpendsDatabase
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
 import com.spends.app.data.db.dao.IgnoredPatternDao
@@ -21,10 +22,26 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    /**
+     * The single Room instance for this process.
+     *
+     * **Demo mode swaps the FILE, not the contents.** When [DemoMode.isEnabled] the app opens
+     * `spends-demo.db`; the live `spends.db` is then never opened at all for the life of the process — not
+     * read, not written, not migrated. That is the whole safety story behind demo mode, and it lives in this
+     * one expression. The flag is read synchronously here because a Hilt provider cannot suspend; flipping it
+     * restarts the process (see [DemoMode.restartInto]) so this is evaluated exactly once per mode.
+     *
+     * A fresh demo database is created straight at the current schema version, so the migration list is inert
+     * for it; the seed callback still runs, which is what gives the demo its standard category set.
+     */
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): SpendsDatabase =
-        Room.databaseBuilder(context, SpendsDatabase::class.java, SpendsDatabase.NAME)
+        Room.databaseBuilder(
+            context,
+            SpendsDatabase::class.java,
+            if (DemoMode.isEnabled(context)) DemoMode.DEMO_DB_NAME else SpendsDatabase.NAME,
+        )
             .addCallback(SpendsDatabase.SEED_CALLBACK)
             .addMigrations(
                 SpendsDatabase.MIGRATION_1_2,

@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.spends.app.data.backup.BackupRepository
 import com.spends.app.data.backup.DriveAuthManager
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.settings.SettingsRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -26,6 +27,10 @@ class BackupWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        // Demo mode: the app is pointed at the demo database, so a backup here would upload FAKE data to the
+        // user's real Drive folder and sit in the restore picker looking like a genuine snapshot. Never run.
+        // (The demo settings file has the toggle off anyway; this is the belt to that braces.)
+        if (DemoMode.isEnabled(applicationContext)) return Result.success()
         if (!settingsRepository.settings.first().autoBackupEnabled) return Result.success()
         // Backups no longer require a password (#8) — a snapshot always produces real bytes (encrypted if a
         // password is set, otherwise plaintext), so the daily backup just runs.
