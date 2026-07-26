@@ -32,16 +32,26 @@ arrives. There is no alternative API that can read a bank's transaction SMS: the
 Consent APIs only work for one-time-password messages the app itself triggers, which does not apply to
 arbitrary bank alerts.
 
-All parsing happens locally on the device. Message content is never transmitted off the device, never
-sent to the developer, and is never used for advertising or marketing. The permission is optional: the
-app is fully functional with manual entry, and prominently discloses why it needs SMS before requesting
-it.
+All parsing happens locally on the device. Message content is never sent to the developer and is never
+used for advertising or marketing. The app has one optional feature, off by default, that can send a
+limited extract off the device: an "AI helper" the user must switch on and supply their own third-party
+API key for. When enabled, it sends the merchant name and the words of that one message with every run
+of digits replaced by "#" (removing amounts, balances, account and card numbers, numeric dates and phone
+numbers) to obtain a suggested spending category, which the user still confirms manually. With the AI
+helper off — its default state — no message content leaves the device at all. The SMS permission itself
+is optional: the app is fully functional with manual entry, and prominently discloses why it needs SMS
+before requesting it.
 ```
 
 ## Prominent in-app disclosure (already implemented — reviewers will see it)
 On the SMS onboarding step, before the runtime permission prompt, Spends shows:
 > "The moment a bank SMS arrives, Spends spots the transaction on your phone and notifies you to add it
-> in one tap — that's why it asks for SMS and notification access. Nothing leaves your phone."
+> in one tap — that's why it asks for SMS and notification access. Your messages are read and parsed on
+> your phone, and nothing is ever sent to us."
+
+(Keep this quote in sync with `OnboardingScreen.kt` — it is the disclosure a Play reviewer will see. It
+was reworded on 2026-07-26: the previous absolute "Nothing leaves your phone" stopped being true for
+users who opt into the AI helper, which is covered separately in Settings → AI helper.)
 
 The step is skippable, and the app works fully without the grant.
 

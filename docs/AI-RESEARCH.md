@@ -242,7 +242,7 @@ against Groq's live model list at build time — Groq rotates its lineup.)*
   list of category names, return the single best category **from the list only**. If unsure,
   return `null`. Never invent a category. Never output anything but the JSON."
 - *User payload:* `{ categories: ["Food","Groceries",...], items: [{id, merchant, kind}] }`
-  — **merchant strings only; no amounts, no dates, no SMS body.**
+  — **merchant strings only; no amounts, no dates, no SMS body.** *(Superseded — see the note below.)*
 - *Output:* `[{id, category, cleanName?}]`. We map `category` back to a **real category id**;
   anything not on the list or `null` → leave it on the rules' guess. `cleanName` (optional) is
   the free merchant-name-cleanup by-product (#6), shown only, never used for money.
@@ -279,6 +279,15 @@ against Groq's live model list at build time — Groq rotates its lineup.)*
     no dates, no merchant names, no balances-over-time.
 - **Never sent (this round):** full SMS bodies, account/card numbers, `last4`, raw transaction
   rows, running balances. (That's why the raw-SMS capture-fallback (#4) is out of scope.)
+
+> **SUPERSEDED 2026-07-26 (v1.58.0).** Category suggestions now ALSO send the message's words with
+> every run of digits replaced by `#` (`SmsParser.aiContextFor`), because Indian bank alerts often
+> leave the merchant field as a phone number while naming the real merchant elsewhere in the text.
+> Masking removes amounts, balances, account/card numbers, numeric dates, phone and reference
+> numbers — it does NOT remove words, so payee names and alphabetic months are sent. The merchant
+> string is still sent verbatim and may itself contain digits. See `docs/index.html` §3 and the
+> Settings → AI helper explainer, which are the authoritative statements.
+
 - **No background streaming.** Calls happen at clear moments — after a scan (categorization) or
   when you open Analytics for a cycle (insights, then cached). Nothing is sent while you're not
   looking.

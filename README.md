@@ -24,7 +24,7 @@ The heart of Spends. Instead of a calendar month, it tracks money by **your sala
 Add rent, salary, EMIs and subscriptions once and Spends materialises the real transactions on schedule — daily / weekly / monthly / yearly, every *N* periods. A fixed run like a 12-month EMI stops itself after the final occurrence. An **exact daily alarm** (default 9:00 AM, configurable) generates what's due and reminds you — reliably, even under Doze — and re-arms itself after a reboot. Missed days are backfilled, and nothing is ever double-created.
 
 ### 📩 SMS Detect + Self-Learning — capture spends the moment they happen
-When a bank or card SMS arrives, Spends spots the transaction **on-device** and offers a one-tap **Add / Edit / Ignore**. Nothing is auto-added and nothing leaves your phone. It gets smarter the more you use it:
+When a bank or card SMS arrives, Spends spots the transaction **on-device** and offers a one-tap **Add / Edit / Ignore**. Nothing is auto-added, and your messages are parsed on-device. (The optional AI helper — off by default, your own key — is the one feature that can send a number-masked extract to a third party; see the privacy policy.) It gets smarter the more you use it:
 
 - **Learns your categories** — confirm or re-categorise a captured spend, and Spends remembers that *merchant → category* for next time.
 - **Learns what you ignore** — dismiss the same kind of alert a few times and Spends stops nagging you about it, quietly filing it in your review queue instead of dropping it.

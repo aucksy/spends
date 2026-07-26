@@ -25,7 +25,7 @@ the app behaves exactly like today.
 | **G1 — learned map wins outright** | New public `SmsCaptureRepository.hasLearnedCategory(merchant)` (thin wrapper over the existing `learnedFor(allowFuzzy=true)`). A row is AI-eligible **only if `hasLearnedCategory == false`**. The learned branch in `resolveCategory` (:834) already returns before anything else — AI never competes with or re-ranks a learned pick. |
 | **G2 — master OFF = today's app byte-for-byte** | Every AI entry point is gated on `settings.aiEnabled && sub-toggle && hasKey`. OFF (default) → zero Groq calls, no chip, no card, no new network. |
 | **Fail closed** | Bad JSON / off-list category / null / 4xx-5xx / timeout / no network → drop the AI result, fall back to today's behaviour. Never crash, never guess an amount, never block UI. |
-| **Privacy — only 2 things leave the phone** | #1 sends the **merchant string** + your **category-name list**. #2 sends **category totals + income/expense totals** (this + last cycle). NEVER: raw SMS bodies, amounts+balances, account/card numbers, last4, dates, or individual rows. |
+| **Privacy — what leaves the phone** | #1 sends the **merchant string** (verbatim, may contain digits) + your **category-name list** + **the message's words with every digit run masked to `#`** (added v1.58.0 — see below). #2 sends **category totals + income/expense totals** (this + last cycle). NEVER: the full unmasked message, amounts+balances, account/card numbers, last4, numeric dates, or individual rows. **Masking removes digits, not words** — payee names and alphabetic months are sent. |
 
 ---
 

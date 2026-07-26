@@ -50,18 +50,21 @@
 <div class="wrap">
   <header>
     <h1>Spends — Privacy Policy</h1>
-    <p class="sub">Effective 4 July 2026 · Last updated 4 July 2026</p>
+    <p class="sub">Effective 4 July 2026 · Last updated 26 July 2026</p>
   </header>
 
   <p><strong>Spends</strong> is an offline-first personal expense tracker for Android. It has no account,
   no ads, and no analytics or tracking on your financial data. Your information stays on your device — and,
-  only if you choose to turn it on, in your own Google Drive. We (the developer) never receive, store, or
-  have access to your financial data or your messages.</p>
+  only if you choose to turn them on, in your own Google Drive (backup) and with a third-party AI provider
+  in the limited form described in section 3. We (the developer) never receive, store, or have access to your
+  financial data or your messages.</p>
 
   <div class="callout">
     <strong>In one line:</strong> Spends reads your bank's transaction SMS <em>on your device only</em> to
-    help you log expenses in one tap. Nothing is uploaded to us. SMS access is optional — the app works fully
-    with manual entry if you don't grant it.
+    help you log expenses in one tap. Nothing is ever uploaded to us. SMS access is optional — the app works
+    fully with manual entry if you don't grant it. One feature can send limited data to a third party: the
+    <strong>optional AI helper</strong>, which is <strong>off by default</strong> and needs your own API key
+    — see section 3.
   </div>
 
   <h2>1. Information Spends accesses — and why</h2>
@@ -69,10 +72,11 @@
   <h3>SMS messages (optional)</h3>
   <p>With your explicit permission, Spends reads incoming and existing SMS messages <strong>on your device</strong>
   to detect bank and credit-card transaction alerts and pre-fill an expense for you to confirm. This parsing
-  happens entirely on your phone. <strong>The content of your messages is never transmitted to us or to any
-  third party.</strong> Spends does not use SMS data for advertising or marketing. You can use the entire app
-  without granting SMS access (via manual entry), and you can revoke the permission at any time in Android
-  Settings.</p>
+  happens entirely on your phone. <strong>The content of your messages is never transmitted to us</strong>,
+  and never to any third party <em>unless</em> you switch on the optional AI helper described in section 3 —
+  which is off by default and sends only a number-masked extract. Spends does not use SMS data for advertising
+  or marketing. You can use the entire app without granting SMS access (via manual entry), and you can revoke
+  the permission at any time in Android Settings.</p>
 
   <h3>Transactions and financial information you enter or capture</h3>
   <p>The expenses, income, categories, accounts/cards, and notes you add — whether typed manually or captured
@@ -90,12 +94,35 @@
   Data is transmitted over an encrypted (HTTPS) connection. You can delete the backup at any time from within Spends
   or from your Google Drive. Backup is off by default.</p>
 
-  <h2>3. Data we collect and share</h2>
-  <p>We do <strong>not</strong> collect, sell, rent, or share your personal data, financial data, or messages with
-  anyone. Spends contains no third-party advertising or analytics SDKs that collect your data. The only network
-  connection the app makes is to <em>your own</em> Google Drive, and only if you enable backup.</p>
+  <h2>3. Optional AI helper (off by default, your own key)</h2>
+  <p>Spends includes an optional "AI helper" that can suggest a category for a detected transaction and write a
+  short plain-English summary of a spending cycle. It is <strong>off by default</strong> and does nothing until you
+  both switch it on and paste <strong>your own</strong> API key, which is stored encrypted on your device and is
+  never included in a backup. While it is on — and only for the sub-feature you enable — the following is sent over
+  HTTPS to <strong>Groq</strong>, a third-party AI provider:</p>
+  <ul>
+    <li><strong>Category suggestions:</strong> the merchant name <em>as your bank wrote it</em>; the words of that
+      one bank SMS or notification with <strong>every run of digits replaced by "#"</strong>; your category names;
+      and the names of merchants you previously categorised.</li>
+    <li><strong>Spending insights:</strong> your category totals and income/expense totals for the cycle you are
+      viewing.</li>
+  </ul>
+  <p>The digit masking removes amounts, balances, account and card numbers, numeric dates, phone numbers and numeric
+  references. Being straight with you about its limits: it removes <em>digits</em>, not <em>words</em> — so a payee's
+  name written in the message (for example "to JOHN DOE"), a month written as text ("Jun"), and a merchant name that
+  itself contains digits are all sent as-is.</p>
+  <p><strong>Never sent</strong> for either sub-feature: your full unmasked message text, any amount or balance, your
+  account or card numbers, or your individual transaction records. The AI helper can never add, edit or delete a
+  transaction — it only proposes a category that you still confirm yourself. Switching the helper off stops all of
+  this immediately. What you send is then handled under Groq's own privacy policy.</p>
 
-  <h2>4. Data retention and deletion</h2>
+  <h2>4. Data we collect and share</h2>
+  <p>We do <strong>not</strong> collect, sell, rent, or share your personal data, financial data, or messages —
+  <strong>nothing is sent to the developer at all</strong>, and there is no server or account behind Spends. The app
+  contains no advertising or analytics SDKs. Apart from the optional AI helper described in section 3, the only
+  network connection the app makes is to <em>your own</em> Google Drive, and only if you enable backup.</p>
+
+  <h2>5. Data retention and deletion</h2>
   <p>Your data remains on your device until you remove it. You can:</p>
   <ul>
     <li>Delete individual entries in the app (with a Trash/undo step), or empty the Trash to remove them permanently;</li>
@@ -103,7 +130,7 @@
     <li>Delete your Google Drive backup from within Spends or directly in Google Drive.</li>
   </ul>
 
-  <h2>5. Permissions Spends may request</h2>
+  <h2>6. Permissions Spends may request</h2>
   <table>
     <tr><th>Permission</th><th>Why</th></tr>
     <tr><td>Read / Receive SMS</td><td>Detect bank transaction alerts on-device to auto-fill expenses (optional).</td></tr>
@@ -111,23 +138,23 @@
     <tr><td>Exact alarm</td><td>Fire your daily reminder at the exact time you chose.</td></tr>
     <tr><td>Run at startup</td><td>Re-arm your reminder after the phone restarts.</td></tr>
     <tr><td>Ignore battery optimisation</td><td>Optional — keeps background SMS detection reliable on aggressive devices.</td></tr>
-    <tr><td>Internet / Network state</td><td>Used only for your optional Google Drive backup.</td></tr>
+    <tr><td>Internet / Network state</td><td>Your optional Google Drive backup, and the optional AI helper (section 3) if you enable it.</td></tr>
     <tr><td>Vibrate</td><td>Light haptic feedback on widget taps.</td></tr>
   </table>
 
-  <h2>6. Children</h2>
+  <h2>7. Children</h2>
   <p>Spends is a general-purpose finance tool and is not directed to children under 13.</p>
 
-  <h2>7. Security</h2>
+  <h2>8. Security</h2>
   <p>Your data is stored in your device's private app storage. Backups, if enabled, are transferred to your
   Google Drive over an encrypted HTTPS connection. No financial data or message content is transmitted to the
   developer.</p>
 
-  <h2>8. Changes to this policy</h2>
+  <h2>9. Changes to this policy</h2>
   <p>If this policy changes, we will update the date at the top of this page and, where appropriate, note the
   change in the app.</p>
 
-  <h2>9. Contact</h2>
+  <h2>10. Contact</h2>
   <p>Questions about this policy or your data? Email <a href="mailto:simpleapps108@gmail.com">simpleapps108@gmail.com</a>.</p>
 
   <footer>
