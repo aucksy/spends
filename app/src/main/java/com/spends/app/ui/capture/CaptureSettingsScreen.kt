@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 fun CaptureSettingsScreen(
     onBack: () -> Unit,
     onOpenReview: () -> Unit,
+    // TEMPORARY: notification-capture diagnostic. Remove with NotificationDebugLog.
+    onOpenNotificationDebug: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -43,7 +45,10 @@ fun CaptureSettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            CaptureSection(onOpenReview = onOpenReview)
+            CaptureSection(
+                onOpenReview = onOpenReview,
+                onOpenNotificationDebug = onOpenNotificationDebug,
+            )
         }
     }
 }

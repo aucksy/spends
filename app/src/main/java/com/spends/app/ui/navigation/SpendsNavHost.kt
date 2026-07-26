@@ -14,6 +14,7 @@ import com.spends.app.ui.backup.OnboardingRestoreScreen
 import com.spends.app.ui.breakdown.CycleBreakdownScreen
 import com.spends.app.ui.cards.CardsScreen
 import com.spends.app.ui.capture.CaptureSettingsScreen
+import com.spends.app.ui.capture.NotificationDebugScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
 import com.spends.app.ui.home.HomeScreen
@@ -193,7 +194,13 @@ fun SpendsNavHost(
             CaptureSettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenReview = { navController.navigate(Routes.REVIEW) },
+                onOpenNotificationDebug = { navController.navigate(Routes.NOTIFICATION_DEBUG) },
             )
+        }
+
+        // TEMPORARY diagnostic screen — remove with NotificationDebugLog.
+        composable(Routes.NOTIFICATION_DEBUG) {
+            NotificationDebugScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.CATEGORIES) {

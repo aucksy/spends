@@ -48,4 +48,43 @@ object NotificationCapture {
         val sender = SenderAllowlist.canonicalSenderFor(title) ?: return emptyList()
         return listOf(Candidate(sender, body, postTime))
     }
+
+    /** Why [candidates] came back empty. TEMPORARY — feeds the owner-facing notification debug screen. */
+    enum class Rejection { NONE, NO_READABLE_TEXT, SENDER_NOT_RECOGNISED }
+
+    /** [rejection] plus the sender strings that were tried (so an unmapped bank name is visible). */
+    data class Diagnosis(val rejection: Rejection, val sendersTried: List<String>)
+
+    /**
+     * TEMPORARY diagnostic mirror of [candidates]: says WHY nothing survived, so a silent drop becomes
+     * readable on the phone. Pure and side-effect free; the capture path never calls this. Delete it
+     * together with `NotificationDebugLog` once the Truecaller root cause is fixed.
+     */
+    fun diagnose(
+        title: String?,
+        text: String?,
+        bigText: String?,
+        conversationTitle: String?,
+        messages: List<RawMessage>,
+        postTime: Long,
+    ): Diagnosis {
+        if (candidates(title, text, bigText, conversationTitle, messages, postTime).isNotEmpty()) {
+            return Diagnosis(Rejection.NONE, emptyList())
+        }
+        if (messages.isNotEmpty()) {
+            // Mirrors the messages branch: a message with no text is skipped before its sender matters.
+            val withText = messages.filter { !it.text.isNullOrBlank() }
+            if (withText.isEmpty()) return Diagnosis(Rejection.NO_READABLE_TEXT, emptyList())
+            val tried = withText.map { m ->
+                m.sender?.takeIf { it.isNotBlank() }
+                    ?: conversationTitle?.takeIf { it.isNotBlank() }
+                    ?: title
+                    ?: "(no sender)"
+            }.distinct()
+            return Diagnosis(Rejection.SENDER_NOT_RECOGNISED, tried)
+        }
+        val body = (bigText?.trim()?.takeIf { it.isNotBlank() } ?: text?.trim())?.takeIf { it.isNotBlank() }
+        if (body == null) return Diagnosis(Rejection.NO_READABLE_TEXT, emptyList())
+        return Diagnosis(Rejection.SENDER_NOT_RECOGNISED, listOf(title ?: "(no title)"))
+    }
 }

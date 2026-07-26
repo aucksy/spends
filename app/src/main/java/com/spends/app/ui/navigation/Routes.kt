@@ -23,6 +23,8 @@ object Routes {
     const val RECURRING = "recurring"
     const val REVIEW = "review"
     const val CAPTURE = "capture"
+    // TEMPORARY: owner-facing notification-capture diagnostic. Remove with NotificationDebugLog.
+    const val NOTIFICATION_DEBUG = "notification_debug"
     const val RESTORE = "restore"
     // Smart Cycle per-instrument breakdown (Round B), reached from the composite summary header.
     const val CYCLE_BREAKDOWN = "cycle_breakdown"

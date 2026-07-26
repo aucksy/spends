@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.service.NotificationListenerControl
 import com.spends.app.work.RecurringAlarmScheduler
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -37,7 +38,12 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                RecurringAlarmScheduler.schedule(app, settings.settings.first().recurringNotifyMinute)
+                val s = settings.settings.first()
+                RecurringAlarmScheduler.schedule(app, s.recurringNotifyMinute)
+                // Re-assert the notification-listener binding too: a reboot is one of the ways it gets
+                // lost while the grant (and the Settings toggle) keep reading "on". Nothing is bound yet
+                // this early, so ask unconditionally rather than checking a connected flag.
+                if (s.notificationCaptureEnabled) NotificationListenerControl.requestRebind(app)
             } finally {
                 pending.finish()
             }

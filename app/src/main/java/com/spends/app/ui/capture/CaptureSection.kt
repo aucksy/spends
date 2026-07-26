@@ -60,6 +60,8 @@ import com.spends.app.service.CaptureNotificationListenerService
 @Composable
 fun CaptureSection(
     onOpenReview: () -> Unit,
+    // TEMPORARY: notification-capture diagnostic. Remove with NotificationDebugLog.
+    onOpenNotificationDebug: () -> Unit,
     viewModel: CaptureViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -253,6 +255,27 @@ fun CaptureSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
             )
+        }
+
+        // TEMPORARY: notification-capture diagnostic. Deliberately OUTSIDE the enabled-only block —
+        // the whole point is to diagnose the case where capture looks on but nothing is happening.
+        HorizontalDivider(Modifier.padding(vertical = 10.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenNotificationDebug)
+                .padding(vertical = 10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Notification debug", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Temporary: shows whether the notification reader is running and what it saw.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
         }
 
         state.message?.let { msg ->

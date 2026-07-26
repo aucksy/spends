@@ -4,13 +4,16 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.spends.app.data.capture.NotificationDebugLog
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.service.NotificationListenerControl
 import com.spends.app.work.BackupScheduler
 import com.spends.app.work.RecurringAlarmScheduler
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,6 +28,7 @@ class SpendsApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var notificationDebugLog: NotificationDebugLog
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -48,6 +52,18 @@ class SpendsApp : Application(), Configuration.Provider {
         }
         // Migration off the old inexact WorkManager recurring job so it can't also fire (double-notify).
         runCatching { WorkManager.getInstance(this).cancelUniqueWork(LEGACY_RECURRING_WORK) }
+
+        // Notification capture only works while the listener is actually BOUND, and that binding is lost
+        // on every app update (and by OEM battery killers) without reliably coming back — the grant and
+        // the toggle both keep reading "on" while nothing is captured. Re-assert it at launch. The grace
+        // wait lets the system bind us on its own first, so a healthy install never pays for a rebind.
+        appScope.launch {
+            val enabled = runCatching { settingsRepository.settings.first().notificationCaptureEnabled }
+                .getOrDefault(false)
+            if (!enabled) return@launch
+            delay(NotificationListenerControl.BIND_GRACE_MILLIS)
+            NotificationListenerControl.ensureBound(this@SpendsApp, notificationDebugLog.state.value.connected)
+        }
 
         // Daily Drive auto-backup runs near a user-chosen time (#11); the worker self-gates on the toggle.
         // KEEP so a process restart never disturbs the persisted schedule (which already holds the user's
