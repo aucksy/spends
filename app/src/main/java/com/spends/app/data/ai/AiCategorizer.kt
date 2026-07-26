@@ -12,8 +12,12 @@ import javax.inject.Singleton
  * [context] is the message's descriptive WORDS with every digit run masked to `#`
  * ([com.spends.app.data.capture.SmsParser.aiContextFor]) — needed because Indian bank alerts often leave
  * the merchant field as a phone number or a bare code while naming the real merchant elsewhere in the
- * text ("...IST Hello Fuels Avl Limit..."). Amounts, balances, card numbers, dates, phone and reference
- * numbers are stripped before it ever gets here, so no figure leaves the phone.
+ * text ("...IST Hello Fuels Avl Limit..."). Masking removes amounts, balances, card numbers, numeric
+ * dates, phone and reference numbers from [context].
+ *
+ * NOT covered, and disclosed as such in Settings: [merchant] is sent VERBATIM as the bank wrote it and
+ * may itself contain digits (a UPI id like `9876543210@ybl`), and masking only removes digits — words
+ * survive, so a payee name ("to JOHN DOE") or an alphabetic month ("Jun") in [context] is sent.
  */
 data class AiCatItem(val id: Long, val merchant: String, val kind: TxnKind, val context: String? = null)
 

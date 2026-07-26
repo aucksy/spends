@@ -293,9 +293,12 @@ object SmsParser {
     private fun looksLikeMerchant(raw: String): Boolean {
         if (raw.none { it.isLetter() }) return false
         val low = raw.lowercase()
-        if (Regex("^(?:your|the|a)\\b").containsMatchIn(low)) return false
+        if (LEADING_ARTICLE.containsMatchIn(low)) return false
         return NON_MERCHANT_PHRASES.none { it in low }
     }
+
+    /** Anchored, so this is "starts with your/the/a as a whole word" — "A1 Motors" is unaffected. */
+    private val LEADING_ARTICLE = Regex("^(?:your|the|a)\\b")
 
     private val NON_MERCHANT_PHRASES =
         listOf("credit card", "debit card", "card ending", "a/c", "account", "bank card")
@@ -312,12 +315,13 @@ object SmsParser {
         return out.trim()
     }
 
+    // Longest prefix FIRST: "If not you, call…" must be matched by the "if not you" rule, otherwise the
+    // bare "not you" rule truncates mid-phrase and strands a dangling "If" in the body.
     private val REPORT_TRAILERS = listOf(
-        Regex("\\bnot\\s+you\\b.*$", RegexOption.IGNORE_CASE),
         Regex("\\bif\\s+(?:this\\s+(?:is|was)\\s+)?not\\s+(?:you|your)\\b.*$", RegexOption.IGNORE_CASE),
+        Regex("\\bnot\\s+you\\b.*$", RegexOption.IGNORE_CASE),
         Regex("\\bsms\\s+block\\b.*$", RegexOption.IGNORE_CASE),
         Regex("\\bto\\s+(?:report|block|dispute)\\b.*$", RegexOption.IGNORE_CASE),
-        Regex("\\bto\\s+dispute\\b.*$", RegexOption.IGNORE_CASE),
         Regex("\\bcall\\s+\\d[\\d\\s-]{5,}.*$", RegexOption.IGNORE_CASE),
     )
 

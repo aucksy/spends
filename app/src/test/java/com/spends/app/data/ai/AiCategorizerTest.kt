@@ -46,9 +46,32 @@ class AiCategorizerTest {
         val json = AiCategorizer.buildUserPayload(items, cats)
         val item = JSONObject(json).getJSONArray("items").getJSONObject(0)
         assertEquals(setOf("id", "merchant", "kind", "text"), item.keys().asSequence().toSet())
-        assertTrue(item.getString("text").contains("Hello Fuels"))
-        assertFalse("no digit may reach the payload", item.getString("text").any { it.isDigit() })
-        listOf("4034", "4094", "316576", "919951860002").forEach {
+        val text = item.getString("text")
+        assertTrue(text.contains("Hello Fuels"))
+        assertFalse("no digit may reach the context text", text.any { it.isDigit() })
+        // Scoped to `text` on purpose: `merchant` is sent verbatim as the bank wrote it, and in THIS
+        // fixture the merchant IS the phone number (that's the bug being worked around). What must
+        // never leak is the amount, card number and balance, none of which appear in the merchant.
+        listOf("4034", "4094", "316576").forEach {
+            assertFalse("payload must not contain '$it'", json.contains(it))
+        }
+        assertFalse("the message body's digits must not survive masking", text.contains("919951860002"))
+    }
+
+    /**
+     * The other privacy-guard tests build items WITHOUT context, so they'd keep passing even if the real
+     * shipping payload leaked. This asserts the guarantee that actually matters on the wire: whatever
+     * words ride along, no FIGURE from the message does.
+     */
+    @Test fun `the real with-context payload still carries no figure`() {
+        val ctx = SmsParser.aiContextFor(
+            "Your A/c XX5678 is debited by Rs.12,345.67 on 21-06-26 to JOHN DOE. Avl Bal: Rs.98,765.43. Ref 998877",
+        )
+        val items = listOf(AiCatItem(7, "JOHN DOE", TxnKind.EXPENSE, context = ctx))
+        val json = AiCategorizer.buildUserPayload(items, cats)
+        val text = JSONObject(json).getJSONArray("items").getJSONObject(0).getString("text")
+        assertFalse("no digit may reach the context text", text.any { it.isDigit() })
+        listOf("5678", "12,345", "12345", "98,765", "98765", "998877", "21-06-26").forEach {
             assertFalse("payload must not contain '$it'", json.contains(it))
         }
     }

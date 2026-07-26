@@ -142,19 +142,24 @@ fun AiSettingsScreen(
                     modifier = Modifier.padding(top = 6.dp, bottom = 6.dp),
                 )
                 BulletLine(
-                    "Suggestions: the merchant text from a detected SMS, your category names, and your saved " +
-                        "merchant→category shortcuts (names only) so it can recognise a merchant you've tagged before.",
+                    "Suggestions: the merchant text from a detected bank SMS or notification, your category " +
+                        "names, and your saved merchant→category shortcuts (names only) so it can recognise a " +
+                        "merchant you've tagged before. The merchant is sent as your bank wrote it, so if your " +
+                        "bank put a number there (a UPI id, for example), that number goes too.",
                 )
                 BulletLine(
-                    "Suggestions also send the WORDS of that one message with every number replaced by # — so " +
-                        "\"Hello Fuels\" can be read when the merchant field came through as a phone number. " +
-                        "Nothing numeric survives: no amount, balance, card number, date, phone or reference number.",
+                    "Suggestions also send the WORDS of that one message with every run of digits replaced by " +
+                        "# — that's how \"Hello Fuels\" gets read when the merchant came through as a phone " +
+                        "number. Masking removes amounts, balances, card numbers, numeric dates, phone and " +
+                        "reference numbers. It does NOT remove words, so a payee's name in the message (\"to " +
+                        "JOHN DOE\") and a month written as text (\"Jun\") are sent.",
                 )
                 BulletLine("Insights: your category totals for the cycle.")
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Never sent: any number from your messages — amounts, balances, account or card numbers, " +
-                        "dates, phone numbers — or any individual transaction.",
+                    "Never sent: your full unmasked message, any amount or balance, or your account and card " +
+                        "numbers. The AI helper can never add, edit or delete a transaction — it only suggests " +
+                        "a category you still confirm yourself.",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -172,11 +177,11 @@ fun AiSettingsScreen(
             text = {
                 Text(
                     "This is the first time any of your data would leave your phone. With it on — and only for the " +
-                        "features you enable — a detected SMS's merchant name, that message's words with every " +
-                        "number replaced by #, plus your saved merchant→category shortcuts (for category " +
-                        "suggestions) and your category totals (for insights) are sent to Groq. Never any number " +
-                        "from your messages: no amounts, balances, account or card numbers, or dates. You'll " +
-                        "paste your own free key next.",
+                        "features you enable — a detected bank SMS or notification's merchant name, that message's " +
+                        "words with every run of digits replaced by #, plus your saved merchant→category shortcuts " +
+                        "(for category suggestions) and your category totals (for insights) are sent to Groq. " +
+                        "Never your full unmasked message, your amounts or balances, or your account and card " +
+                        "numbers. You'll paste your own free key next.",
                 )
             },
             confirmButton = {

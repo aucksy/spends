@@ -349,7 +349,7 @@ private fun WelcomeStep() {
         Spacer(Modifier.height(20.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.Filled.Lock, contentDescription = null, tint = LocalSemanticColors.current.income, modifier = Modifier.size(15.dp))
-            Text("Your data never leaves your phone", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Your data stays on your phone", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -405,7 +405,8 @@ private fun SmsPermissionStep(
         val body = buildAnnotatedString {
             append(
                 "The moment a bank SMS arrives, Spends spots the transaction on your phone and notifies you to " +
-                    "add it in one tap — that's why it asks for SMS and notification access. Nothing leaves your phone. ",
+                    "add it in one tap — that's why it asks for SMS and notification access. Your messages are " +
+                    "read and parsed on your phone, and nothing is ever sent to us. ",
             )
             appendInlineContent(infoTag, "(i)")
         }
@@ -665,7 +666,7 @@ private fun SetupStep(selectedIndex: Int, onSelect: (Int) -> Unit) {
         Text("How do you want to start?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "You can change this later. Nothing leaves your phone.",
+            "You can change this later. Your data stays on your phone.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
