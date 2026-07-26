@@ -6,8 +6,16 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** One merchant to classify. NOTE: no amount, no date, no SMS body — only the merchant string leaves the phone. */
-data class AiCatItem(val id: Long, val merchant: String, val kind: TxnKind)
+/**
+ * One merchant to classify.
+ *
+ * [context] is the message's descriptive WORDS with every digit run masked to `#`
+ * ([com.spends.app.data.capture.SmsParser.aiContextFor]) — needed because Indian bank alerts often leave
+ * the merchant field as a phone number or a bare code while naming the real merchant elsewhere in the
+ * text ("...IST Hello Fuels Avl Limit..."). Amounts, balances, card numbers, dates, phone and reference
+ * numbers are stripped before it ever gets here, so no figure leaves the phone.
+ */
+data class AiCatItem(val id: Long, val merchant: String, val kind: TxnKind, val context: String? = null)
 
 /** A merchant the user has ALREADY categorized (name + category), sent as reference so AI can recognise a
  *  spelling variant of it and REPRODUCE that category (never overriding — the app's own matcher runs first). */
@@ -58,7 +66,12 @@ class AiCategorizer @Inject constructor(
             "it is the SAME merchant as one in known — allow for spelling differences, payment-gateway prefixes " +
             "(RAZ*, PAYU*, UPI/), branch or city names, order numbers, and extra or abbreviated words. If it " +
             "matches a known merchant, use THAT merchant's category and set fromKnown to true. Otherwise choose " +
-            "the single best category from categories and set fromKnown to false. If none clearly fits, use null. " +
+            "the single best category from categories and set fromKnown to false. An item may also carry text = " +
+            "the bank message's words with every number replaced by #. Indian bank alerts often leave merchant " +
+            "as a phone number, a card code or a gateway string, so when merchant is not a recognisable business " +
+            "name, READ text and identify the real merchant and category from it (e.g. text \"Spent INR # Axis " +
+            "Bank Card no. XX# # IST Hello Fuels Avl Limit INR #\" is fuel). Use cleanName to return the real " +
+            "merchant name you found in text. If none clearly fits, use null. " +
             "Never invent a category name that is not in categories. Optionally add a short human-readable " +
             "cleanName for the merchant (e.g. \"RAZ*FURLENCO BLR\" -> \"Furlenco\"), or null. Respond with ONLY a " +
             "JSON object of the form {\"results\":[{\"id\":<number>,\"category\":<name-or-null>,\"cleanName\":" +
@@ -76,12 +89,12 @@ class AiCategorizer @Inject constructor(
             learned.forEach { known.put(JSONObject().put("merchant", it.merchant).put("category", it.category)) }
             val arr = JSONArray()
             items.forEach {
-                arr.put(
-                    JSONObject()
-                        .put("id", it.id)
-                        .put("merchant", it.merchant)
-                        .put("kind", it.kind.name),
-                )
+                val o = JSONObject()
+                    .put("id", it.id)
+                    .put("merchant", it.merchant)
+                    .put("kind", it.kind.name)
+                it.context?.takeIf { c -> c.isNotBlank() }?.let { c -> o.put("text", c) }
+                arr.put(o)
             }
             val root = JSONObject().put("categories", cats).put("items", arr)
             if (learned.isNotEmpty()) root.put("known", known)

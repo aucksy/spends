@@ -145,11 +145,16 @@ fun AiSettingsScreen(
                     "Suggestions: the merchant text from a detected SMS, your category names, and your saved " +
                         "merchant→category shortcuts (names only) so it can recognise a merchant you've tagged before.",
                 )
+                BulletLine(
+                    "Suggestions also send the WORDS of that one message with every number replaced by # — so " +
+                        "\"Hello Fuels\" can be read when the merchant field came through as a phone number. " +
+                        "Nothing numeric survives: no amount, balance, card number, date, phone or reference number.",
+                )
                 BulletLine("Insights: your category totals for the cycle.")
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Never sent: your SMS messages, amounts, balances, account or card numbers, dates, or any " +
-                        "individual transaction.",
+                    "Never sent: any number from your messages — amounts, balances, account or card numbers, " +
+                        "dates, phone numbers — or any individual transaction.",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -167,10 +172,11 @@ fun AiSettingsScreen(
             text = {
                 Text(
                     "This is the first time any of your data would leave your phone. With it on — and only for the " +
-                        "features you enable — a detected SMS's merchant name plus your saved merchant→category " +
-                        "shortcuts (for category suggestions) and your category totals (for insights) are sent to " +
-                        "Groq. Never your messages, amounts, balances, or account numbers. You'll paste your own " +
-                        "free key next.",
+                        "features you enable — a detected SMS's merchant name, that message's words with every " +
+                        "number replaced by #, plus your saved merchant→category shortcuts (for category " +
+                        "suggestions) and your category totals (for insights) are sent to Groq. Never any number " +
+                        "from your messages: no amounts, balances, account or card numbers, or dates. You'll " +
+                        "paste your own free key next.",
                 )
             },
             confirmButton = {

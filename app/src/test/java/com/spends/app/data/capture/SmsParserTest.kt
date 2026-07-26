@@ -375,4 +375,76 @@ class SmsParserTest {
         assertThat(r.amountMinor).isEqualTo(250000)
         assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
     }
+
+    // ---- Merchant vs the "Not you? SMS BLOCK <card> to <phone>" fraud-report trailer. That tail is on a
+    // huge share of Indian bank alerts, and the " to <X>" merchant rule was matching its PHONE NUMBER:
+    // a fuel purchase came through with merchant "919951860002", so no keyword could categorise it and
+    // the merchant memory learned a phone number. ----
+
+    /** The owner's real Axis card alert: merchant is on its own line with no preposition at all. */
+    @Test fun axis_card_merchant_is_read_not_the_report_phone_number() {
+        val r = p(
+            "AD-AXISBK",
+            "Spent INR 4034.37\nAxis Bank Card no. XX4094\n25-07-26 14:34:34 IST\nHello Fuels\n" +
+                "Avl Limit: INR 316576.91\nNot you? SMS BLOCK 4094 to 919951860002",
+        )
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.amountMinor).isEqualTo(403437)
+        assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(r.last4).isEqualTo("4094")
+        assertThat(r.merchant).isEqualTo("Hello Fuels")
+    }
+
+    /** A merchant must never be a bare number, whichever pattern produced it. */
+    @Test fun a_phone_number_is_never_accepted_as_a_merchant() {
+        val r = p("AD-AXISBK", "Spent INR 500.00 Axis Bank Card no. XX4094. Not you? SMS BLOCK 4094 to 919951860002")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.merchant).isNull()
+    }
+
+    /** The same bug class, already latent in an existing fixture: the trailer "SMS BLOCKUPI Cust ID to
+     *  Axis Bank" made the BANK look like the payee, beating the real UPI payee. */
+    @Test fun upi_payee_wins_over_the_bank_name_in_the_report_trailer() {
+        val r = p("AD-AXISBK-S", "INR 499.00 debited A/c no. XX5678 21-06-2026 13:01:22 UPI/P2A/000000/<PAYEE> Not you? SMS BLOCKUPI Cust ID to Axis Bank")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.merchant).isEqualTo("<PAYEE>")
+    }
+
+    /** A card-description fragment is not a merchant either. */
+    @Test fun a_card_description_is_not_accepted_as_a_merchant() {
+        val r = p("AD-HDFCBK", "Rs.560.00 debited on HDFC Bank Card 1234. Avl Bal Rs.100.00")
+        assertThat(r.merchant).isNull()
+    }
+
+    /** The trailer strip must not eat a real merchant that legitimately follows "to". */
+    @Test fun a_real_payee_after_to_still_survives_the_trailer_strip() {
+        val r = p("JK-IDFCFB", "Your A/C XXXXX1234 is debited by Rs.250.00 to JOHN DOE on 21-06-26. Not you? Call 18001234567")
+        assertThat(r.result).isEqualTo(Result.TRANSACTION)
+        assertThat(r.merchant).isEqualTo("JOHN DOE")
+    }
+
+    // ---- aiContextFor: what the OPTIONAL AI helper may see. Every figure must be gone. ----
+
+    @Test fun ai_context_keeps_the_words_and_masks_every_number() {
+        val ctx = SmsParser.aiContextFor(
+            "Spent INR 4034.37\nAxis Bank Card no. XX4094\n25-07-26 14:34:34 IST\nHello Fuels\n" +
+                "Avl Limit: INR 316576.91\nNot you? SMS BLOCK 4094 to 919951860002",
+        )!!
+        // The merchant survives — that is the whole point.
+        assertThat(ctx).contains("Hello Fuels")
+        // Nothing numeric does: no amount, card number, balance, date or phone number.
+        assertThat(ctx.any { it.isDigit() }).isFalse()
+        assertThat(ctx).doesNotContain("4034")
+        assertThat(ctx).doesNotContain("4094")
+        assertThat(ctx).doesNotContain("316576")
+        assertThat(ctx).doesNotContain("919951860002")
+        // The fraud-report trailer is dropped rather than masked.
+        assertThat(ctx.lowercase()).doesNotContain("not you")
+    }
+
+    @Test fun ai_context_is_null_when_nothing_useful_remains() {
+        assertThat(SmsParser.aiContextFor(null)).isNull()
+        assertThat(SmsParser.aiContextFor("   ")).isNull()
+        assertThat(SmsParser.aiContextFor("4034.37 4094 316576.91")).isNull()
+    }
 }

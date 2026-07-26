@@ -255,21 +255,88 @@ object SmsParser {
     }
 
     private fun extractMerchant(text: String): String? {
+        // Drop the fraud-report tail FIRST. Indian bank alerts end with "Not you? SMS BLOCK 4094 to
+        // 919951860002" — and the " to <X>" pattern below happily matched that phone number, so a card
+        // swipe at "Hello Fuels" was recorded as a merchant of "919951860002": wrong name on the row,
+        // no category match, and a junk key learned into the merchant memory.
+        val body = stripReportTrailer(text)
         // Prefer "at <X>" / "@<X>" / " to <X>"; stop at common trailing tokens.
         val patterns = listOf(
             Regex("\\bat\\s+(.+?)(?:\\s+on\\b|\\.|\\bAvl\\b|\\bUPI\\b|\\bRef\\b|$)", RegexOption.IGNORE_CASE),
             Regex("@\\s*([^\\s].*?)(?:\\s+on\\b|\\d{2}[-/]|\\.|\\bAvl\\b|$)", RegexOption.IGNORE_CASE),
-            Regex("\\bto\\s+(.+?)(?:\\s+from\\b|\\.|\\bUPI\\b|$)", RegexOption.IGNORE_CASE),
+            // Stops at " on " like the "at <X>" rule above — otherwise "to JOHN DOE on 21-06-26" is
+            // captured whole and the date becomes part of the merchant name.
+            Regex("\\bto\\s+(.+?)(?:\\s+on\\b|\\s+from\\b|\\.|\\bUPI\\b|$)", RegexOption.IGNORE_CASE),
             Regex("UPI/[A-Z0-9]+/[0-9]+/([^/\\s]+)", RegexOption.IGNORE_CASE),
             Regex("\\bon\\s+([A-Z][A-Za-z0-9 .*&'-]{2,}?)(?:\\.|\\bAvl\\b|$)"), // ICICI "...on <MERCHANT>."
+            // Axis-style card alert: "<amount> <card> <date> <time> IST <MERCHANT> Avl Limit: ..." — the
+            // merchant sits on its own line with NO preposition, so nothing above can reach it.
+            Regex("\\bIST\\s+(.+?)\\s+Avl\\b", RegexOption.IGNORE_CASE),
         )
         for (p in patterns) {
-            val m = p.find(text) ?: continue
+            val m = p.find(body) ?: continue
             val raw = m.groupValues[1].trim().trim('.', ',', '-', ' ')
-            if (raw.isNotBlank() && raw.length in 2..40 && !raw.matches(Regex("\\d{2}[-/].*"))) return raw
+            if (raw.isNotBlank() && raw.length in 2..40 && !raw.matches(Regex("\\d{2}[-/].*")) && looksLikeMerchant(raw)) {
+                return raw
+            }
         }
         return null
     }
+
+    /**
+     * Reject captures that are clearly not a business name: a bare number (a phone or account number —
+     * "SMS BLOCK 4094 to 919951860002" used to yield one), or a fragment of the message's own account
+     * wording ("your SBI Credit Card ending 0436", which the "to <X>" rule can reach in an e-mandate
+     * alert). Either one would be shown on the row AND learned into the merchant memory as a key that can
+     * never match anything real.
+     */
+    private fun looksLikeMerchant(raw: String): Boolean {
+        if (raw.none { it.isLetter() }) return false
+        val low = raw.lowercase()
+        if (Regex("^(?:your|the|a)\\b").containsMatchIn(low)) return false
+        return NON_MERCHANT_PHRASES.none { it in low }
+    }
+
+    private val NON_MERCHANT_PHRASES =
+        listOf("credit card", "debit card", "card ending", "a/c", "account", "bank card")
+
+    /**
+     * Everything from the "not you / report it" boilerplate to the end of the message. That tail carries a
+     * phone number and a card number but never a merchant, so removing it before merchant extraction can
+     * only help. Applied to merchant extraction ONLY — amount, last4, date and ref still read the full
+     * text, so none of the money fields can shift.
+     */
+    private fun stripReportTrailer(text: String): String {
+        var out = text
+        for (r in REPORT_TRAILERS) out = r.replace(out, " ")
+        return out.trim()
+    }
+
+    private val REPORT_TRAILERS = listOf(
+        Regex("\\bnot\\s+you\\b.*$", RegexOption.IGNORE_CASE),
+        Regex("\\bif\\s+(?:this\\s+(?:is|was)\\s+)?not\\s+(?:you|your)\\b.*$", RegexOption.IGNORE_CASE),
+        Regex("\\bsms\\s+block\\b.*$", RegexOption.IGNORE_CASE),
+        Regex("\\bto\\s+(?:report|block|dispute)\\b.*$", RegexOption.IGNORE_CASE),
+        Regex("\\bto\\s+dispute\\b.*$", RegexOption.IGNORE_CASE),
+        Regex("\\bcall\\s+\\d[\\d\\s-]{5,}.*$", RegexOption.IGNORE_CASE),
+    )
+
+    /**
+     * The message as the optional AI helper may see it: the report trailer removed and **every digit run
+     * masked to `#`**. That leaves the descriptive words — which is all the categoriser needs ("Hello
+     * Fuels" → Fuel) — while amounts, balances, card numbers, dates, phone numbers and reference numbers
+     * never leave the phone. Pure; returns null when nothing useful survives.
+     */
+    fun aiContextFor(body: String?): String? {
+        if (body.isNullOrBlank()) return null
+        val cleaned = stripReportTrailer(body.replace('\n', ' ').replace(Regex("\\s+"), " ").trim())
+        val masked = cleaned.replace(Regex("\\d+"), "#").replace(Regex("\\s+"), " ").trim()
+        if (masked.none { it.isLetter() }) return null
+        return masked.take(MAX_AI_CONTEXT_CHARS)
+    }
+
+    /** Bank alerts run ~150 chars; this bounds a pathological one without truncating a real merchant. */
+    private const val MAX_AI_CONTEXT_CHARS = 300
 
     // ---- date parsing (handles every format in the fixtures) ----
 

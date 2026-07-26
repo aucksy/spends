@@ -1,5 +1,6 @@
 package com.spends.app.data.ai
 
+import com.spends.app.data.capture.SmsParser
 import com.spends.app.domain.model.TxnKind
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -30,6 +31,32 @@ class AiCategorizerTest {
         listOf("amount", "date", "balance", "last4", "account", "occurredAt", "rupee").forEach {
             assertFalse("payload must not contain '$it'", json.contains(it, ignoreCase = true))
         }
+    }
+
+    /**
+     * The number-masked message text rides along ONLY when supplied, and carries no figure. This is what
+     * lets a fuel purchase whose merchant parsed as a phone number still be categorised as fuel.
+     */
+    @Test fun `context text is sent as 'text' and contains no digits`() {
+        val ctx = SmsParser.aiContextFor(
+            "Spent INR 4034.37 Axis Bank Card no. XX4094 25-07-26 14:34:34 IST Hello Fuels " +
+                "Avl Limit: INR 316576.91 Not you? SMS BLOCK 4094 to 919951860002",
+        )
+        val items = listOf(AiCatItem(1, "919951860002", TxnKind.EXPENSE, context = ctx))
+        val json = AiCategorizer.buildUserPayload(items, cats)
+        val item = JSONObject(json).getJSONArray("items").getJSONObject(0)
+        assertEquals(setOf("id", "merchant", "kind", "text"), item.keys().asSequence().toSet())
+        assertTrue(item.getString("text").contains("Hello Fuels"))
+        assertFalse("no digit may reach the payload", item.getString("text").any { it.isDigit() })
+        listOf("4034", "4094", "316576", "919951860002").forEach {
+            assertFalse("payload must not contain '$it'", json.contains(it))
+        }
+    }
+
+    @Test fun `no 'text' key when there is no context`() {
+        val items = listOf(AiCatItem(1, "swiggy", TxnKind.EXPENSE))
+        val item = JSONObject(AiCategorizer.buildUserPayload(items, cats)).getJSONArray("items").getJSONObject(0)
+        assertEquals(setOf("id", "merchant", "kind"), item.keys().asSequence().toSet())
     }
 
     @Test fun `parseResponse canonicalises the returned category spelling`() {

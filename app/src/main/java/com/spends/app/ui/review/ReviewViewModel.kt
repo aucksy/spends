@@ -10,6 +10,7 @@ import com.spends.app.data.ai.GroqClient
 import com.spends.app.data.ai.LearnedMerchant
 import com.spends.app.data.capture.NotificationCaptureApps
 import com.spends.app.data.capture.SmsCaptureRepository
+import com.spends.app.data.capture.SmsParser
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.db.entity.PendingCaptureEntity
 import com.spends.app.data.repo.CategoryRepository
@@ -152,7 +153,16 @@ class ReviewViewModel @Inject constructor(
                 val batchIds = batch.map { it.id }
                 requestedIds.addAll(batchIds) // one attempt per row this session (marked up front)
                 try {
-                    val batchItems = batch.map { AiCatItem(it.id, it.merchant!!.trim(), it.kind) }
+                    val batchItems = batch.map {
+                        AiCatItem(
+                            id = it.id,
+                            merchant = it.merchant!!.trim(),
+                            kind = it.kind,
+                            // Number-masked message words, so a merchant that parsed as a phone number or a
+                            // bare code can still be identified. SmsParser strips every figure first.
+                            context = SmsParser.aiContextFor(it.rawBody),
+                        )
+                    }
                     val result = aiCategorizer.suggest(batchItems, names, learned)
                     if (result.isNotEmpty()) {
                         val mapped = result.mapNotNull { (id, sug) ->
