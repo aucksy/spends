@@ -50,7 +50,23 @@ object NotificationCapture {
     }
 
     /** Why [candidates] came back empty. TEMPORARY — feeds the owner-facing notification debug screen. */
-    enum class Rejection { NONE, NO_READABLE_TEXT, SENDER_NOT_RECOGNISED }
+    enum class Rejection {
+        NONE,
+
+        /** No text anywhere — the RCS custom-layout case, unreadable by any third-party app. */
+        NO_READABLE_TEXT,
+
+        /** Text was readable; the sender/title just isn't a bank we map. */
+        SENDER_NOT_RECOGNISED,
+
+        /**
+         * A MessagingStyle whose messages are all textless SHADOWED a perfectly readable bigText:
+         * [candidates] commits to the messages branch and never tries the plain fallback. This is our
+         * OWN bug, not the RCS limit — it must never be reported as "unreadable", or the investigation
+         * closes on the one hypothesis that is actually fixable.
+         */
+        MESSAGES_SHADOWED_BIG_TEXT,
+    }
 
     /** [rejection] plus the sender strings that were tried (so an unmapped bank name is visible). */
     data class Diagnosis(val rejection: Rejection, val sendersTried: List<String>)
@@ -71,20 +87,29 @@ object NotificationCapture {
         if (candidates(title, text, bigText, conversationTitle, messages, postTime).isNotEmpty()) {
             return Diagnosis(Rejection.NONE, emptyList())
         }
+        val plainBody = (bigText?.trim()?.takeIf { it.isNotBlank() } ?: text?.trim())?.takeIf { it.isNotBlank() }
+        val titleTried = title?.takeIf { it.isNotBlank() } ?: "(no title)"
         if (messages.isNotEmpty()) {
             // Mirrors the messages branch: a message with no text is skipped before its sender matters.
             val withText = messages.filter { !it.text.isNullOrBlank() }
-            if (withText.isEmpty()) return Diagnosis(Rejection.NO_READABLE_TEXT, emptyList())
+            if (withText.isEmpty()) {
+                // Textless messages, but the notification DOES carry a readable body that `candidates`
+                // never reaches. Ours to fix — do not let this read as the RCS limit.
+                return if (plainBody != null) {
+                    Diagnosis(Rejection.MESSAGES_SHADOWED_BIG_TEXT, listOf(titleTried))
+                } else {
+                    Diagnosis(Rejection.NO_READABLE_TEXT, emptyList())
+                }
+            }
             val tried = withText.map { m ->
                 m.sender?.takeIf { it.isNotBlank() }
                     ?: conversationTitle?.takeIf { it.isNotBlank() }
-                    ?: title
+                    ?: title?.takeIf { it.isNotBlank() }
                     ?: "(no sender)"
             }.distinct()
             return Diagnosis(Rejection.SENDER_NOT_RECOGNISED, tried)
         }
-        val body = (bigText?.trim()?.takeIf { it.isNotBlank() } ?: text?.trim())?.takeIf { it.isNotBlank() }
-        if (body == null) return Diagnosis(Rejection.NO_READABLE_TEXT, emptyList())
-        return Diagnosis(Rejection.SENDER_NOT_RECOGNISED, listOf(title ?: "(no title)"))
+        if (plainBody == null) return Diagnosis(Rejection.NO_READABLE_TEXT, emptyList())
+        return Diagnosis(Rejection.SENDER_NOT_RECOGNISED, listOf(titleTried))
     }
 }

@@ -31,14 +31,17 @@ class NotificationDebugLog @Inject constructor() {
         /** No message text at all (the RCS custom-layout case — unreadable by any third-party app). */
         NO_READABLE_TEXT,
 
+        /**
+         * Textless chat messages hid a perfectly readable body — OUR bug, not the RCS limit. Called out
+         * separately so it can never be mistaken for the unfixable case.
+         */
+        MESSAGES_SHADOWED_BIG_TEXT,
+
         /** Text was readable, but the sender/title isn't a bank we know. */
         SENDER_NOT_RECOGNISED,
 
         /** Older than the listener's age window. */
         TOO_OLD,
-
-        /** The same message was already handled (conversation notifications repost for days). */
-        ALREADY_SEEN,
 
         /** Parsed by [SmsParser] but not a money movement (OTP, promo, declined, statement…). */
         NOT_A_TRANSACTION,
@@ -93,14 +96,18 @@ class NotificationDebugLog @Inject constructor() {
         publish()
     }
 
-    /** Called for EVERY notification on the device — package name and a count, never content. */
+    /**
+     * Called for EVERY notification the listener is handed — package name and a count, never content.
+     * Runs on the main looper inside a system callback, so it skips the (sorting, copying) publish
+     * when nobody is watching the debug screen; the next [record] or screen open republishes anyway.
+     */
     @Synchronized
     fun recordSeen(packageName: String) {
         totalSeen++
         if (counts.size < MAX_PACKAGES || counts.containsKey(packageName)) {
             counts[packageName] = (counts[packageName] ?: 0) + 1
         }
-        publish()
+        if (_state.subscriptionCount.value > 0) publish()
     }
 
     /** Called for a notification from a WATCHED app, with what the listener read and where it stopped. */
@@ -110,6 +117,11 @@ class NotificationDebugLog @Inject constructor() {
         while (entries.size > MAX_ENTRIES) entries.removeLast()
         publish()
     }
+
+    /** Republish the current state — call when the screen subscribes, since [recordSeen] skips the
+     *  publish while nobody is watching and the last emitted value can therefore be stale. */
+    @Synchronized
+    fun refresh() = publish()
 
     @Synchronized
     fun clear() {

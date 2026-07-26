@@ -155,12 +155,32 @@ fun NotificationDebugScreen(
                 ) { Text("Copy report") }
                 OutlinedButton(
                     onClick = {
-                        NotificationListenerControl.requestRebind(context)
-                        scope.launch { snackbarHost.showSnackbar("Asked Android to reconnect the reader") }
+                        val asked = NotificationListenerControl.requestRebind(context)
+                        scope.launch {
+                            snackbarHost.showSnackbar(
+                                if (asked) {
+                                    "Asked Android to reconnect. If it still says No, use Open Android settings."
+                                } else {
+                                    "Notification access isn't granted — there's nothing to reconnect."
+                                },
+                            )
+                        }
                     },
                     modifier = Modifier.weight(1f),
                 ) { Text("Reconnect") }
             }
+            Text(
+                "The copied report includes the list of apps that notify you, and the text of alerts " +
+                    "from senders Spends recognised as banks. Message text from anyone else is left out.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { NotificationListenerControl.openAccessSettings(context) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Open Android settings (turn access off, then on)") }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = viewModel::clear, modifier = Modifier.fillMaxWidth()) {
                 Text("Clear what's recorded")
@@ -262,10 +282,11 @@ private fun yesNo(v: Boolean) = if (v) "Yes" else "No"
 /** Plain-English name for where a message stopped. */
 private fun plainOutcome(o: NotificationDebugLog.Outcome): String = when (o) {
     NotificationDebugLog.Outcome.SKIPPED_SHAPE -> "Skipped — not a message notification"
-    NotificationDebugLog.Outcome.NO_READABLE_TEXT -> "No readable text (this is the RCS limit — nothing to parse)"
+    NotificationDebugLog.Outcome.NO_READABLE_TEXT -> "No readable text at all (this is the RCS limit — nothing to parse)"
+    NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT ->
+        "⚠️ Readable text was there but Spends looked in the wrong place — this one is a bug we can fix"
     NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "Text was readable, but the sender isn't a bank Spends knows"
     NotificationDebugLog.Outcome.TOO_OLD -> "Skipped — older than the capture window"
-    NotificationDebugLog.Outcome.ALREADY_SEEN -> "Already handled this exact message"
     NotificationDebugLog.Outcome.NOT_A_TRANSACTION -> "Read it, but it isn't a transaction (OTP / promo / statement)"
     NotificationDebugLog.Outcome.DUPLICATE -> "A transaction we already have"
     NotificationDebugLog.Outcome.QUEUED -> "✅ Queued in your review list"
@@ -286,8 +307,13 @@ private fun verdictOf(
         "Notification access is granted, but the \"Detect from app notifications\" switch is off."
     nothingTicked ->
         "Capture is on but no apps are ticked, so there's nothing to watch."
+    // Right after a cold launch we legitimately aren't bound yet, so don't cry bug for a few seconds.
+    !log.connected && log.lastConnectedAt == null && log.totalSeen == 0 ->
+        "Not connected yet. Give it a few seconds — if it still says No, tap Reconnect, and if that " +
+            "doesn't do it, turn notification access off and on in Android settings."
     !log.connected ->
-        "Access is granted but Android has NOT connected the reader — this is the bug. Tap Reconnect."
+        "Access is granted but Android has NOT connected the reader — this is the bug. Tap Reconnect; " +
+            "if it stays No, turn notification access off and on in Android settings."
     log.totalSeen == 0 ->
         "Reader is connected but hasn't been handed a single notification yet. Trigger any " +
             "notification to confirm it's really working."

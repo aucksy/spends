@@ -89,13 +89,43 @@ class NotificationDebugLogTest {
         )
         assertThat(noText.rejection).isEqualTo(NotificationCapture.Rejection.NO_READABLE_TEXT)
 
-        // Same verdict when a MessagingStyle carries messages that are all textless.
+        // Same verdict when a MessagingStyle carries messages that are all textless AND there is no
+        // body anywhere else to fall back to.
         val blankMessages = NotificationCapture.diagnose(
             title = "Axis Bank", text = null, bigText = null, conversationTitle = null,
             messages = listOf(RawMessage("Axis Bank", "  ", 1L), RawMessage("Axis Bank", null, 2L)),
             postTime = 100L,
         )
         assertThat(blankMessages.rejection).isEqualTo(NotificationCapture.Rejection.NO_READABLE_TEXT)
+    }
+
+    /**
+     * The trap this guards: textless MessagingStyle messages make `candidates()` commit to the messages
+     * branch and never try bigText, even though bigText holds the whole alert. That is OUR bug, and it
+     * must NOT be reported as the unfixable "no readable text" RCS limit — doing so would close the
+     * investigation on the one hypothesis that can actually be fixed.
+     */
+    @Test fun diagnose_separates_our_shadowing_bug_from_the_unfixable_rcs_case() {
+        val d = NotificationCapture.diagnose(
+            title = "Axis Bank",
+            text = null,
+            bigText = "INR 499.00 debited A/c no. XX5678 21-06-2026",
+            conversationTitle = null,
+            messages = listOf(RawMessage("Axis Bank", "  ", 1L)),
+            postTime = 100L,
+        )
+        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.MESSAGES_SHADOWED_BIG_TEXT)
+        assertThat(d.rejection).isNotEqualTo(NotificationCapture.Rejection.NO_READABLE_TEXT)
+        assertThat(d.sendersTried).containsExactly("Axis Bank")
+    }
+
+    @Test fun diagnose_falls_back_to_a_placeholder_when_the_title_is_blank() {
+        val d = NotificationCapture.diagnose(
+            title = "   ", text = "Rs.250 debited", bigText = null, conversationTitle = null,
+            messages = emptyList(), postTime = 100L,
+        )
+        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.SENDER_NOT_RECOGNISED)
+        assertThat(d.sendersTried).containsExactly("(no title)")
     }
 
     @Test fun diagnose_uses_the_title_for_a_plain_notification() {

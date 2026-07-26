@@ -1,13 +1,9 @@
 package com.spends.app.ui.capture
 
 import android.Manifest
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.Settings
-import android.service.notification.NotificationListenerService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -47,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -55,7 +50,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.data.capture.NotificationCaptureApps
-import com.spends.app.service.CaptureNotificationListenerService
+import com.spends.app.service.NotificationListenerControl
 
 @Composable
 fun CaptureSection(
@@ -390,34 +385,19 @@ fun CaptureSection(
     }
 }
 
-/** Is Spends granted Android's "Notification access" (the listener permission)? */
+// The access check, the settings deep-link and the rebind nudge all live in NotificationListenerControl
+// (permanent home) — this screen used to carry its own copies, which would have drifted.
 private fun hasNotificationAccess(context: Context): Boolean =
-    NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+    NotificationListenerControl.hasAccess(context)
 
 private fun isAppInstalled(context: Context, packageName: String): Boolean =
     runCatching { context.packageManager.getApplicationInfo(packageName, 0) }.isSuccess
 
-/** Deep-link to our row in the notification-access settings (Android 11+), else the general list. */
-private fun openNotificationAccessSettings(context: Context) {
-    val component = ComponentName(context, CaptureNotificationListenerService::class.java)
-    val detail = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
-        .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component.flattenToString())
-    val list = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-    val tried = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        runCatching { context.startActivity(detail) }.isSuccess
-    } else {
-        false
-    }
-    if (!tried) runCatching { context.startActivity(list) }
-}
+private fun openNotificationAccessSettings(context: Context) =
+    NotificationListenerControl.openAccessSettings(context)
 
-/** Nudge the system to (re)bind our listener right after enabling — no-op if not granted/already bound. */
 private fun requestListenerRebind(context: Context) {
-    runCatching {
-        NotificationListenerService.requestRebind(
-            ComponentName(context, CaptureNotificationListenerService::class.java),
-        )
-    }
+    NotificationListenerControl.requestRebind(context)
 }
 
 @Composable

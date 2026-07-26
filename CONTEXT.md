@@ -45,7 +45,12 @@ capture from **bank SMS + bank/UPI notifications** (review-only — captures lan
 
 ## Working agreement (standing user preferences)
 - **Pause and ask between rounds.** Don't chain multiple feature rounds without a check-in.
-- **NEVER auto-build.** Only tag a release when I explicitly say to ship.
+- **SHIP AFTER MAJOR FIXES WITHOUT ASKING** (owner, 2026-07-26 — supersedes the old "only tag when I
+  explicitly say ship"). When a major fix or update is done and CI is green, run the full release
+  ritual below unprompted and post the APK link. "Major" = a real behaviour fix, a new feature, or
+  anything worth putting on the phone — not cosmetic work-in-progress or a parked item. The standing
+  consent covers *asking permission to ship*; it does NOT waive the pre-tag review ritual.
+- **Still never build LOCALLY.** Cloud CI only — the local toolchain is deleted.
 - **Test like an expert:** edge cases, negative cases, regression. This is real money in a
   Room DB — database mistakes are unacceptable.
 - **Ask when genuinely in doubt** (don't emit vague formulaic answers). Always use the

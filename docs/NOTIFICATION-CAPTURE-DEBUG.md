@@ -119,16 +119,28 @@ alongside it rather than after it.
 | Connected yes, seen **0** | Bound but handed nothing — very unusual. | Trigger any notification at all. |
 | Seen > 0, watched-app events **0** | Reader works; Truecaller alerts aren't reaching us. | Read the package list — the bank alert is coming from some other package (or Truecaller Lite, H4). |
 | Events present, `SENDER_NOT_RECOGNISED` | H3a — add the shown name to `SenderAllowlist.byDisplayName`. | Paste the `detail` line back; it names exactly what to map. |
-| Events present, `NO_READABLE_TEXT` | H6 — the RCS caveat. | Not fixable from our side; report it plainly. |
+| Events present, `MESSAGES_SHADOWED_BIG_TEXT` | **H3b — our bug, not the RCS limit.** Textless MessagingStyle messages made `candidates()` commit to the messages branch and skip a perfectly readable `bigText`. | Fix `candidates()` to fall through to the plain branch when no message has text. |
+| Events present, `NO_READABLE_TEXT` | H6 — the RCS caveat, and only now that H3b is ruled out separately. | Not fixable from our side; report it plainly. |
 | Events present, `DUPLICATE` | H5 — the relaxed no-ref net swallowed it. | Revisit `relaxedNoRefDuplicate` for notification-only alerts. |
 
 ## Removal checklist (once the root cause is fixed)
 
-`NotificationDebugLog.kt` · `NotificationCapture.diagnose` + `Rejection`/`Diagnosis` ·
+Delete: `NotificationDebugLog.kt` · `NotificationCapture.diagnose` + `Rejection`/`Diagnosis` ·
 `NotificationDebug{Screen,ViewModel}.kt` · `NotificationDebugLogTest.kt` · `Routes.NOTIFICATION_DEBUG`
-+ its `composable` · the `onOpenNotificationDebug` params on `CaptureSettingsScreen`/`CaptureSection` +
-the row · the `debugLog` injection and every `debugLog.*` call in the listener. **Keep**
-`NotificationListenerControl` and the launch/boot rebind — that is a permanent fix, not diagnostics.
++ its `composable` · the `onOpenNotificationDebug` params on `CaptureSettingsScreen`/`CaptureSection`
++ the row · the `debugLog` injection, the `Payload`-based debug entry builders, and every `debugLog.*`
+call in the listener.
+
+**Keep — these are the permanent fix, not diagnostics:** `NotificationListenerControl` (including
+`connected`/`setConnected`, `openAccessSettings`, and the `Boolean` return on `requestRebind`), the
+`NotificationListenerControl.setConnected(...)` calls in `onListenerConnected`/`onListenerDisconnected`,
+the launch-time `ensureBound` in `SpendsApp`, the boot-time `requestRebind` in `BootReceiver`, and
+`CaptureSection`'s delegation to `NotificationListenerControl`.
+
+The `connected` flag deliberately lives on `NotificationListenerControl`, **not** on
+`NotificationDebugLog` — an earlier draft had `SpendsApp` reading it off the debug log, which would
+have made this checklist break the build. `NotificationDebugLog` keeps its own display copy, fed by the
+same callbacks; that copy goes away with the rest of the diagnostic.
 
 ## Status
 

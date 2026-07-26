@@ -68,6 +68,7 @@ class CaptureNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        NotificationListenerControl.setConnected(true)
         debugLog.setConnected(true)
         // Shade catch-up (owner-chosen): the only "history" notifications have. Whatever transaction
         // alerts are still sitting in the shade get queued for review — silently, never prompted, so
@@ -93,6 +94,7 @@ class CaptureNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        NotificationListenerControl.setConnected(false)
         debugLog.setConnected(false)
         // Self-heal (NotDigest pattern): the system unbound us (memory pressure / OEM killer). Ask to
         // be rebound instead of staying dead until the app is next opened. No-op if the user actually
@@ -103,19 +105,23 @@ class CaptureNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        // Counted for EVERY app, package name only, no content (TEMPORARY diagnostic): if this stays
-        // at zero the listener isn't bound at all, which no other signal on the phone reveals.
+        if (!enabled) return
+        // Counted for EVERY app the listener is handed, package name only, no content (TEMPORARY
+        // diagnostic): if this stays at zero the listener isn't bound at all, which no other signal on
+        // the phone reveals. Gated on `enabled` so an owner who never turned capture on is never tallied.
         debugLog.recordSeen(sbn.packageName)
-        if (!enabled || sbn.packageName !in watchedPackages) return
+        if (sbn.packageName !in watchedPackages) return
         val pkg = sbn.packageName
         if (!looksReadable(sbn)) {
-            debugLog.record(shapeSkipEntry(pkg, sbn))
+            // Every diagnostic read is wrapped: this runs on the main looper inside a system callback,
+            // where an unparcelable Bundle would otherwise take the whole process down.
+            runCatching { debugLog.record(shapeSkipEntry(pkg, sbn)) }
             return
         }
         val payload = payloadOf(sbn)
         val candidates = candidatesOf(payload) // extras snapshot, cheap; allowlist filters here too
         if (candidates.isEmpty()) {
-            debugLog.record(rejectionEntry(pkg, payload))
+            runCatching { debugLog.record(rejectionEntry(pkg, payload)) }
             return
         }
         scope.launch {
@@ -158,7 +164,7 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             },
             postTime = sbn.postTime,
         )
-    }.getOrDefault(Payload(null, null, null, null, emptyList(), sbn.postTime))
+    }.getOrElse { Payload(null, null, null, null, emptyList(), sbn.postTime) }
 
     /** Sender filtering (only tracked financial senders survive) happens inside [NotificationCapture]. */
     private fun candidatesOf(p: Payload): List<NotificationCapture.Candidate> = runCatching {
@@ -180,19 +186,19 @@ class CaptureNotificationListenerService : NotificationListenerService() {
     /** Skipped on shape alone — read title/text only, never the (costlier) MessagingStyle. */
     private fun shapeSkipEntry(pkg: String, sbn: StatusBarNotification): NotificationDebugLog.Entry {
         val flags = sbn.notification.flags
+        // Same order as looksReadable(), so the reason shown is the one that actually rejected it.
         val why = when {
+            !sbn.isClearable -> "not clearable"
             flags and Notification.FLAG_GROUP_SUMMARY != 0 -> "group summary"
             flags and Notification.FLAG_ONGOING_EVENT != 0 -> "ongoing"
-            flags and Notification.FLAG_FOREGROUND_SERVICE != 0 -> "foreground service"
-            !sbn.isClearable -> "not clearable"
-            else -> "own notification"
+            else -> "foreground service"
         }
-        val extras = sbn.notification.extras
+        val extras = runCatching { sbn.notification.extras }.getOrNull()
         return NotificationDebugLog.Entry(
             timeMillis = sbn.postTime,
             packageName = pkg,
-            title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.clip(),
-            text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.clip(),
+            title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.clip(),
+            text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.clip(),
             bigText = null,
             messageSenders = emptyList(),
             outcome = NotificationDebugLog.Outcome.SKIPPED_SHAPE,
@@ -203,10 +209,11 @@ class CaptureNotificationListenerService : NotificationListenerService() {
     /** Nothing survived sender/text filtering — say which, and which sender strings were tried. */
     private fun rejectionEntry(pkg: String, p: Payload): NotificationDebugLog.Entry {
         val d = NotificationCapture.diagnose(p.title, p.text, p.bigText, p.conversationTitle, p.messages, p.postTime)
-        val outcome = if (d.rejection == NotificationCapture.Rejection.NO_READABLE_TEXT) {
-            NotificationDebugLog.Outcome.NO_READABLE_TEXT
-        } else {
-            NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED
+        val outcome = when (d.rejection) {
+            NotificationCapture.Rejection.NO_READABLE_TEXT -> NotificationDebugLog.Outcome.NO_READABLE_TEXT
+            NotificationCapture.Rejection.MESSAGES_SHADOWED_BIG_TEXT ->
+                NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT
+            else -> NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED
         }
         return debugEntry(
             pkg, p, outcome,
@@ -219,8 +226,9 @@ class CaptureNotificationListenerService : NotificationListenerService() {
         p: Payload,
         outcome: NotificationDebugLog.Outcome,
         detail: String?,
+        timeMillis: Long = p.postTime,
     ): NotificationDebugLog.Entry = NotificationDebugLog.Entry(
-        timeMillis = p.postTime,
+        timeMillis = timeMillis,
         packageName = pkg,
         title = p.title?.clip(),
         text = p.text?.clip(),
@@ -251,16 +259,29 @@ class CaptureNotificationListenerService : NotificationListenerService() {
         canPrompt: Boolean,
         maxAgeMillis: Long = MAX_LIVE_AGE_MILLIS,
     ) {
-        // Every `return` below also records where this message stopped (TEMPORARY diagnostic).
-        fun note(outcome: NotificationDebugLog.Outcome, detail: String? = null) =
-            debugLog.record(debugEntry(pkg, payload, outcome, detail ?: "read as: ${c.sender}"))
+        // Every `return` below also records where this message stopped (TEMPORARY diagnostic). Stamped
+        // with the MESSAGE's own time and body, not the notification's — a repost carries days-old
+        // messages, and "too old" next to today's timestamp with no body is indistinguishable from a
+        // live alert being wrongly rejected. Safe to include the body here: the sender already resolved
+        // to a tracked bank, so this is a bank alert, never a personal chat.
+        fun note(outcome: NotificationDebugLog.Outcome, extra: String? = null) = runCatching {
+            debugLog.record(
+                debugEntry(
+                    pkg, payload, outcome,
+                    detail = "read as: ${c.sender}" + (extra?.let { " · $it" } ?: "") + " · ${c.body.clip()}",
+                    timeMillis = c.timestamp,
+                ),
+            )
+        }
 
         if (System.currentTimeMillis() - c.timestamp > maxAgeMillis) {
             note(NotificationDebugLog.Outcome.TOO_OLD)
             return
         }
+        // Deliberately NOT recorded: a conversation notification reposts up to 25 retained messages on
+        // every new message, so logging repeats would evict the whole ring and bury the one entry that
+        // matters. The message was already recorded when it was first handled.
         if (!guard.checkAndMark(guard.messageKey(pkg, c.sender, c.body), RecentCaptureGuard.MESSAGE_TTL_MILLIS)) {
-            note(NotificationDebugLog.Outcome.ALREADY_SEEN)
             return
         }
         val outcome = captureRepository.handleNotificationAlert(c.sender, c.body, c.timestamp, pkg, canPrompt)
@@ -269,7 +290,11 @@ class CaptureNotificationListenerService : NotificationListenerService() {
                 when (outcome.decision) {
                     SmsCaptureRepository.NotificationDecision.QUEUED -> NotificationDebugLog.Outcome.QUEUED
                     SmsCaptureRepository.NotificationDecision.DUPLICATE -> NotificationDebugLog.Outcome.DUPLICATE
-                    else -> NotificationDebugLog.Outcome.NOT_A_TRANSACTION
+                    SmsCaptureRepository.NotificationDecision.NOT_TRANSACTION ->
+                        NotificationDebugLog.Outcome.NOT_A_TRANSACTION
+                    // Unreachable (guarded by the != above); exhaustive so a new enum value breaks the
+                    // build instead of silently reporting as "not a transaction".
+                    SmsCaptureRepository.NotificationDecision.PROMPT -> NotificationDebugLog.Outcome.PROMPTED
                 },
             )
             return
@@ -280,14 +305,14 @@ class CaptureNotificationListenerService : NotificationListenerService() {
         }
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             captureRepository.queueForReview(c.sender, c.body, c.timestamp, pkg)
-            note(NotificationDebugLog.Outcome.QUEUED, "read as: ${c.sender} · queued (prompts blocked)")
+            note(NotificationDebugLog.Outcome.QUEUED, "queued instead (prompts are blocked)")
             return
         }
         if (guard.claimPrompt(preview.relaxedHash, preview.refNumber)) {
             captureNotifier.postCapturePrompt(c.sender, c.body, c.timestamp, preview, sourceApp = pkg)
             note(NotificationDebugLog.Outcome.PROMPTED)
         } else {
-            note(NotificationDebugLog.Outcome.DUPLICATE, "read as: ${c.sender} · SMS twin already prompted")
+            note(NotificationDebugLog.Outcome.DUPLICATE, "SMS twin already prompted")
         }
         // A dropped prompt means the SMS receiver already prompted a twin of this transaction; every
         // write path re-checks the exact + relaxed hashes, so nothing can double-add regardless.
