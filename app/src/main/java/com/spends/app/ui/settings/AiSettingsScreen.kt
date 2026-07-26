@@ -148,11 +148,13 @@ fun AiSettingsScreen(
                         "bank put a number there (a UPI id, for example), that number goes too.",
                 )
                 BulletLine(
-                    "Suggestions also send the WORDS of that one message with every run of digits replaced by " +
-                        "# — that's how \"Hello Fuels\" gets read when the merchant came through as a phone " +
-                        "number. Masking removes amounts, balances, card numbers, numeric dates, phone and " +
-                        "reference numbers. It does NOT remove words, so a payee's name in the message (\"to " +
-                        "JOHN DOE\") and a month written as text (\"Jun\") are sent.",
+                    "Suggestions also send whether it was money in or out, and the WORDS of that one message " +
+                        "with every number replaced by a single # — that's how \"Hello Fuels\" gets read when " +
+                        "the merchant came through as a phone number. Masking removes amounts, balances, card " +
+                        "numbers and numeric dates entirely (₹5,59,393.44 becomes just \"₹#\", so even its size " +
+                        "isn't visible). It does NOT remove letters — so a payee's name (\"to JOHN DOE\"), a " +
+                        "month written as text (\"Jun\") and the letters of a mixed reference (\"AB12CD\" → " +
+                        "\"AB#CD\") are sent.",
                 )
                 BulletLine("Insights: your category totals for the cycle.")
                 Spacer(Modifier.height(8.dp))

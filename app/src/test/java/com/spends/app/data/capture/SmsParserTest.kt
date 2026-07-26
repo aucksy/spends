@@ -442,6 +442,39 @@ class SmsParserTest {
         assertThat(ctx.lowercase()).doesNotContain("not you")
     }
 
+    /** The merchant guard must not eat real shops — these are the ones a "the/a" article rule killed. */
+    @Test fun shop_names_starting_with_an_article_survive() {
+        assertThat(p("VM-SBICRD", "Paid Rs.1,499.00 to The Souled Store from Paytm Balance.").merchant)
+            .isEqualTo("The Souled Store")
+        assertThat(p("VM-SBICRD", "Paid Rs.99.00 to A One Sweets on 25-07-26.").merchant)
+            .isEqualTo("A One Sweets")
+    }
+
+    /** The Axis rule must stop at a "Ref"/sentence end, not swallow the tail into the merchant name. */
+    @Test fun the_axis_rule_does_not_swallow_a_trailing_ref_or_sentence() {
+        assertThat(p("AD-AXISBK", "Spent INR 100.00 Card XX4094 25-07-26 14:34:34 IST Hello Fuels Ref no 004094 Avl Limit: INR 500.00").merchant)
+            .isEqualTo("Hello Fuels")
+        // No merchant between the timestamp and the limit → nothing, not "Avl Limit: INR 3000".
+        assertThat(p("AD-AXISBK", "Spent INR 100.00 Card XX4094 25-07-26 IST Avl Limit: INR 3000.00").merchant)
+            .isNull()
+    }
+
+    /** A whole numeral collapses to ONE '#': the digit count must not leak an amount's magnitude. */
+    @Test fun ai_context_masks_a_whole_numeral_not_digit_by_digit() {
+        val ctx = SmsParser.aiContextFor("Rs.5,59,393.44 debited at BIG BAZAAR. Avl Bal Rs.98,765.43")!!
+        assertThat(ctx).contains("BIG BAZAAR")
+        assertThat(ctx).contains("Rs.#")
+        assertThat(ctx).doesNotContain("#,#")   // grouping separators must be swallowed too
+        assertThat(ctx.any { it.isDigit() }).isFalse()
+    }
+
+    /** Kotlin's default \d is ASCII-only, so a non-ASCII digit would otherwise survive the mask. */
+    @Test fun ai_context_masks_non_ascii_digits_too() {
+        val ctx = SmsParser.aiContextFor("Spent १२३४ at CAFE")!!
+        assertThat(ctx).contains("CAFE")
+        assertThat(ctx.any { it.isDigit() }).isFalse()
+    }
+
     @Test fun ai_context_is_null_when_nothing_useful_remains() {
         assertThat(SmsParser.aiContextFor(null)).isNull()
         assertThat(SmsParser.aiContextFor("   ")).isNull()

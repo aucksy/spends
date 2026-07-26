@@ -359,9 +359,19 @@ class SmsCaptureRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             captureMutex.withLock {
                 val seenHashes = (expenseDao.allDedupeHashes() + pendingDao.allHashes()).toHashSet()
+                val liveExpenses = expenseDao.getAllExpensesOnce().filter { it.deletedAt == null }
                 // Keys of the user's OWN (non-captured) transactions, so a scan never re-queues them.
-                val manualKeys = expenseDao.getAllExpensesOnce()
-                    .filter { it.deletedAt == null && it.source != TxnSource.SMS }
+                val manualKeys = liveExpenses
+                    .filter { it.source != TxnSource.SMS }
+                    .mapTo(HashSet()) { manualKey(it.occurredAt, it.amountMinor, it.kind) }
+                // ⭐The same keys for EVERY live row, including previously scan-added ones. Used only for
+                // messages with no last4, where the dedupe hash falls back to the MERCHANT string: improving
+                // merchant extraction (as the fraud-trailer fix did) shifts those hashes, so `seenHashes`
+                // stops recognising a transaction this very scan already added. Without this net, re-running
+                // "Scan past SMS" over an already-scanned range re-queues them, and one "Add all" tap turns
+                // review rows into genuinely duplicated ledger transactions. Same conservative day|amount|kind
+                // stance `relaxedNoRefDuplicate` already takes for ref-less captures.
+                val anySourceKeys = liveExpenses
                     .mapTo(HashSet()) { manualKey(it.occurredAt, it.amountMinor, it.kind) }
                 // One learned-table read for the whole scan (not one per SMS).
                 val learned = normalizedLearned()
@@ -388,7 +398,11 @@ class SmsCaptureRepository @Inject constructor(
                         val kind = parsed.kind ?: continue
                         val occurredAt = parsed.occurredAt ?: date
                         val hash = hashFor(parsed, occurredAt, amount, kind)
-                        if (hash in seenHashes || manualKey(occurredAt, amount, kind) in manualKeys) {
+                        val dayKey = manualKey(occurredAt, amount, kind)
+                        // A last4-less parse hashes on the merchant, which can drift between releases —
+                        // fall back to the coarse day|amount|kind key against rows from ANY source.
+                        val coarseKeys = if (parsed.last4 == null) anySourceKeys else manualKeys
+                        if (hash in seenHashes || dayKey in coarseKeys) {
                             skipped++
                             continue
                         }

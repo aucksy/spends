@@ -270,8 +270,11 @@ object SmsParser {
             Regex("UPI/[A-Z0-9]+/[0-9]+/([^/\\s]+)", RegexOption.IGNORE_CASE),
             Regex("\\bon\\s+([A-Z][A-Za-z0-9 .*&'-]{2,}?)(?:\\.|\\bAvl\\b|$)"), // ICICI "...on <MERCHANT>."
             // Axis-style card alert: "<amount> <card> <date> <time> IST <MERCHANT> Avl Limit: ..." — the
-            // merchant sits on its own line with NO preposition, so nothing above can reach it.
-            Regex("\\bIST\\s+(.+?)\\s+Avl\\b", RegexOption.IGNORE_CASE),
+            // merchant sits on its own line with NO preposition, so nothing above can reach it. Stops at a
+            // sentence end or a "Ref" so a trailing "Ref no 004094" / "Thank you for banking" can't be
+            // glued onto the name. NOTE: the `[^.]` class does the sentence-stop — putting `\.` in the
+            // trailing alternation instead would let "IST Avl Limit: INR 3000.00" capture "Avl Limit: INR 3000".
+            Regex("\\bIST\\s+([^.]{2,40}?)\\s+(?:Ref\\b|Avl\\b)", RegexOption.IGNORE_CASE),
         )
         for (p in patterns) {
             val m = p.find(body) ?: continue
@@ -297,11 +300,17 @@ object SmsParser {
         return NON_MERCHANT_PHRASES.none { it in low }
     }
 
-    /** Anchored, so this is "starts with your/the/a as a whole word" — "A1 Motors" is unaffected. */
-    private val LEADING_ARTICLE = Regex("^(?:your|the|a)\\b")
+    /**
+     * Only "your…" — NOT "the…" or "a…". Those two ate real shops ("The Body Shop", "The Souled Store",
+     * "A One Sweets"), and they were never load-bearing: the case this guard exists for, "your SBI Credit
+     * Card ending 0436", is already caught twice over by [NON_MERCHANT_PHRASES].
+     */
+    private val LEADING_ARTICLE = Regex("^your\\b")
 
+    /** Bare "account" is deliberately absent — it killed "Amazon Account Services"; "a/c" + the leading
+     *  "your" rule cover the wording these alerts actually use. */
     private val NON_MERCHANT_PHRASES =
-        listOf("credit card", "debit card", "card ending", "a/c", "account", "bank card")
+        listOf("credit card", "debit card", "card ending", "a/c", "bank card")
 
     /**
      * Everything from the "not you / report it" boilerplate to the end of the message. That tail carries a
@@ -334,10 +343,19 @@ object SmsParser {
     fun aiContextFor(body: String?): String? {
         if (body.isNullOrBlank()) return null
         val cleaned = stripReportTrailer(body.replace('\n', ' ').replace(Regex("\\s+"), " ").trim())
-        val masked = cleaned.replace(Regex("\\d+"), "#").replace(Regex("\\s+"), " ").trim()
+        val masked = cleaned.replace(NUMERAL, "#").replace(Regex("\\s+"), " ").trim()
         if (masked.none { it.isLetter() }) return null
         return masked.take(MAX_AI_CONTEXT_CHARS)
     }
+
+    /**
+     * One whole numeral → one `#`. Two deliberate details:
+     *  - `(?U)` makes `\d` Unicode-aware. Kotlin's default `\d` is ASCII `[0-9]`, so a Devanagari or
+     *    Arabic-Indic digit would slip through the mask untouched and be sent.
+     *  - Grouping separators and decimals are swallowed, so `Rs.5,59,393.44` becomes `Rs.#` rather than
+     *    `Rs.#,#,#.#` — otherwise the digit count leaks the order of magnitude of every amount.
+     */
+    private val NUMERAL = Regex("(?U)\\d[\\d,]*(?:\\.\\d+)?")
 
     /** Bank alerts run ~150 chars; this bounds a pathological one without truncating a real merchant. */
     private const val MAX_AI_CONTEXT_CHARS = 300

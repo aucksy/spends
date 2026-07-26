@@ -101,16 +101,19 @@
   never included in a backup. While it is on — and only for the sub-feature you enable — the following is sent over
   HTTPS to <strong>Groq</strong>, a third-party AI provider:</p>
   <ul>
-    <li><strong>Category suggestions:</strong> the merchant name <em>as your bank wrote it</em>; the words of that
-      one bank SMS or notification with <strong>every run of digits replaced by "#"</strong>; your category names;
-      and the names of merchants you previously categorised.</li>
+    <li><strong>Category suggestions:</strong> the merchant name <em>as your bank wrote it</em>; whether the
+      transaction was money in or out; the words of that one bank SMS or notification with <strong>every number
+      replaced by a single "#"</strong>; your category names; and the names of merchants you previously
+      categorised.</li>
     <li><strong>Spending insights:</strong> your category totals and income/expense totals for the cycle you are
       viewing.</li>
   </ul>
-  <p>The digit masking removes amounts, balances, account and card numbers, numeric dates, phone numbers and numeric
-  references. Being straight with you about its limits: it removes <em>digits</em>, not <em>words</em> — so a payee's
-  name written in the message (for example "to JOHN DOE"), a month written as text ("Jun"), and a merchant name that
-  itself contains digits are all sent as-is.</p>
+  <p>The masking replaces each whole number with one "#", so amounts, balances, account and card numbers, numeric
+  dates and phone numbers are removed outright — and because the digit count goes too, not even the size of an amount
+  is visible ("Rs.5,59,393.44" becomes "Rs.#"). Being straight with you about its limits: it removes <em>numbers</em>,
+  not <em>letters</em>. So a payee's name written in the message (for example "to JOHN DOE"), a month written as text
+  ("Jun"), the letters of a mixed reference ("AB12CD" becomes "AB#CD"), and a merchant name that itself contains
+  digits are all sent as-is.</p>
   <p><strong>Never sent</strong> for either sub-feature: your full unmasked message text, any amount or balance, your
   account or card numbers, or your individual transaction records. The AI helper can never add, edit or delete a
   transaction — it only proposes a category that you still confirm yourself. Switching the helper off stops all of
