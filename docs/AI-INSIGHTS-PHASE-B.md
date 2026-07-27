@@ -30,8 +30,14 @@ Card 1 (the v1.56.0 cycle summary) and the Phase A cards are unchanged.
 - **The weekend habit.** Across *all* categories the weekend signal is structurally diluted by rent, EMI,
   insurance and school fees, which land on fixed days and never at weekends. An all-categories weekend
   comparison therefore needs either a threshold so low it fires on noise, or one so high it never fires. The
-  honest version looks at discretionary spending only — which is exactly the `needsWants` classification
-  arriving in **Phase C**. Deferred there rather than shipped weak.
+  honest version looks at discretionary spending only — which was expected to be the `needsWants`
+  classification arriving in **Phase C**. Deferred there rather than shipped weak.
+
+  > ❌ **Neither arrived.** The owner dropped card 11 (so there is no `needsWants` flag and the DB stays at
+  > v16), and the weekend card itself was built and then dropped after review round 11. Per-category
+  > measurement did remove the dilution described above — that diagnosis was right — but charge counts still
+  > cannot separate standing bills drifting onto Saturdays from a person who goes out at weekends. See
+  > [`AI-INSIGHTS-PHASE-C.md`](AI-INSIGHTS-PHASE-C.md).
 
 ---
 
@@ -238,7 +244,7 @@ individually, and the next round found the next one:
   typical month.
 
 The generic `else` branch was the defect: it silently applied "usual" to whatever arrived. `putFigures()` is
-now a single `when` over all twelve kinds with no fallthrough, so the complete payload is auditable in one
+now a single `when` over all twelve kinds (fourteen as of v1.62.0) with no fallthrough, so the complete payload is auditable in one
 place. **The rule it encodes: the model is told to use only the figures it is given, so a key name is not a
 label — it is an assertion the app makes about the user's money.** "Usual" means a median over six cycles and
 nothing else; anything measured to today's day-of-cycle says `ByThisPoint`; a per-cycle average says
@@ -293,6 +299,19 @@ The shipped system prompt still forbids financial advice, warnings and predictio
 *never project a figure forward or say what a total will reach* — because pace is precisely the card that
 invites "at this rate you'll spend ₹X". Loosening the guardrail is **Phase C's** decision, and it is the
 owner's to make.
+
+> ✅ **Phase C made that decision on 2026-07-27: the guardrail stays shut.** The owner initially approved a
+> single carve-out for a savings-suggestion card, then dropped that card once three review rounds showed it
+> could only be made safe by narrowing it to a handful of category names. Phase C ships with **no exception**
+> to the never-advise rule, and `InsightNarrator.SYSTEM` now forbids suggesting less spending explicitly
+> rather than merely omitting permission. See [`AI-INSIGHTS-PHASE-C.md`](AI-INSIGHTS-PHASE-C.md).
+
+Phase B also expected the **weekend habit** to need Phase C's needs/wants split. That diagnosis was wrong,
+and Phase C says so at length: the signal was destroyed by aggregating across categories, not by the missing
+classification. Measured per category it needs no classification at all — but that was never the thing
+that sank it. The card was built and then **dropped after review round 11**: charge counts cannot separate
+three standing bills drifting onto Saturdays from a person who actually goes out at weekends, and the
+false card out-ranked the real one on materiality. See [`AI-INSIGHTS-PHASE-C.md`](AI-INSIGHTS-PHASE-C.md).
 
 ---
 

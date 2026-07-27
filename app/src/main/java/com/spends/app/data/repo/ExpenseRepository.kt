@@ -7,6 +7,7 @@ import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategorySliceRow
 import com.spends.app.data.db.entity.CategorySpend
+import com.spends.app.data.db.entity.DatedAmountRow
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -67,6 +68,10 @@ class ExpenseRepository @Inject constructor(
     /** One-shot per-charge category slices — the transaction-level input to the AI insight engine. */
     suspend fun categorySlicesOnce(startMillis: Long, endExclusiveMillis: Long): List<CategorySliceRow> =
         dao.categorySlicesOnce(startMillis, endExclusiveMillis)
+
+    /** Dated income over a span — insights only; see [ExpenseDao.incomeChargesOnce] for the G2 note. */
+    suspend fun incomeChargesOnce(startMillis: Long, endExclusiveMillis: Long): List<DatedAmountRow> =
+        dao.incomeChargesOnce(startMillis, endExclusiveMillis)
 
     /** Earliest active transaction time (null if none) — lower bound for the "All" range. */
     fun observeEarliestDay(): Flow<Long?> = dao.observeEarliestOccurredAt()

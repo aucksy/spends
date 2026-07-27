@@ -29,12 +29,18 @@ Rationale (Play's definition of *collect* = transmitted off the device to you or
   switch it on and paste their own Groq API key. It then sends, for a transaction the user is reviewing:
   the merchant name as the bank wrote it, the words of that one message with every run of digits
   replaced by "#", whether it was money in or out, the user's category names, and up to 100 of their
-  saved merchant→category shortcuts (names only) — and, for the insight cards, aggregate spending figures: per-category and income/expense
-  totals for the viewed cycle and the one before it, what the user typically spends in a category, one
-  charge's amount and category for two of the cards, and for the over-time cards the day reached in the
+  saved merchant→category shortcuts (names only) — and, for the insight cards, spending figures, mostly aggregates: per-category and income/expense
+  totals for the viewed cycle, and the spending totals for the one before it (never the previous cycle's
+  income), what the user typically spends in a category, one
+  charge's amount and category for two of the cards (with a count of identical charges for "charged twice?"), and for the over-time cards the day reached in the
   cycle, the cycle's calendar month name, the same stretch's total a year earlier, one category's per-cycle
-  figures, and the share of spending falling in the week after payday. Never a transaction date, a merchant
-  (for insights), a balance, an account/card number, or a transaction record.
+  figures, and the share of spending falling in the week after payday with the share of the cycle's days that
+  week makes up and how many earlier cycles it covered. Two further cards add the total of
+  the user's already-started monthly recurring rules and how many there are, against the median income of
+  their COMPLETED cycles (not this cycle's); and how much of the cycle's income remains, as an amount and
+  as a share, with the share usually kept by the same point. (The cycle's income TOTAL is listed above; it
+  is sent by the summary card, which has done so since v1.56.0, not by these two.) Never a
+  transaction date, a merchant (for insights), a balance, an account/card number, or a transaction record.
   Under Play's definition this is **sharing with a third party**. That is why the answer above is Yes: a
   "No" would only hold read as "in the app's default configuration", and that reading is not worth relying
   on. See the itemised table in Section 2, which must be filled in.
@@ -60,7 +66,7 @@ and delete the Drive backup from within Spends or from Google Drive. (No server-
 
 | Data type | Collected | Shared | Purpose | Optional | Notes |
 |---|---|---|---|---|---|
-| Financial info → other financial info (your transactions) | Yes* | Yes** | App functionality (backup & restore; spending insights) | Yes | *Only via the user's own Google Drive backup, if enabled. **ONLY if the user enables the optional AI helper's insights and supplies their own Groq key: per-category and income/expense **totals** for the viewed cycle and the one before it, plus a comparison figure for what they typically spend in a category. Mostly aggregates; two insight cards ("a large charge", "charged twice?") additionally send **one charge's amount and its category**, and the cards that compare over time send the day reached in the cycle, the cycle's **calendar month name** (e.g. "July"), the same stretch's total a **year earlier**, one category's per-cycle figures across six cycles, and the **share of spending falling in the week after payday**. Never a merchant, a transaction date, a balance, an account/card number, or a transaction record. Off by default. |
+| Financial info → other financial info (your transactions) | Yes* | Yes** | App functionality (backup & restore; spending insights) | Yes | *Only via the user's own Google Drive backup, if enabled. **ONLY if the user enables the optional AI helper's insights and supplies their own Groq key: per-category and income/expense **totals** for the viewed cycle, and the **spending** totals for the one before it (never the previous cycle's income), plus a comparison figure for what they typically spend in a category. Mostly aggregates; two insight cards ("a large charge", "charged twice?") additionally send **one charge's amount and its category** (and, for "charged twice?", how many identical charges there were), and the cards that compare over time send the day reached in the cycle, the cycle's **calendar month name** (e.g. "July"), the same stretch's total a **year earlier**, one category's per-cycle figures across six cycles, and the **share of spending falling in the week after payday** (with the share of the cycle's days that week makes up, and how many earlier cycles it covered). Two further cards (v1.62.0) send the **total of the user's already-started monthly recurring rules** and how many there are, against the **median income of their completed cycles** (never this cycle's income), and **how much of the cycle's income remains** (as an amount and as a share, against the share usually kept by the same point — the income total itself is listed above, and is sent by the summary card, not by these two). Never a merchant, a transaction date, a balance, an account/card number, or a transaction record. Off by default. |
 | SMS messages | Yes* | Yes* | App functionality (category suggestion) | Yes | *ONLY if the user enables the optional AI helper and supplies their own Groq key. Sent to Groq: a number-masked extract of that one message (all digit runs replaced by "#" — which removes numeric dates but NOT a month written in letters), the merchant string as the bank wrote it, whether it was money in or out, the user's category names, and up to 100 of their saved merchant→category shortcuts (merchant and category names only, no amounts or dates) so a merchant they have tagged before can be recognised. Off by default; nothing is sent otherwise. |
 | Personal identifiers, contacts, location, etc. | No | No | — | — | Not accessed |
 

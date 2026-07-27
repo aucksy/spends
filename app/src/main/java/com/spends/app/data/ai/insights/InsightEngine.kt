@@ -15,6 +15,36 @@ data class ChargeSlice(
 )
 
 /**
+ * The user's standing monthly recurring load.
+ *
+ * ⭐**Monthly rules only, summed at face value.** Weekly, daily and yearly rules are excluded by the
+ * caller rather than normalised, because normalising them invents money: a ₹12,000 annual premium folded
+ * in as "₹1,000 a cycle" is a figure the user has never paid, and this engine's first rule is that it never
+ * reports one. The card is honest about what it counts — the monthly rules that were set up — and never
+ * claims to have found every fixed cost.
+ */
+data class CommitmentTotals(val monthlyMinor: Long, val ruleCount: Int)
+
+/** Income and expense over one window, both measured to the same point in their own cycle. */
+data class SavingsWindow(val incomeMinor: Long, val expenseMinor: Long)
+
+/**
+ * Day-aligned income and expense for this cycle and each prior one.
+ *
+ * ⭐[prior] is deliberately **its own list** rather than something the engine pairs against
+ * `InsightInput.history` by index. `history` is filtered for empty windows before it arrives, so pairing
+ * positionally against an unfiltered income list would silently line a cycle's income up against a
+ * different cycle's spending — the exact class of off-by-one the Phase B round kept surfacing.
+ *
+ * ℹ [prior] and [InsightInput.priorFullCycleIncomeMinor] are index-aligned in practice — the provider
+ * builds both in one indexed pass — but **nothing reads them together any more.** A commitments gate briefly
+ * did; it was deleted along with the part-month denominator. Recorded so the next reader does not assume the
+ * pairing is load-bearing, and so anyone who wants to rely on it again knows it is a provider convention
+ * rather than something these types enforce.
+ */
+data class SavingsWindows(val current: SavingsWindow, val prior: List<SavingsWindow>)
+
+/**
  * Everything the detectors need, already loaded. Windows are equal-length and consecutive, most recent first.
  *
  * ⚠ [history] and [previous] must already be **day-aligned** to the same point in their cycle that the
@@ -62,6 +92,25 @@ data class InsightInput(
      * definitions of the same cycle.
      */
     val wholeCycleComparable: Boolean = true,
+    // ---- judgement calls (Phase C). All default to "no data", so a caller that cannot supply them gets no
+    // ---- card rather than a wrong one — the same contract the Phase B fields carry.
+    /**
+     * The standing monthly recurring load, or null when no rule qualifies.
+     *
+     * ⚠ The commitments card additionally requires [priorFullCycleIncomeMinor], which is its denominator.
+     * It does NOT use [savings] or this cycle's income at all. Supplying commitments alone yields no card.
+     */
+    val commitments: CommitmentTotals? = null,
+    /** Day-aligned income vs expense, this cycle and the prior ones. */
+    val savings: SavingsWindows? = null,
+    /**
+     * Income over each prior **complete** cycle — the commitments card's denominator.
+     *
+     * Deliberately whole-cycle rather than day-aligned, unlike [savings], and since 2026-07-27 it is the
+     * figure the card divides BY rather than a yardstick for judging this cycle's income. That is what lets
+     * the card carry no timing gates at all; see `InsightEngine.commitments`.
+     */
+    val priorFullCycleIncomeMinor: List<Long> = emptyList(),
 )
 
 /**
@@ -135,12 +184,77 @@ object InsightEngine {
 
     private const val HABIT_MIN_WINDOWS = 4
     private const val HABIT_MIN_TOTAL_MINOR = 30_000_00L
-    private const val HABIT_MIN_SHARE_PERCENT = 25.0
     /** The payday week must take at least this much more than its share of days to be worth remarking on. */
     private const val HABIT_MIN_LIFT = 1.35
 
-    /** How many cards the carousel shows alongside the cycle summary. */
-    const val MAX_FINDINGS = 5
+    // ---- judgement calls (Phase C) ----
+
+    private const val COMMITMENTS_MIN_MINOR = 2_000_00L
+    private const val COMMITMENTS_MIN_INCOME_MINOR = 5_000_00L
+
+    /**
+     * ⭐⭐How far the BEST prior full cycle may exceed the typical one before "your income" stops meaning
+     * anything, as a percentage above the median.
+     *
+     * The denominator is the median of the user's completed cycles, which only means anything if they have
+     * a typical month at all. A single cycle far above the median is proof that they do not — "what usually
+     * comes in" would be a fiction whichever cycle you picked.
+     *
+     * (The history below describes an earlier design in which this gate protected a *part-month* denominator.
+     * That denominator is gone; the sweeps are kept because they are why the bar is measured against the
+     * median rather than against the worst cycle.)
+     *
+     * ⭐**Two earlier versions of this gate were wrong, both caught by executing a sweep rather than
+     * reasoning.** A best-to-worst RATIO of 3× was too weak (exactly 3.00× passed, and a third of fired
+     * cards for commission and gig income overstated by 10+ points, worst 99% quoted against a true 46%) and
+     * simultaneously too expensive — because the ₹5,000 prior filter runs first, one month logged at ₹4,999
+     * kept the card while ₹5,000 lost it, and an ordinary raise or a two-credit salary silenced a completely
+     * typical salaried user. Gating on the two MIDDLE cycles fixed the cliffs but still left 6–7% of cards
+     * misleading for freelance, seasonal and mid-window-raise income.
+     *
+     * Measuring the top against the median fixes both, because a low outlier cannot move it and a high one
+     * always can. Verified over 12,000 trials per income pattern with a realistic lump-arrival model:
+     * flat-salaried and one-odd-month users keep the card **100%** of the time once their salary lands,
+     * while every erratic pattern drops below the 5% misleading bar.
+     *
+     * The honest cost: someone with an annual bonus above 1.5× their usual month loses this card for the six
+     * cycles that bonus stays in the baseline. That is a missed card, which is the cheap direction.
+     */
+    private const val COMMITMENTS_MAX_INCOME_SPIKE_PERCENT = 50
+
+    private const val SAVINGS_MIN_INCOME_MINOR = 5_000_00L
+    private const val SAVINGS_MIN_WINDOWS = 3
+    /**
+     * Below this the two rates are the same rate with rounding noise on top.
+     *
+     * Reused as the ambiguity bar on the baseline's two middle values, deliberately: if swapping which
+     * middle `medianInt` picks would move the baseline by more than the amount that makes two rates
+     * *different*, then the pick — not the data — is deciding what the card says.
+     *
+     * ⭐**The safety of that reuse rests on an invariant nobody wrote down until round 13:
+     * `differenceBar >= ambiguityBar / 2`.** An ambiguity bar of `P` bounds the gap between the textbook
+     * centre and the lower middle at `P/2`, so a difference bar of `P` clears it with 100% margin — which is
+     * why one constant serving both roles produces **zero** headline inversions (measured: 0 in 123,614
+     * fired cards). Decouple them and it breaks: hold the difference bar at 8, raise the ambiguity bar to
+     * 30, and a user with priors [1, 1, 1, 31, 31, 31] is told *"you've kept 9%, ahead of the 1% you'd
+     * usually have kept"* when the true centre is 16% and they are behind it. If these ever become two
+     * constants, that inequality must hold.
+     */
+    private const val SAVINGS_MIN_POINTS = 8
+
+    /**
+     * How many cards the carousel shows alongside the cycle summary.
+     *
+     * Raised 5 → 6 in Phase C. The two judgement cards reserve two slots between them; without an extra
+     * page they would take those slots from the anomaly and over-time families, which is the same failure
+     * the Phase B slot reservation exists to prevent.
+     *
+     * ⚠ Phase C planned four new kinds and shipped **two**. An advice card was dropped by the owner on
+     * 2026-07-27; a per-category weekend-habit card was dropped after review round 11 (see the phase doc).
+     * Six is still right for two: it is the slot RESERVATION that needs the room, not the count of new
+     * kinds — without it a cycle full of anomalies would crowd both judgement cards off the carousel.
+     */
+    const val MAX_FINDINGS = 6
 
     /**
      * Slot reservations, and why they exist.
@@ -150,11 +264,49 @@ object InsightEngine {
      * the over-time cards would be built and then never seen. Reserving slots is what makes the carousel
      * actually vary — which was the original complaint.
      */
+    /**
+     * ⚠ Same honest coverage note as [JUDGEMENT_SLOTS]: the value is **live** (4 and 5 behave differently)
+     * but 0, 1, 2 and 3 are indistinguishable by every committed fixture, because anomalies occupy the top
+     * four priority tiers and win the backfill whether or not a slot is reserved for them. The reservation
+     * earns its keep only in states no fixture reaches.
+     */
     private const val ANOMALY_SLOTS = 3
     private const val OVER_TIME_SLOTS = 2
 
+    /**
+     * Reserved for the Phase C judgement cards — commitments and the savings rate.
+     *
+     * 3 + 2 + 2 = 7 reserved against [MAX_FINDINGS] of 6, deliberately. The final `take` trims the
+     * lowest-ranked, which is what lets a cycle with nothing to say in one family hand its slot to another
+     * rather than shipping a blank page.
+     *
+     * Two slots for a family that now has only two members looks generous, and it is: the savings rate is
+     * additionally capped against pace and year-on-year by [isWholeCycle], so in practice this family
+     * usually delivers one card. The reservation exists so that the one it does deliver cannot be crowded
+     * out by three anomalies, which by rupee impact would otherwise always win.
+     *
+     * ⚠ **Known coverage gap, recorded rather than papered over (review round 12).** No committed fixture
+     * distinguishes 2 from 1. The value IS live and correct — sweeping the allocator over synthetic finding-sets found a
+     * substantial minority of states where 2 and 1 differ (two independent runs agreed on the direction;
+     * neither script is committed, so treat the direction as the claim and the count as illustrative) — but every fixture that reaches this family either
+     * yields one judgement card anyway (because `busyCycle` triggers pace, which is whole-cycle and so
+     * blocks the savings rate) or has fewer than [MAX_FINDINGS] findings, where the backfill would admit the
+     * second card regardless of the reservation.
+     *
+     * What would pin it: three anomalies, exactly ONE over-time finding that is **not** pace or
+     * year-on-year, both judgement cards, and two movers whose materiality exceeds the commitments total.
+     * At 2 slots both judgement cards ship; at 1, a mover takes the last seat. That fixture was not written
+     * because building it correctly needs the anomaly multiples and the pace ratio tuned against each other,
+     * and a subtly wrong test is worse than an absent one — but it is the shape to build.
+     */
+    private const val JUDGEMENT_SLOTS = 2
+
     /** Detect, rank by real-money impact, and keep the best [MAX_FINDINGS] with a guaranteed mix. */
     fun detect(input: InsightInput): List<InsightFinding> {
+        // ⚠ This also silences COMMITMENTS, which uses no expense figure at all — reachable for someone
+        // paid on day 1 who has not spent yet. Left as is: the carousel is a spending surface, and a lone
+        // card on a page that says nothing about spending is worse than waiting a day. Silence, so the cheap
+        // direction — but it is a gate the commitments card's own gate list does not mention.
         if (input.expenseMinor <= 0L) return emptyList()
         val findings = buildList {
             addAll(unusualAndQuiet(input))
@@ -166,6 +318,8 @@ object InsightEngine {
             yearOnYear(input)?.let { add(it) }
             categoryTrend(input)?.let { add(it) }
             paydayHabit(input)?.let { add(it) }
+            commitments(input)?.let { add(it) }
+            savingsRate(input)?.let { add(it) }
         }
         val ranked = findings.sortedWith(byRank)
         // One category, one card. A category that trips "unusual" almost always trips "biggest mover" too —
@@ -182,54 +336,70 @@ object InsightEngine {
     }
 
     /** Kinds that would repeat a category already covered by an "unusual"/"quiet win" card. */
-    private val RESTATES_A_JUDGED_CATEGORY =
-        setOf(InsightKind.MOVER_UP, InsightKind.MOVER_DOWN, InsightKind.CATEGORY_TREND)
+    private val RESTATES_A_JUDGED_CATEGORY = setOf(
+        InsightKind.MOVER_UP,
+        InsightKind.MOVER_DOWN,
+        InsightKind.CATEGORY_TREND,
+    )
 
     private val byRank =
         compareByDescending<InsightFinding> { priority(it.kind) }.thenByDescending { it.materialityMinor }
 
     /** Fill the reserved slots first, then backfill in plain rank order. */
     private fun allocate(ranked: List<InsightFinding>): List<InsightFinding> {
-        val picked = LinkedHashSet<InsightFinding>()
+        val picked = mutableListOf<InsightFinding>()
         ranked.filter { family(it.kind) == Family.ANOMALY }.take(ANOMALY_SLOTS).forEach { picked += it }
-        overTimeSlate(ranked).forEach { picked += it }
-        // ⭐The one-whole-cycle rule has to hold HERE too, not only in overTimeSlate. Backfilling in plain
-        // rank order re-admits the very card the slate skipped, so a quiet cycle would show pace saying
-        // "₹5,100 ahead" and year-on-year saying "₹19,470 less" about the same total, on consecutive pages.
+        picked += slate(ranked, Family.OVER_TIME, OVER_TIME_SLOTS, picked)
+        picked += slate(ranked, Family.JUDGEMENT, JUDGEMENT_SLOTS, picked)
+        // ⭐The caps have to hold HERE too, not only inside the slates. Backfilling in plain rank order
+        // re-admits the very card a slate skipped, so a quiet cycle would show pace saying "₹5,100 ahead"
+        // and year-on-year saying "₹19,470 less" about the same total, on consecutive pages.
         ranked.forEach {
-            val clashes = isWholeCycle(it.kind) && picked.any { chosen -> isWholeCycle(chosen.kind) }
-            if (picked.size < MAX_FINDINGS && !clashes) picked += it
+            if (picked.size < MAX_FINDINGS && it !in picked && !clashes(it, picked)) picked += it
         }
         return picked.sortedWith(byRank).take(MAX_FINDINGS)
     }
 
-    /** Cards whose subject is the cycle's whole total, of which the carousel shows at most one. */
-    private fun isWholeCycle(kind: InsightKind): Boolean =
-        kind == InsightKind.PACE || kind == InsightKind.YEAR_ON_YEAR
-
     /**
-     * At most [OVER_TIME_SLOTS] over-time cards, and **at most one of them measured on the whole cycle**.
+     * Up to [slots] cards from one family, skipping any that would repeat something already chosen.
      *
-     * Pace and year-on-year both answer "how does this cycle's total compare", so by materiality they always
-     * take both slots and the category trend and the payday habit never appear. Capping the total-level pair
-     * at one keeps the second slot for something that says a different kind of thing.
+     * Takes what has already been picked because the caps span families: the savings rate is a JUDGEMENT
+     * card but it is measured on the whole cycle, exactly like pace, so it has to be checked against an
+     * OVER_TIME choice made a moment earlier rather than only against its own family.
      */
-    private fun overTimeSlate(ranked: List<InsightFinding>): List<InsightFinding> {
+    private fun slate(
+        ranked: List<InsightFinding>,
+        target: Family,
+        slots: Int,
+        alreadyPicked: List<InsightFinding>,
+    ): List<InsightFinding> {
         val out = mutableListOf<InsightFinding>()
-        var wholeCycleUsed = false
-        for (finding in ranked.filter { family(it.kind) == Family.OVER_TIME }) {
-            if (out.size >= OVER_TIME_SLOTS) break
-            if (isWholeCycle(finding.kind)) {
-                if (wholeCycleUsed) continue
-                wholeCycleUsed = true
-            }
+        // `target`, not `family` — naming the parameter after the function is legal today only because
+        // Family has no `invoke` operator, and would silently rebind the call if anyone ever added one.
+        for (finding in ranked.filter { family(it.kind) == target }) {
+            if (out.size >= slots) break
+            if (finding in alreadyPicked) continue
+            if (clashes(finding, alreadyPicked + out)) continue
             out += finding
         }
         return out
     }
 
+    /** Whether [finding] would repeat what an already-chosen card is fundamentally about. */
+    private fun clashes(finding: InsightFinding, chosen: List<InsightFinding>): Boolean =
+        isWholeCycle(finding.kind) && chosen.any { isWholeCycle(it.kind) }
+
+    /**
+     * Cards whose subject is the cycle's whole total, of which the carousel shows at most one.
+     *
+     * The savings rate joins pace and year-on-year in Phase C: all three answer "how does this cycle's total
+     * compare", and by materiality they would otherwise take every over-time and judgement slot between them.
+     */
+    private fun isWholeCycle(kind: InsightKind): Boolean =
+        kind == InsightKind.PACE || kind == InsightKind.YEAR_ON_YEAR || kind == InsightKind.SAVINGS_RATE
+
     /** What a card is *about*, which is what the slot reservations are drawn against. */
-    private enum class Family { ANOMALY, OVER_TIME, CONTEXT }
+    private enum class Family { ANOMALY, OVER_TIME, JUDGEMENT, CONTEXT }
 
     private fun family(kind: InsightKind): Family = when (kind) {
         InsightKind.DUPLICATE_CHARGE -> Family.ANOMALY
@@ -240,6 +410,8 @@ object InsightEngine {
         InsightKind.YEAR_ON_YEAR -> Family.OVER_TIME
         InsightKind.CATEGORY_TREND -> Family.OVER_TIME
         InsightKind.HABIT_PAYDAY -> Family.OVER_TIME
+        InsightKind.COMMITMENTS -> Family.JUDGEMENT
+        InsightKind.SAVINGS_RATE -> Family.JUDGEMENT
         InsightKind.MOVER_UP -> Family.CONTEXT
         InsightKind.MOVER_DOWN -> Family.CONTEXT
         InsightKind.CONCENTRATION -> Family.CONTEXT
@@ -261,7 +433,11 @@ object InsightEngine {
         InsightKind.PACE -> 5
         InsightKind.YEAR_ON_YEAR -> 4
         InsightKind.CATEGORY_TREND -> 3
+        // The payday habit and the savings rate share a tier: both are "here is a pattern in how you
+        // spend", and which of them leads should come down to size, not to a hard-coded pecking order.
         InsightKind.HABIT_PAYDAY -> 2
+        InsightKind.SAVINGS_RATE -> 2
+        InsightKind.COMMITMENTS -> 1
         InsightKind.MOVER_UP, InsightKind.MOVER_DOWN -> 1
         InsightKind.CONCENTRATION -> 0
     }
@@ -522,11 +698,21 @@ object InsightEngine {
         val habits = input.habits ?: return null
         if (habits.windowsWithData < HABIT_MIN_WINDOWS) return null
         if (habits.totalMinor < HABIT_MIN_TOTAL_MINOR) return null
+        // An assertion, not a gate: `InsightCalendar.habitBuckets` counts real days over real cycle
+        // boundaries, and `InsightsProvider` returns before building any of this when there are fewer than
+        // two boundaries. Labelled so the next audit does not miscount it as protection.
         if (habits.totalDays <= 0 || habits.paydayWeekDays <= 0) return null
         val moneyShare = (habits.paydayWeekMinor.toDouble() / habits.totalMinor) * 100.0
         val dayShare = (habits.paydayWeekDays.toDouble() / habits.totalDays) * 100.0
+        // An assertion, not a gate — the line above already guarantees both counts are >= 1, so this share
+        // is > 0. Labelled because an unlabelled impossible check gets miscounted as protection by the
+        // next person to audit these detectors.
         if (dayShare <= 0.0) return null
-        if (moneyShare < HABIT_MIN_SHARE_PERCENT) return null
+        // ⭐An absolute 25% floor stood here until review round 5 proved it was dead code. `habitBuckets`
+        // builds
+        // `paydayDays = sum(min(7, days))` against `totalDays = sum(days)`, so over any run of cycles
+        // `CycleUtils` can produce (28–31 days, 4–6 windows) the lift bar bottoms out at **30.48%** and
+        // always subsumed the 25%. It could only bite at cycles of 38 days or more, which cannot occur.
         if (moneyShare < dayShare * HABIT_MIN_LIFT) return null
         // Ranking only — never shown, never sent. See InsightFinding.materialityMinor. Multiply before
         // dividing: the other order truncates the per-day figure first and loses rupees to rounding.
@@ -538,6 +724,278 @@ object InsightEngine {
             multiple = moneyShare / dayShare,
             count = habits.windowsWithData,
             materialityMinor = habits.paydayWeekMinor - evenSpread,
+        )
+    }
+
+    // ---- judgement calls (Phase C) ----
+
+    /**
+     * The standing monthly recurring load, against what a cycle **usually** brings in.
+     *
+     * ⭐⭐⭐**The denominator is the user's usual full-cycle income, NOT income so far, and that is the
+     * whole design.** Owner decision, 2026-07-27, after seven review rounds.
+     *
+     * The card began as "commitments as a share of the income that has come in so far". That divides a full
+     * month's commitments by a part month's income, and **no gate built from history can make it honest**,
+     * because nothing in the past bounds what THIS cycle will finish at. Each round closed one hole and the
+     * next round found another:
+     *
+     * - **R3** — no day gate at all: a ₹10,000 side payment on day 3 made commitments "80% of income".
+     * - **R4** — a day floor plus "80% of the day-aligned usual" was circular for anyone paid late in the
+     *   month, whose usual income by day 12 is near zero.
+     * - **R4** — a whole-cycle yardstick, gated on a best-to-worst ratio: too weak (a third of commission
+     *   and gig cards out by 10+ points, worst 99% quoted against a true 46%) and simultaneously too
+     *   expensive (one month logged at ₹4,999 kept the card, ₹5,000 lost it).
+     * - **R5** — gating on the two middle cycles fixed the cliffs, still left 6–7% misleading.
+     * - **R5** — raising the arrived bar 80 → 95 cut the worst case from +15 to +3 **only when the priors
+     *   resemble this cycle**; it bounds `income / prior median`, never `income / this cycle's final`.
+     * - **R6** — requiring the user's own usual arrival share to reach 95% took the measured rates to zero
+     *   on rescaled income — and **R7 defeated it in two lines**: a tutor whose exam-season classes bill on
+     *   day 27, or a salaried user with a quarterly incentive, has ordinary priors that all read 100%
+     *   arrived, so the gate is silent while this cycle's extra has not landed. +17 and +18 points. The same
+     *   gate also removed up to **77%** of cards from anyone paid in instalments, and 94–100% of those cards
+     *   had been honest.
+     *
+     * Four sweeps were run across those rounds and **every one was unsound in a different way** — wrong
+     * yardstick, lump arrival, narrow uniform ranges, and finally an arrival model in which a cycle's
+     * arrival share cannot differ from the user's usual one. That is the tell: when the measurement keeps
+     * having to be rebuilt to see the next defect, the quantity being measured is the problem.
+     *
+     * So the question was narrowed instead of gated — the same move Phase A made when it stopped scaling
+     * baselines. **Both figures are now stable and real**: the sum of the user's own monthly rules that have
+     * already started, and the median of their own completed cycles' income. Neither depends on where in the
+     * cycle they are, so the card needs no day floor, no arrived bar, no arrival
+     * gate and no `wholeCycleComparable` — four gates went with the old denominator, and with them an
+     * entire class of defect. What remains is a standing fact about their money: a third of what usually
+     * comes in is already spoken for.
+     *
+     * `cycleComplete` came BACK in round 8, and it is worth being precise about why, because it looks like a
+     * regression and is not: it is an **epoch** gate, not a timing one. Nothing here moves with the day
+     * *within* a cycle — that property is intact and is tested. But the numerator is today's rule set while
+     * the denominator is the cycles before whichever cycle is on screen, so browsing back would assert
+     * today's commitments against somebody else's history, in the present tense.
+     *
+     * The honest cost: this is no longer news about *this* cycle. It reads the same until their rules or
+     * their income change. That is the trade the owner chose, and it is the right one — a card that says a
+     * true thing quietly beats a card that says an interesting thing wrongly.
+     *
+     * ⚠ **Accepted residual: a pay CUT lags by up to three cycles** (counting the cycle the cut lands in — the same convention as the rise below). A median of six takes three cycles to
+     * move, and the spike gate measures the *best* cycle against the median, so it cannot see a fall.
+     * Measured: one or two cycles after a ₹90,000 → ₹45,000 cut the card still quotes "32% of ₹90,000"
+     * when the truth is 63% of ₹45,000 — about 31 points of UNDERSTATEMENT, the direction that makes
+     * commitments look more affordable than they are. The third cycle still quotes it; the spike gate fires from
+     * the fourth, and the card stays quiet until the new level becomes the median. A recency gate was tried and rejected: it kills the
+     * "one odd low month must not cost the card" case bought in round 4.
+     *
+     * ⚠ **A pay RISE lags longer, by more, and the earlier claim that it was "the safe direction" was
+     * doing more work than it had earned.** After a ₹90,000 → ₹1,35,000 rise (+50%, exactly at the spike
+     * bar, so the gate never sees it) the card quotes 32% against a true 21% for **four** cycles — and where
+     * commitments equal the old usual income, 100% against a true 67%, an overstatement of **33 points**.
+     * Longer and larger than the cut's three cycles at −31. It is accepted because the direction is
+     * conservative (commitments look *less* affordable than they are), not because it is small.
+     */
+    private fun commitments(input: InsightInput): InsightFinding? {
+        val commitments = input.commitments ?: return null
+        // An assertion, not a gate: `InsightsProvider.monthlyCommitments` returns null rather than a zero
+        // count, so nothing can reach here with one. Kept because the type permits it.
+        if (commitments.ruleCount <= 0) return null
+        if (commitments.monthlyMinor < COMMITMENTS_MIN_MINOR) return null
+        // ⭐Not a timing gate — an EPOCH gate, and the distinction matters because the whole point of this
+        // card's rewrite was to remove timing gates. The numerator is **today's** rule set (the app cannot
+        // reconstruct a historical one), while the denominator is the six cycles before whichever cycle is
+        // on screen. Stepping back with the prev arrow keeps the range on CURRENT, so a cycle from three
+        // months ago really does reach here — and the card would then assert today's commitments against
+        // income from cycles four to nine back, in the present tense, with nothing on the card saying so.
+        // Within a live cycle nothing here moves with the day; that property is unaffected and is tested.
+        if (input.cycleComplete) return null
+        // The usual income of a COMPLETE cycle — a figure some cycle of theirs genuinely reached, and the
+        // reason this card carries no timing gates at all. See the KDoc above.
+        //
+        // ⭐⭐**The trim drops trailing ZEROS — not sub-floor cycles — and it TRIMS rather than FILTERS.**
+        // Both halves of that sentence were learned the hard way, one round apart. An
+        // earlier version filtered every sub-floor cycle out and took the median of what was left — the
+        // median of the user's *good* cycles, which is the self-selecting baseline this project already had
+        // to fix once on the savings rate. It told someone who lost their job three cycles ago, whose last
+        // three cycles logged ₹0, that their ₹28,400 of commitments was "32% of the ₹90,000 that usually
+        // comes in each cycle". A seasonal earner whose lean months run ₹4,000 got the same sentence, while
+        // in half of their cycles those commitments are 7x that cycle's entire income.
+        //
+        // The list is newest-first, so **trailing ZERO** buckets are cycles from before the app was
+        // installed — absence of data, correctly dropped. Anything else stays, because a real lean or empty
+        // cycle is precisely what makes "usually" untrue. The median then has to clear the floor on its own.
+        //
+        // ⭐⭐**`== 0L`, not `< COMMITMENTS_MIN_INCOME_MINOR`, and the difference is measurable.** Trimming
+        // everything sub-floor asserts that a lean stretch 4–6 cycles ago is pre-install data — which is not
+        // derivable from the numbers, because the two are byte-identical. It also shortened the list enough
+        // to move the lower-middle median onto a good cycle, so whether a seasonal earner got a false card
+        // came down to a **phase offset**: `LLLGGG` was silenced but `LGGLLL` — the same four lean cycles in a
+        // different order — still announced "32% of ₹90,000". (Strictly those two are not permutations:
+        // `LLLGGG` has three lean cycles and `LGGLLL` four. The equal-count pair that shows it is `LLLGGG`,
+        // silent, against `GGGLLL`, which fires — the same three lean cycles, reordered.) Enumerating all 64
+        // lean/good orderings:
+        // trimming sub-floor fires on **34 of 64** (27 of them carrying two or more lean cycles), worst case
+        // **4 lean cycles of 6**; trimming only zeros fires on **22 of 64** (15 with two or more), worst
+        // **2 of 6** — exactly the "one or two odd months must not cost the card" intent.
+        //
+        // ⚠ An earlier version of this comment quoted 27 and 15 as if they were counts out of 64; they were
+        // the ≥2-lean subsets. Third time this file has carried a number nobody could reproduce, so: both
+        // figures above are of 64, and the worst-case counts (4 and 2) were correct throughout.
+        val priorIncome = input.priorFullCycleIncomeMinor
+            .dropLastWhile { it == 0L }
+            // `SAVINGS_MIN_WINDOWS` is deliberately shared with the savings rate: both cards are asking
+            // "is there enough income history for a median to mean anything", so they should agree. Retuning
+            // it moves a gate on both — which is the intent, but worth knowing before touching it.
+            .takeIf { it.size >= SAVINGS_MIN_WINDOWS }
+            ?: return null
+        val usualFullCycleIncome = median(priorIncome)
+        if (usualFullCycleIncome < COMMITMENTS_MIN_INCOME_MINOR) return null
+        // Is there a "usual" at all? Judged by how far the BEST cycle sits above the typical one, not by
+        // best-against-worst: a low outlier (a month someone forgot to confirm, a mid-cycle join, a salary
+        // split across two credits) says nothing about whether this user has a typical month, while a single
+        // cycle far above the median means the median is not one. See the constant for the two weaker
+        // versions of this gate that sweeps proved wrong.
+        if (priorIncome.max() > usualFullCycleIncome * (100 + COMMITMENTS_MAX_INCOME_SPIKE_PERCENT) / 100) {
+            return null
+        }
+        // Commitments above a whole cycle's income is a real situation, but not one this card should
+        // announce as a share — "108% of what usually comes in" is a sentence that helps nobody.
+        if (commitments.monthlyMinor > usualFullCycleIncome) return null
+        return InsightFinding(
+            kind = InsightKind.COMMITMENTS,
+            amountMinor = commitments.monthlyMinor,
+            baselineMinor = usualFullCycleIncome,
+            sharePercent = ((commitments.monthlyMinor.toDouble() / usualFullCycleIncome) * 100).roundToInt(),
+            count = commitments.ruleCount,
+            materialityMinor = commitments.monthlyMinor,
+        )
+    }
+
+    /**
+     * How much of what came in has been kept **by this point**, against the same point in earlier cycles.
+     *
+     * ⭐Day-aligned for the same reason everything else here is. Salary lands on day 1 and spending
+     * accumulates after it, so a flat "you've kept 91% of your income this cycle" is true on day 3, decays
+     * all cycle, and flatters the user for three weeks before quietly going away. Comparing like with like —
+     * this cycle's share at day N against the median share at day N of earlier cycles — is the only version
+     * that says something.
+     */
+    private fun savingsRate(input: InsightInput): InsightFinding? {
+        val savings = input.savings ?: return null
+        if (!input.wholeCycleComparable) return null
+        // Same floor as pace and year-on-year: in the opening days one rent charge moves the share by tens
+        // of points, on both sides of the comparison.
+        if (input.daysElapsed < PACE_MIN_DAYS) return null
+        // Every figure here says "so far" and "by this point". A cycle browsed back to is reachable with the
+        // range still on CURRENT, and describing it in the present tense would be false — see commitments.
+        if (input.cycleComplete) return null
+        val income = savings.current.incomeMinor
+        if (income < SAVINGS_MIN_INCOME_MINOR) return null
+        // ⭐⭐The two sides of this subtraction must be measured on the SAME basis, and by default they are
+        // not. `incomeMinor` is the screen's headline income — every income row. The expense side is the
+        // CATEGORISED total, because that is the only basis the prior windows can be built from (they come
+        // from the allocations join). Pace can live with that gap: it compares expense against expense, so
+        // the bias cancels. This card cannot, because it does not merely compare — it STATES `kept` as a
+        // rupee amount and sends it to the model as `keptSoFarAmount`.
+        //
+        // With ₹10,000 of uncategorised spend the card reads *"You've kept ₹60,000 of what came in so far
+        // — 67%"* when the true figure is ₹50,000 and 56%. That is a number the app invented, about money
+        // the user does not have, which is the one thing this engine exists not to do.
+        //
+        // So it refuses to speak when the two bases disagree at all. The share would still have been
+        // defensible (both sides carry the same bias); the amount would not, and the amount is what the
+        // sentence leads with.
+        if (input.expenseMinor != savings.current.expenseMinor) return null
+        // ⚠ In a healthy database this can never fire, and round 5 proved it: every write path allocates
+        // 100% of an expense's amount (create, update, reassign, all three capture paths, import, restore),
+        // categories are archived rather than hard-deleted, and split entry is gated on a zero remainder. So
+        // this is an ASSERTION that the invariant still holds, not a gate that routinely rejects — it must
+        // not be counted as protection against a defect that exists today. It is kept because the two totals
+        // come from two different Room flows, and a future change to either could break the invariant
+        // silently; failing closed then costs a card rather than telling someone they have money they do not.
+        //
+        // ⚠ **A second, accepted residual on the income side, found in round 10.** `savings.current` is
+        // built from the WHOLE-window on-screen totals while `savings.prior` is truncated to the elapsed
+        // stretch, and the date pickers place no upper bound on `occurredAt`. So a user who logs an invoice
+        // dated later this cycle inflates `kept` immediately: on day 12 with ₹90,000 in and ₹30,000 spent,
+        // a ₹40,000 entry dated the 25th makes the card read *"you've kept ₹1,00,000 — 77%"* when the
+        // honest figures are ₹60,000 and 67%. The word "so far" is then false.
+        //
+        // Inherited rather than introduced — `pace` has the same whole-window `current` — but this is the
+        // first card to turn it into a RUPEE assertion about money in hand. Not fixed here because the
+        // honest fix is a `selectableDates` bound on the entry screens, which is a change to the whole app's
+        // input rules and belongs in its own round rather than smuggled into an insights release.
+        //
+        // ⚠ Known asymmetry, accepted: this equality is checked on the CURRENT window only. The prior
+        // windows are built from the categorised basis and simply assumed to match, because there is no
+        // headline total to compare them against — the provider never queries one per historical window.
+        // Under today's write paths every expense carries allocations summing to its full amount, so they do
+        // match; if that ever stopped being true, a prior cycle carrying uncategorised spend would overstate
+        // its kept-share and this cycle would read as "behind usual" when it is not.
+        val kept = income - savings.current.expenseMinor
+        // Spending more than came in is a real thing to be told, but not by this card: its whole frame is a
+        // share of income, and "you've kept -₹4,000 — -12%" is a sentence nobody should read. Pace and the
+        // movers already cover an expensive cycle.
+        if (kept <= 0L) return null
+        val share = ((kept.toDouble() / income) * 100).roundToInt()
+        // Windows where nothing came in are dropped, not counted as 0% kept: a cycle with no recorded
+        // income says the salary wasn't logged, not that everything was spent.
+        //
+        // ⭐Cycles where the user OVERSPENT stay in. Filtering them out was a real defect: it made "the
+        // share you'd usually have kept" the median of only the good cycles. For real shares
+        // [50, 45, 40, -20, -30, -10] the true median is -10%, but dropping the negatives gave 45% — so a
+        // cycle at +35%, far better than this user's usual, was reported as *behind* usual. A name that
+        // asserts "usually" has to be measured over all of them.
+        // ⭐⭐⭐`> 0`, NOT `>= SAVINGS_MIN_INCOME_MINOR`, and round 12 is why. The comment above justifies
+        // dropping a window because "a cycle with no recorded income says the salary wasn't logged" — that
+        // reasoning covers an EMPTY window and nothing else. Filtering at ₹5,000 silently deleted windows
+        // carrying ₹1,000–₹4,999 of genuinely logged income, which is the self-selecting baseline this
+        // engine already had to fix on the commitments card in round 8, sitting here the whole time.
+        //
+        // A commission earner with day-aligned shares [50, 40, 40, −733, −1000, −500] had the three lean
+        // windows dropped and was told *"you've kept 20%, behind the 40% you'd usually have kept"* — when
+        // their honest median is −500% and the card should have said nothing at all. The
+        // `baselineShare <= 0` gate below cannot save it, because the baseline is doctored before that gate
+        // ever sees it. Measured over 32,768 configurations, 47% of fired cards were speaking against a
+        // baseline drawn only from the user's good windows.
+        val priorShares = savings.prior
+            .filter { it.incomeMinor > 0L }
+            .map { (((it.incomeMinor - it.expenseMinor).toDouble() / it.incomeMinor) * 100).roundToInt() }
+        if (priorShares.size < SAVINGS_MIN_WINDOWS) return null
+        val baselineShare = medianInt(priorShares)
+        // A user who usually overspends by this point gets no card rather than "behind the -10% you'd
+        // usually have kept", which is both confusing and a miserable thing to read. The baseline is now the
+        // honest median; this only decides whether it can be phrased as a share kept.
+        //
+        // ⭐This check runs BEFORE the ambiguity gate below, and the order is load-bearing. A set like
+        // [50, 45, 40, -20, -30, -10] has wide-apart middles, so an ambiguity gate placed first would return
+        // here and the round-1 regression guard for the negative baseline would stop executing its own
+        // branch — a guard that guards nothing, which is the exact trap Phase B kept falling into.
+        if (baselineShare <= 0) return null
+        // ⭐⭐The gate that replaced a min-to-max spread bar of 40 points, which review round 3 showed did
+        // not do its job in either direction.
+        //
+        // What can actually mislead is not a wide range, it is an AMBIGUOUS MIDDLE. `medianInt` takes the
+        // lower of the two middle values so the baseline stays a share some cycle genuinely reached; when
+        // those two middles are far apart, that choice — not the data — decides the headline word. On
+        // [15, 17, 19, 40, 42, 44] the baseline is 19%, the true centre is ~30%, and a cycle at 30% reads
+        // "ahead of usual" when it is behind. That set spans 29 points and sailed under a 40-point bar.
+        //
+        // Meanwhile the old bar was too expensive for lumpy but consistent savers: [20, 35, 38, 41, 45, 70]
+        // spans 50 points and was silenced, though its middles are three points apart and the median is a
+        // perfectly honest 38%. Gating on the two middles fixes both: it fires exactly when the lower-middle
+        // choice is arbitrary, and an odd-length list has one true middle so it can never fire there.
+        val sorted = priorShares.sorted()
+        if (sorted[sorted.size / 2] - sorted[(sorted.size - 1) / 2] > SAVINGS_MIN_POINTS) return null
+        if (abs(share - baselineShare) < SAVINGS_MIN_POINTS) return null
+        return InsightFinding(
+            kind = InsightKind.SAVINGS_RATE,
+            amountMinor = kept,
+            sharePercent = share,
+            baselineSharePercent = baselineShare,
+            days = input.daysElapsed,
+            // Ranking only — never shown, never sent. The rupee gap between what was kept and what usually
+            // would have been by now.
+            materialityMinor = abs(kept - income * baselineShare / 100),
         )
     }
 
@@ -584,6 +1042,19 @@ object InsightEngine {
      */
     internal fun median(values: List<Long>): Long {
         if (values.isEmpty()) return 0L
+        val sorted = values.sorted()
+        return sorted[(sorted.size - 1) / 2]
+    }
+
+    /**
+     * [median] for percentages, with the same lower-middle rule and for the same reason.
+     *
+     * A separate function rather than a conversion through [median] so the rule is stated once per type and
+     * cannot drift: "the share you'd usually have kept by this point" must be a share some cycle genuinely
+     * reached, not the average of two that straddle it.
+     */
+    internal fun medianInt(values: List<Int>): Int {
+        if (values.isEmpty()) return 0
         val sorted = values.sorted()
         return sorted[(sorted.size - 1) / 2]
     }

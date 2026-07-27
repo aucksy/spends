@@ -8,6 +8,7 @@ import androidx.room.Update
 import com.spends.app.data.db.entity.AllocationEntity
 import com.spends.app.data.db.entity.CategorySliceRow
 import com.spends.app.data.db.entity.CategorySpend
+import com.spends.app.data.db.entity.DatedAmountRow
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -149,6 +150,20 @@ interface ExpenseDao {
             "AND e.occurredAt >= :start AND e.occurredAt < :end",
     )
     suspend fun categorySlicesOnce(start: Long, end: Long): List<CategorySliceRow>
+
+    /**
+     * Dated income amounts over a span — the insights savings-rate card's only new read (Phase C).
+     *
+     * Read-only, and reachable **only** from `InsightsProvider`, which is itself unreachable with the AI
+     * helper's master switch off. That is what keeps G2 true: with AI off this query never runs, so the app
+     * issues exactly the queries it did before.
+     */
+    @Query(
+        "SELECT occurredAt AS occurredAt, amountMinor AS amountMinor FROM expenses " +
+            "WHERE deletedAt IS NULL AND kind = 'INCOME' " +
+            "AND occurredAt >= :start AND occurredAt < :end",
+    )
+    suspend fun incomeChargesOnce(start: Long, end: Long): List<DatedAmountRow>
 
     /** Running balance (income − expense) for everything strictly before [before] — for Carry Forward. */
     @Query(

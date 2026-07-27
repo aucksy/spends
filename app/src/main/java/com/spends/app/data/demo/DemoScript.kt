@@ -97,9 +97,9 @@ data class DemoDataSet(
  * | [TREND_CATEGORY] drifting up ~50% across the last 6 months   | category trend analysis                   |
  * | Last year's equivalent months ~15% pricier                   | year-on-year comparison                   |
  * | Spending ~32% heavier in the week after payday               | habit discovery                           |
- * | Discretionary categories ~22% heavier at weekends            | habit discovery                           |
+ * | Discretionary categories ~22% heavier at weekends            | — weekend card dropped v1.62.0            |
  * | [QUIET_WIN_CATEGORY] well below its own norm recently        | "quiet wins" / spending less than usual   |
- * | Rent, EMI, SIP, subscriptions as recurring rules             | commitments / needs-vs-wants              |
+ * | Rent, EMI, SIP, subscriptions as recurring rules             | commitments                               |
  *
  * Note that transaction *volume* is flat across the whole span on purpose — see [UNIFORM_MONTHLY_VOLUME].
  * The recent [RICH_MONTHS] months are richer in kind, not in quantity: that is where the splits, the trash,

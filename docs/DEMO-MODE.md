@@ -135,9 +135,9 @@ Each exists so a specific feature (and each planned AI insight) has something re
 | **Food** drifting up ~50% across six months | category trend analysis |
 | Last year's equivalent months ~15% pricier | year-on-year comparison |
 | Spending ~32% heavier in the week after payday | habit discovery |
-| Discretionary categories ~22% heavier at weekends | habit discovery |
+| Discretionary categories ~22% heavier at weekends | — (was for the weekend card, dropped in v1.62.0; the bias is harmless and left in place) |
 | **Entertainment** well below its own norm recently | "quiet wins" |
-| Rent, EMI, SIP, subscriptions as recurring rules | commitments / needs-vs-wants |
+| Rent, EMI, SIP, subscriptions as recurring rules | commitments (needs-vs-wants was designed in Phase C and never built) |
 
 The anomaly is placed by fixed day offsets rather than a monthly multiplier, so it is present and recent
 whatever day the demo runs — a multiplier has almost nothing to act on if you demo on the 3rd of a month.

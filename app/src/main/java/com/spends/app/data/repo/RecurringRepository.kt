@@ -48,6 +48,15 @@ class RecurringRepository @Inject constructor(
 
     fun observeAll(): Flow<List<RecurringRuleEntity>> = dao.observeAll()
 
+    /**
+     * Every rule, once — used by the insights commitments card (Phase C).
+     *
+     * A one-shot rather than a subscription on purpose: the carousel is built on demand behind the AI
+     * helper's master switch, and an always-live flow here would run a query with the switch off, breaking
+     * G2 ("AI off = today's app, byte for byte").
+     */
+    suspend fun allOnce(): List<RecurringRuleEntity> = dao.getAllOnce()
+
     suspend fun getById(id: Long): RecurringRuleEntity? = dao.getById(id)
 
     suspend fun add(input: RecurringInput): Long {

@@ -74,7 +74,8 @@
   to detect bank and credit-card transaction alerts and pre-fill an expense for you to confirm. This parsing
   happens entirely on your phone. <strong>The content of your messages is never transmitted to us</strong>,
   and never to any third party <em>unless</em> you switch on the optional AI helper described in section 3 —
-  which is off by default and sends only a number-masked extract. Spends does not use SMS data for advertising
+  which is off by default and sends a number-masked extract of that one message <em>together with the merchant
+  name as your bank wrote it</em> (see section 3 for the full list). Spends does not use SMS data for advertising
   or marketing. You can use the entire app without granting SMS access (via manual entry), and you can revoke
   the permission at any time in Android Settings.</p>
 
@@ -97,18 +98,18 @@
   <h2>3. Optional AI helper (off by default, your own key)</h2>
   <p>Spends includes an optional "AI helper" that can suggest a category for a detected transaction, and put your
   own figures into plain English on the Analytics insight cards — a summary of the cycle you are viewing, anything
-  unusual in it, and how it compares over time. Every figure on those cards is worked out on your phone before the
-  AI sees it. It is <strong>off by default</strong> and does nothing until you
+  unusual in it, how it compares over time, and what you have committed and kept. Every figure on those cards is worked out on your phone before the AI sees it. It is <strong>off by default</strong> and does nothing until you
   both switch it on and paste <strong>your own</strong> API key, which is stored encrypted on your device and is
   never included in a backup. While it is on — and only for the sub-feature you enable — the following is sent over
   HTTPS to <strong>Groq</strong>, a third-party AI provider:</p>
   <ul>
     <li><strong>Category suggestions:</strong> the merchant name <em>as your bank wrote it</em>; whether the
       transaction was money in or out; the words of that one bank SMS or notification with <strong>every number
-      replaced by a single "#"</strong>; your category names; and the names of merchants you previously
-      categorised.</li>
+      replaced by a single "#"</strong>; your category names; and up to 100 of your saved
+      merchant→category shortcuts (the merchant name and the category you chose for it — no amounts, no
+      dates) so a merchant you have tagged before can be recognised.</li>
     <li><strong>Spending insights:</strong> your category totals and income/expense totals for the cycle you are
-      viewing and, in most views, the one before it. For the "unusual spending" cards, Spends works out <em>on your phone</em> what
+      viewing and, in most views, the <strong>spending</strong> totals for the one before it — never its income. For the "unusual spending" cards, Spends works out <em>on your phone</em> what
       you typically spend in a category over your last six cycles, and sends only the resulting comparison — for
       example "Fuel: ₹12,500 this cycle, usually ₹4,100". Your older cycles are analysed on the device and are never
       themselves sent.</li>
@@ -121,7 +122,8 @@
   digits are all sent as-is.</p>
   <p>Two of the insight cards — "a large charge" and "charged twice?" — are about a single payment rather than a
   category total, so for those the <strong>amount of that one charge and its category</strong> are sent (for example
-  "a Fuel charge of ₹12,500, about 3× the usual ₹4,100"). Never the merchant, the date, or anything else about it.</p>
+  "a Fuel charge of ₹12,500, about 3× the usual ₹4,100"), and for "charged twice?" <strong>how many identical
+  charges there were</strong>. Never the merchant and never the date.</p>
 
   <p>Some insight cards compare your spending over time. Every figure on them is still worked out <em>on your
   phone</em> and only the finished comparison is sent, but that comparison contains a few things the others do not:
@@ -131,16 +133,32 @@
   <strong>share of your spending that lands in the week after you are paid</strong>. That last one describes
   <em>when in the month</em> you tend to spend, which is more about your habits than a total is. The months of
   history those comparisons are worked out from, and the transactions inside them, are never themselves sent —
-  only the finished comparison.</p>
+  only the finished comparison. Where a card states a share, the denominator goes with it: the payday card
+  sends the share of the cycle's days that week makes up, and how many earlier cycles the share was measured
+  over, so the figure cannot be read out of proportion.</p>
+
+  <p>Two further cards were added in v1.62.0, and they send a little more again — still only finished figures,
+  never records. The <strong>"commitments"</strong> card sends the total of the monthly repeating payments already
+  running and how many of them there are, against <strong>what a cycle usually brings in</strong> — a figure
+  worked out on your phone from your finished cycles, never from the one you are looking at. The
+  <strong>"what you kept"</strong> card sends how much of <strong>this cycle's</strong> income you still have, as an amount and as a share,
+  alongside the share you had usually kept by the same point in earlier cycles. Shares, totals, counts and how many days
+  into the cycle you are — never which day any individual purchase happened on.</p>
+
+  <p>Every insight card <em>describes</em> what your money did. None of them suggests what to do with your
+  money, tells you to spend less, or offers financial advice, and the AI is explicitly instructed not to.
+  (One card does say a repeated charge is "worth a look in case one was billed twice" — that is a prompt to
+  check your own records, not advice about your spending.)</p>
 
   <p><strong>Never sent</strong> for either sub-feature: your full unmasked message text, your account or card
   numbers, your balances, the date of any transaction, or your transaction records themselves. The insight cards
   never send a merchant either — only category suggestions do, and only the merchant on the single message being
-  reviewed, as described above. For the insight cards, the cycle's month name and your day within the cycle are
-  the only date-shaped values sent; a masked message can still contain a month written in letters, as explained
+  reviewed, as described above. For the insight cards, the only date-shaped values sent are the cycle's month
+  name and your day within the cycle — never the date of anything you actually bought; a masked message can
+  still contain a month written in letters, as explained
   above.
-  The AI helper can never add, edit or delete a transaction — it only proposes a category that you still confirm
-  yourself. Switching the helper off stops all of this immediately. What you send is then handled under Groq's own
+  The AI helper can never add, edit or delete a transaction. The only thing it can change in your app is a
+  category, and only when you tap to accept it. Switching the helper off stops all of this immediately. What you send is then handled under Groq's own
   privacy policy.</p>
 
   <h2>4. Data we collect and share</h2>

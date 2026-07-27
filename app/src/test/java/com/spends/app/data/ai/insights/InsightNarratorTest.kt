@@ -43,13 +43,19 @@ class InsightNarratorTest {
     )
 
     @Test
-    fun `the payload carries aggregates only`() {
+    fun `the payload carries no merchant, no transaction date and no row identity`() {
         val json = InsightNarrator.buildUserPayload("Current Salary Cycle", findings)
         val lower = json.lowercase()
         // Distinctive tokens only — a substring like "id" would false-positive on an ordinary category name.
-        listOf("merchant", "bookmyshow", "occurredat", "dayepoch", "last4", "dedupe", "rawbody", "sender", "balance")
+        listOf("merchant", "bookmyshow", "occurredat", "dayepoch", "last4", "dedupe", "rawbody", "sender",
+            "balance", "2026", "-07-")
             .forEach { assertFalse("payload leaked '$it': $json", lower.contains(it)) }
         val root = JSONObject(json)
+        // ⭐Review round 21. The PER-FINDING key set is pinned exhaustively by `every kind sends exactly
+        // the keys it is supposed to and no others`, but the ROOT had nothing: a new top-level key — an
+        // install id, a device model, a cycle start date — would have left all 113 AI-insights tests green.
+        // The summary payload's root has been pinned since Phase A; this is its missing twin.
+        assertEquals(setOf("cycleLabel", "findings"), root.keys().asSequence().toSet())
         assertEquals("Current Salary Cycle", root.getString("cycleLabel"))
         val first = root.getJSONArray("findings").getJSONObject(0)
         // Rupees, not paise — the model is told to quote these verbatim, so they must already be right.
@@ -301,14 +307,21 @@ class InsightNarratorTest {
     @Test
     fun `a card is taken whole or not at all`() {
         // A blank title with a good body would otherwise render the model's prose under a template heading.
-        val halfBlank = listOf(NarratedCard("UNUSUAL_CATEGORY", "Fuel", "", "Fuel ran hot this cycle."))
-        val paired = InsightNarrator.pair(listOf(threeUnusual[0]), halfBlank)
+        val blankTitle = listOf(NarratedCard("UNUSUAL_CATEGORY", "Fuel", "", "Fuel ran hot this cycle."))
+        val paired = InsightNarrator.pair(listOf(threeUnusual[0]), blankTitle)
         assertEquals(threeUnusual[0].fallbackTitle(), paired[0].title)
         assertEquals(threeUnusual[0].fallbackBody(), paired[0].body)
+        // ⭐Review round 20. The guard is `title.isNotBlank() && body.isNotBlank()`, and only the TITLE
+        // half was fixtured: `&& it.body.isNotBlank()` could be deleted with all 113 tests still green,
+        // after which a good heading renders over an empty card. Same defect on the other operand.
+        val blankBody = listOf(NarratedCard("UNUSUAL_CATEGORY", "Fuel", "Fuel is up", ""))
+        val pairedBlankBody = InsightNarrator.pair(listOf(threeUnusual[0]), blankBody)
+        assertEquals(threeUnusual[0].fallbackTitle(), pairedBlankBody[0].title)
+        assertEquals(threeUnusual[0].fallbackBody(), pairedBlankBody[0].body)
     }
 
     @Test
-    fun `every finding always gets exactly one card in order`() {
+    fun `every finding gets exactly one card and none is dropped`() {
         listOf(emptyList(), threeUnusual.take(1), threeUnusual).forEach { subject ->
             val paired = InsightNarrator.pair(subject, emptyList())
             assertEquals(subject.size, paired.size)
@@ -391,5 +404,218 @@ class InsightNarratorTest {
         ).fallbackBody()
         assertTrue("expected a clean '3×' in: $body", body.contains("3×"))
         assertFalse(body.contains("3.0×"))
+    }
+
+    // ---- Phase C: the judgement cards ----
+
+    @Test
+    fun `the judgement cards name every figure for what it actually is`() {
+        val json = JSONObject(
+            InsightNarrator.buildUserPayload(
+                "Current Salary Cycle",
+                listOf(
+                    InsightFinding(
+                        kind = InsightKind.COMMITMENTS,
+                        amountMinor = 28_400_00L, baselineMinor = 95_000_00L, sharePercent = 30, count = 4,
+                    ),
+                    InsightFinding(
+                        kind = InsightKind.SAVINGS_RATE,
+                        amountMinor = 60_000_00L, sharePercent = 67, baselineSharePercent = 40, days = 12,
+                    ),
+                ),
+            ),
+        ).getJSONArray("findings")
+
+        // ⭐"the monthly rules you set up", never "your fixed costs". A rent paid by card with no rule behind
+        // it is not in this number, so the broader name would be the app asserting something it never
+        // computed — the defect that recurred in all four Phase B review rounds.
+        val commitments = json.getJSONObject(0)
+        // ⭐The name has to carry "AlreadyStarted": rules the user set up to begin next month are excluded
+        // from this sum, so a bare "monthlyRecurringRulesTotal" would assert more than the number contains.
+        assertEquals(28400.0, commitments.getDouble("monthlyRulesAlreadyStartedTotalAmount"), 0.001)
+        // ⭐⭐NOT "so far" and NOT "this cycle". The denominator is the median income of the user's
+        // COMPLETED cycles, which is what makes the card independent of the day of the month. Seven review
+        // rounds failed to make a part-month denominator honest before it was replaced; a key here saying
+        // "ThisCycle" would hand the model back the exact falsehood that cost those rounds.
+        assertEquals(95000.0, commitments.getDouble("usualIncomePerCycleAmount"), 0.001)
+        assertEquals(30, commitments.getInt("shareOfUsualIncomePercent"))
+        listOf("incomeSoFarThisCycleAmount", "shareOfIncomeSoFarPercent", "amountSoFarThisCycle")
+            .forEach { assertFalse("a part-month name must not return: '$it'", commitments.has(it)) }
+        assertEquals(4, commitments.getInt("monthlyRulesAlreadyStartedCounted"))
+        listOf("fixedCosts", "fixedCostsAmount", "amountSoFarThisCycle", "usualByThisPointAmount", "incomeThisCycleAmount")
+            .forEach { assertFalse("commitments must not claim '$it'", commitments.has(it)) }
+
+        // Two SHARES, compared against each other. baselineMinor carries nothing on this card, so sending a
+        // rupee baseline would hand a model told to use only the figures given a ₹0 to write about — the
+        // same defect that once produced "Travel is at ₹9,000 this cycle, nicely down."
+        val savingsRate = json.getJSONObject(1)
+        assertEquals(60000.0, savingsRate.getDouble("keptSoFarAmount"), 0.001)
+        assertEquals(67, savingsRate.getInt("keptSharePercent"))
+        assertEquals(40, savingsRate.getInt("usualKeptShareByThisPointPercent"))
+        assertEquals(12, savingsRate.getInt("dayOfCycle"))
+        listOf("usualByThisPointAmount", "lastCycleByThisPointAmount", "typicalChargeAmount")
+            .forEach { assertFalse("a share comparison carries no rupee baseline: '$it'", savingsRate.has(it)) }
+    }
+
+    @Test
+    fun `a kept share of zero is still sent, because zero is an answer`() {
+        // ⭐The same defect as the quiet-win card, on a different helper. SAVINGS_RATE is one of the TWO
+        // kinds whose share can legitimately be 0 — COMMITMENTS is the other, pinned 76 lines below — so
+        // routing it through the
+        // `if (sharePercent > 0)` helper left the payload carrying `usualKeptShareByThisPointPercent` as its
+        // ONLY percentage. A model told to use only the figures given then writes an earlier period's 40% as
+        // this cycle's, on the very card whose whole story is the gap between two shares.
+        val json = JSONObject(
+            InsightNarrator.buildUserPayload(
+                "Current Salary Cycle",
+                listOf(
+                    InsightFinding(
+                        kind = InsightKind.SAVINGS_RATE,
+                        amountMinor = 10_00L, sharePercent = 0, baselineSharePercent = 40, days = 12,
+                    ),
+                ),
+            ),
+        ).getJSONArray("findings").getJSONObject(0)
+
+        assertEquals(0, json.getInt("keptSharePercent"))
+        assertEquals(40, json.getInt("usualKeptShareByThisPointPercent"))
+    }
+
+    @Test
+    fun `every kind sends exactly the keys it is supposed to and no others`() {
+        // ⭐The standing guard against the defect that recurred in all four Phase B rounds and twice more in
+        // Phase C: a key whose name is not true of its number. Pinning the EXACT key set per kind means a
+        // rename, a stray extra field, or a generic `else` fallthrough in `putFigures` all fail here rather
+        // than shipping as a confident false sentence.
+        val expected = mapOf(
+            InsightKind.UNUSUAL_CATEGORY to setOf("amountSoFarThisCycle", "usualByThisPointAmount", "timesUsualByThisPoint"),
+            InsightKind.QUIET_WIN to setOf("amountSoFarThisCycle", "usualByThisPointAmount", "timesUsualByThisPoint"),
+            InsightKind.PACE to setOf("amountSoFarThisCycle", "usualByThisPointAmount", "timesUsualByThisPoint", "dayOfCycle"),
+            InsightKind.MOVER_UP to setOf("amountSoFarThisCycle", "lastCycleByThisPointAmount", "timesLastCycleByThisPoint"),
+            InsightKind.MOVER_DOWN to setOf("amountSoFarThisCycle", "lastCycleByThisPointAmount", "timesLastCycleByThisPoint"),
+            InsightKind.OUTLIER_CHARGE to setOf("chargeAmount", "typicalChargeAmount", "timesTypicalCharge"),
+            InsightKind.DUPLICATE_CHARGE to setOf("amountEachCharge", "chargesCounted"),
+            InsightKind.CONCENTRATION to setOf("topCategoriesSubtotal", "categoriesCounted", "topCategoriesSharePercent"),
+            InsightKind.YEAR_ON_YEAR to setOf(
+                "amountThisStretch", "sameStretchLastYearAmount", "timesLastYear", "dayOfCycle",
+                "cycleStillRunning", "month",
+            ),
+            InsightKind.CATEGORY_TREND to setOf(
+                "recentPerCycleAmount", "earlierPerCycleAmount", "timesEarlier", "cyclesCompared",
+            ),
+            InsightKind.HABIT_PAYDAY to setOf(
+                "paydayWeekShareOverEarlierCyclesPercent", "shareOfCycleDaysPercent", "cyclesMeasured",
+            ),
+            InsightKind.COMMITMENTS to setOf(
+                "monthlyRulesAlreadyStartedTotalAmount", "usualIncomePerCycleAmount",
+                "shareOfUsualIncomePercent", "monthlyRulesAlreadyStartedCounted",
+            ),
+            InsightKind.SAVINGS_RATE to setOf(
+                "keptSoFarAmount", "keptSharePercent", "usualKeptShareByThisPointPercent", "dayOfCycle",
+            ),
+        )
+
+        // Every kind the engine can emit must be listed. A new kind added without a payload contract fails
+        // HERE rather than reaching a user.
+        val emitted = InsightKind.entries.filter { it != InsightKind.CYCLE_SUMMARY }.toSet()
+        assertEquals("every engine-emitted kind needs a pinned key set", emitted, expected.keys)
+
+        expected.forEach { (kind, keys) ->
+            // Fully populated, so every optional field is present and the key set is maximal.
+            val finding = InsightFinding(
+                kind = kind, category = "Food", amountMinor = 5_000_00L, baselineMinor = 2_000_00L,
+                multiple = 2.5, sharePercent = 47, count = 6, days = 12, spanCycles = 6, dayShare = 29,
+                baselineSharePercent = 40, periodLabel = "July",
+            )
+            val obj = JSONObject(InsightNarrator.buildUserPayload("Current Salary Cycle", listOf(finding)))
+                .getJSONArray("findings").getJSONObject(0)
+            val actual = obj.keys().asSequence().toSet() - setOf("kind", "category")
+            assertEquals("$kind sends the wrong set of figures", keys, actual)
+        }
+    }
+
+    @Test
+    fun `a zero commitments share is still sent as a figure`() {
+        // ⭐ZERO IS A FIGURE. ₹2,000 of commitments against a usual ₹5,00,000 rounds to 0%, and the
+        // helper that normally writes this key drops anything falsy — while the card's own template still
+        // renders "about 0% of the ₹5,00,000". A model told to use only the figures given would then be
+        // handed a total with no share beside it. Same defect the savings-rate share was fixed for.
+        val json = JSONObject(
+            InsightNarrator.buildUserPayload(
+                "Current Salary Cycle",
+                listOf(
+                    InsightFinding(
+                        kind = InsightKind.COMMITMENTS,
+                        amountMinor = 2_000_00L, baselineMinor = 500_000_00L, sharePercent = 0, count = 1,
+                    ),
+                ),
+            ),
+        ).getJSONArray("findings").getJSONObject(0)
+        assertTrue("the share must be present even at zero", json.has("shareOfUsualIncomePercent"))
+        assertEquals(0, json.getInt("shareOfUsualIncomePercent"))
+    }
+
+    @Test
+    fun `the narrator prompt still forbids advice outright, with no known carve-out or dropped symbol left in it`() {
+        // ⭐Phase C briefly carried one, for a savings-suggestion card. The owner dropped that card on
+        // 2026-07-27 and the exception went with it. This test exists because a dangling permission is worse
+        // than no permission: the kind it named no longer exists, so nothing would fail if it were left
+        // behind, and the next card added would silently inherit a licence to advise.
+        val system = InsightNarrator.SYSTEM
+        // ⭐Review round 18. Verb alternation, negation KEPT — its twin in AiInsightsPayloadTest asserts
+        // the same prohibition on a prompt that words it "Never give". Round 17 pinned the bare topic on
+        // both, which "You may give financial advice" would have satisfied.
+        assertTrue(
+            "the base prohibition must survive, and must still be a prohibition",
+            Regex("(never|do not|don['\u2019]t) give financial advice").containsMatchIn(system.lowercase()),
+        )
+        assertTrue("suggesting less spending must be forbidden outright", system.contains("Never suggest spending less"))
+        // ⭐Review round 20. The THIRD prohibition, and the arithmetic clause behind it — neither was
+        // asserted here, while the twin asserted the third on the summary prompt. Found because
+        // `docs/AI-INSIGHTS-PLAN.md` claimed both tests pinned all three; the claim was false of this one.
+        // Both clauses could be deleted from the prompt and all 113 tests stayed green. README and
+        // PERMISSIONS_DECLARATION make the three-prohibition claim of EVERY card, so both prompts need
+        // all three held, not one prompt and part of another.
+        assertTrue(
+            "proposing an action must be forbidden outright",
+            system.lowercase().contains("never propose an action"),
+        )
+        assertTrue(
+            "the arithmetic form of advice must stay forbidden",
+            system.lowercase().contains("never say what fewer purchases would come to"),
+        )
+        // ⭐Round 18: the same tripwire list its twin carries. These were asymmetric — this test forbade
+        // one phrasing, its twin four, and the twin's comment claimed to mirror this one. A carve-out
+        // written as "…, except for a savings tip" passed here and was caught there. Known phrasings only;
+        // this is not a proof that no carve-out exists.
+        listOf("only exception", "one exception", "except for", "except when", "unless the")
+            .forEach { assertFalse("a carve-out appeared in the prompt: $it", system.lowercase().contains(it)) }
+        assertFalse("the dropped card must not be referenced", system.contains("SAVINGS_OPPORTUNITY"))
+        // The named figure went with the card. A prompt clause about a key the payload can no longer contain
+        // is instructions for a number the model will never see.
+        assertFalse("a dropped payload key must not survive in the prompt", system.contains("estimatedSavingIfFewer"))
+        // The prompt names payload keys literally; a renamed key must not leave the old name behind for a
+        // model to look for and never find.
+        assertFalse("the superseded commitments key must be gone", system.contains("monthlyRecurringRulesTotalAmount"))
+    }
+
+    @Test
+    fun `the judgement payload still carries nothing transaction-level`() {
+        val json = InsightNarrator.buildUserPayload(
+            "Current Salary Cycle",
+            listOf(
+                InsightFinding(
+                    kind = InsightKind.COMMITMENTS,
+                    amountMinor = 28_400_00L, baselineMinor = 95_000_00L, sharePercent = 30, count = 4,
+                ),
+            ),
+        ).lowercase()
+        // Phase C sums commitments and income, but must still never name a transaction. "saturday" and
+        // "sunday" stay in the list even though the weekend card was dropped in review round 11: they are
+        // the cheapest possible guard against a future card re-introducing a day-of-week leak.
+        listOf(
+            "merchant", "occurredat", "dayepoch", "last4", "dedupe", "rawbody", "sender", "balance",
+            "2026", "-07-", "saturday", "sunday", "swiggy",
+        ).forEach { assertFalse("payload leaked '$it': $json", json.contains(it)) }
     }
 }

@@ -70,7 +70,17 @@ class AiInsights @Inject constructor(
             "biggest categories, and any notable change versus last cycle if provided. " +
             "Use ONLY the figures given to you — never calculate, subtract, estimate or invent a number, and " +
             "never state a difference as a figure of its own; say which is larger instead. Use the Rupee " +
-            "sign ₹ for amounts. Never shame the user. Never give financial advice, warnings, or predictions. " +
+            "sign ₹ for amounts. Never shame the user; a cycle where less was spent is good news. " +
+            "Never give financial advice, warnings, or " +
+            // ⭐Review round 16. `README.md` and `play/PERMISSIONS_DECLARATION.md` claim of EVERY card that
+            // the model is instructed not to suggest what to do, tell the user to spend less, or give
+            // advice, "with no exceptions in the prompt". That was literally true of `InsightNarrator.SYSTEM`
+            // and NOT of this one — the prompt behind page 1, the card everyone sees — which said only
+            // "never give financial advice". A public absolute with a weaker prompt behind it and no test at
+            // all. The claim was correct about intent, so the PROMPT was brought up to it rather than the
+            // claim brought down. Pinned by `the summary prompt carries every prohibition its disclosure
+            // claims` in `AiInsightsPayloadTest`.
+            "predictions. Never suggest spending less, and never propose an action of any kind. " +
             "Respond with ONLY a JSON object of the form {\"summary\":\"...\"}."
 
         private fun rupees(minor: Long): Double = minor / 100.0

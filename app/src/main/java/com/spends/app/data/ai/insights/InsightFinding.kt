@@ -41,6 +41,12 @@ enum class InsightKind {
 
     /** A disproportionate share of spending landing in the days just after payday. */
     HABIT_PAYDAY,
+
+    /** The standing monthly recurring load already running, against what a cycle usually brings in. */
+    COMMITMENTS,
+
+    /** How much of what came in has been kept so far, against the same point in earlier cycles. */
+    SAVINGS_RATE,
 }
 
 /**
@@ -79,6 +85,14 @@ data class InsightFinding(
     val spanCycles: Int = 0,
     /** Share of the cycle's *days* the finding covers, 0..100 — the denominator for [InsightKind.HABIT_PAYDAY]. */
     val dayShare: Int = 0,
+    /**
+     * The share [sharePercent] is being compared against, 0..100 — [InsightKind.SAVINGS_RATE] only.
+     *
+     * A second percentage rather than a reuse of [dayShare]: the two mean different things (a share of
+     * *days* versus a share of *money* in an earlier period), and one field carrying either would be exactly
+     * the kind of name-that-is-not-true-of-the-number this engine keeps getting bitten by.
+     */
+    val baselineSharePercent: Int = 0,
     /** The calendar month both sides of a [InsightKind.YEAR_ON_YEAR] comparison fall in, e.g. "July". */
     val periodLabel: String? = null,
 ) {
@@ -106,6 +120,9 @@ data class InsightFinding(
         InsightKind.CATEGORY_TREND ->
             if (amountMinor >= baselineMinor) "${category.orEmpty()} is creeping up" else "${category.orEmpty()} is easing off"
         InsightKind.HABIT_PAYDAY -> "The week after payday"
+        InsightKind.COMMITMENTS -> "What's already spoken for"
+        InsightKind.SAVINGS_RATE ->
+            if (sharePercent >= baselineSharePercent) "Keeping more than usual" else "Keeping less than usual"
     }
 
     fun fallbackBody(): String {
@@ -166,6 +183,22 @@ data class InsightFinding(
             }
             InsightKind.HABIT_PAYDAY ->
                 "About $sharePercent% of your spending lands in the seven days after payday, which is only $dayShare% of the cycle."
+            // Two load-bearing phrases. "already running" — this is the sum of the user's own MONTHLY
+            // recurring rules, not a discovered total of their fixed costs (a rent paid by card with no rule
+            // behind it is not in here), and it counts only rules that have STARTED. "usually comes in each
+            // cycle" — the denominator is the MEDIAN of their completed cycles, not this cycle's income so
+            // far. Seven review rounds failed to make a part-month denominator honest; see
+            // `InsightEngine.commitments`. Neither figure moves with the day of the cycle, which is the
+            // point.
+            InsightKind.COMMITMENTS ->
+                "The monthly recurring payments already running come to ${rs(amountMinor)} — about $sharePercent% of the ${rs(baselineMinor)} that usually comes in each cycle."
+            // Both sides are measured to the same day of earlier cycles, hence "by this point". Stating a
+            // part-finished cycle's kept-share flat would flatter for three weeks: salary lands on day 1
+            // and spending accumulates after it.
+            InsightKind.SAVINGS_RATE -> {
+                val direction = if (sharePercent >= baselineSharePercent) "ahead of" else "behind"
+                "You've kept ${rs(amountMinor)} of what came in so far — $sharePercent%, $direction the $baselineSharePercent% you'd usually have kept by this point."
+            }
         }
     }
 

@@ -11,7 +11,7 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.61.0 — five releases.**
+**Currently untested: v1.57.0 → v1.62.0 — six releases.**
 
 ---
 
@@ -29,6 +29,60 @@ wrong number about real money, rather than something looking untidy.
 - [ ] **A real bank SMS still captures correctly.** Any release touching the parser is a money risk.
       Wait for (or find) a genuine bank alert and confirm the amount, the date and income-vs-expense are
       all right in the review queue.
+
+---
+
+## v1.62.0 — two judgement cards: commitments, and what you kept
+
+Needs the AI helper **on** (Settings → Automatic Entries → AI helper) with your Groq key. **Demo mode
+shows both** — it plants recurring rules and ~14 months of income.
+
+**The two new cards** — swipe the carousel on Analytics, now up to **7 pages**:
+
+- [ ] ⭐ **Commitments** — "The monthly recurring payments already running come to ₹X — about Y% of the
+      ₹Z that usually comes in each cycle." Check all three numbers against Settings → Recurring:
+      **₹X** should be the total of your *monthly* expense rules that have already started (not yearly
+      ones, not ones dated in the future), **₹Z** should look like a normal month's income for you, and
+      **Y%** should be X ÷ Z.
+- [ ] ⭐ **What you kept** — "You've kept ₹X — Y%, ahead of the Z% you'd usually have kept by this point."
+      The ₹X is income minus spending **so far this cycle**, not a projection.
+- [ ] The carousel still swipes cleanly and the dots match the number of pages.
+
+**The one number most worth checking.** The commitments card's *"₹Z that usually comes in"* is the
+**median of your finished cycles** — deliberately not this cycle's income, because early in a cycle
+that would be a fraction of a month and the percentage would be nonsense.
+
+- [ ] ⭐⭐ Open the commitments card on **day 2** of a cycle, then again on **day 25**. The sentence
+      should read *identically*. If the percentage moves as the cycle progresses, that is a real bug.
+
+**Cards that should stay QUIET.** Not appearing is the correct result:
+
+- [ ] Fewer than **3 finished cycles** with income logged → neither card appears.
+- [ ] A cycle with **no spending logged yet** → nothing appears at all, including commitments.
+- [ ] **Smart Cycle** → no "what you kept" card. *(Commitments may still appear — that's correct, and
+      was a bug fixed during review: it used to be silently killed for Smart Cycle users.)*
+- [ ] Step **back** to a finished cycle → neither card appears.
+- [ ] The first **7 days** of a cycle → no "what you kept" card. One rent charge would swing it wildly.
+- [ ] If you **usually overspend** by this point in the cycle, the "what you kept" card says nothing
+      rather than something bleak.
+
+**Known limits — not bugs, already recorded in `docs/AI-INSIGHTS-PHASE-C.md`:**
+
+- [ ] If you had a **big pay change**, the commitments card quotes your OLD usual income for the next
+      3–4 cycles before catching up. Worth confirming it self-corrects rather than sticking.
+- [ ] **Two** months with no income logged still lets the card fire (three silences it). If you skip
+      logging salary, check the "usually comes in" figure still looks honest.
+
+**Two cards were built and then dropped during review** — a "you could save ₹X" card and a weekend-habit
+card. Neither should appear anywhere, and nothing should mention weekends or needs-versus-wants.
+
+- [ ] No card suggests spending less, or proposes an action of any kind. *(The one exception, allowed
+      deliberately: "worth a look in case one was billed twice" on the duplicate-charge card.)*
+
+**The privacy text changed this release** — Settings → AI helper → the explainer:
+
+- [ ] Read it. Does it describe what you'd expect the two new cards to send? It should mention your
+      recurring-payment total, what a cycle *usually* brings in, and how many days into the cycle you are.
 
 ---
 

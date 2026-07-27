@@ -43,6 +43,18 @@ data class CategorySliceRow(
     val merchantRaw: String?,
 )
 
+/**
+ * A dated amount with nothing else attached — used by the insights savings-rate card to bucket income into
+ * the cycle it landed in.
+ *
+ * Deliberately not [CategorySliceRow]: income needs no category join, and reusing that row would mean
+ * loading a join this does not want.
+ */
+data class DatedAmountRow(
+    val occurredAt: Long,
+    val amountMinor: Long,
+)
+
 /** Aggregation row: total spend per category (excludes transfers / excludeFromSpend in the query). */
 data class CategorySpend(
     val categoryId: Long,

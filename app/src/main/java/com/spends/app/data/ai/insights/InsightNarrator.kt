@@ -24,15 +24,33 @@ internal data class NarratedCard(val kind: String?, val category: String?, val t
  * would sound right.
  *
  * ## One call, not one per card
- * All findings go in a single request and come back as an array, so a carousel of five costs no more than
+ * All findings go in a single request and come back as an array, so a carousel of six costs no more than
  * the single card it replaces.
  *
  * ## Privacy
- * The payload carries **category names, rupee figures and shares** — the same class of aggregate the existing
- * insights card already sends. No merchants, no individual transactions, no account or card numbers, no
+ * The payload carries **category names, rupee figures and shares** — MOSTLY the same class of aggregate the
+ * existing insights card already sends, with one deliberate exception: `OUTLIER_CHARGE` and
+ * `DUPLICATE_CHARGE` each carry ONE charge's amount, because the finding IS about that charge. (The summary
+ * card's payload in `AiInsights` genuinely is aggregates-only; this one is not, and every surface that
+ * enumerates must say so.) No merchants, no individual transactions, no account or card numbers, no
  * balances, and **no transaction dates**: the only date-shaped values are the cycle's calendar month name and
  * how far into the cycle it is, both owner-approved and disclosed. Merchant names are used by the duplicate
  * detector on the device and stop there.
+ *
+ * Phase C added two classes of figure, both aggregates: the **amount kept** this cycle plus two shares
+ * (this cycle's, and the share usually kept by the same point), and the **monthly recurring commitment**
+ * total and rule count together with the **median income of the user's completed cycles** it is quoted
+ * against.
+ *
+ * ⚠ Be precise about income, because this KDoc is what the six-file disclosure sweep is written from and an
+ * imprecision here propagates to all of them. Phase C does **not** send this cycle's income total — that
+ * has left the phone since v1.56.0, via the summary card. What is new is `usualIncomePerCycleAmount`, a
+ * median over COMPLETED cycles, which is a different figure and must be disclosed as one.
+ *
+ * ⚠ Per-category **transaction counts** and a median transaction amount were briefly added here for a
+ * savings-suggestion card, which the owner dropped on 2026-07-27. They do **not** leave the device. This
+ * KDoc is what the six-file disclosure sweep is written from, so it must describe the payload that exists
+ * rather than the one that was planned.
  *
  * ## Fail-closed, not fail-blank
  * Any failure — no key, offline, a non-2xx, malformed JSON, a short array — falls back to
@@ -53,7 +71,12 @@ class InsightNarrator @Inject constructor(
                 user = buildUserPayload(cycleLabel, findings),
                 jsonObject = true,
                 temperature = 0.4,
-                maxTokens = 520,
+                // ⭐Sized against [InsightEngine.MAX_FINDINGS], which Phase C raised 5 → 6. This is not a
+                // budget that degrades gracefully: a truncated reply fails `parseCards` as a whole, so ALL
+                // six cards drop to their templates rather than just the last one — and because `narrated`
+                // is then false, the result is never cached, so every visit to Analytics re-issues and
+                // re-fails the call. Raised with the card count rather than left to be discovered.
+                maxTokens = 620,
             )
             (result as? GroqResult.Ok)?.content?.let { parseCards(it) }
             // `GroqClient` deliberately rethrows CancellationException so structured concurrency still works;
@@ -76,10 +99,24 @@ class InsightNarrator @Inject constructor(
             "₹. Never shame the user; a finding about spending less is good news. Do not give financial " +
             "advice, warnings or predictions — describe what happened, nothing more. Never project a figure " +
             "forward or say what a total will reach; a finding about pace describes where things stand today. " +
+            // ⭐The never-advise rule has NO exceptions. Phase C briefly carried one, for a savings-suggestion
+            // card; the owner dropped that card on 2026-07-27, and the exception went with it. Leaving a
+            // dangling permission for a kind that no longer exists would be an open invitation for the next
+            // card to inherit it.
+            "Never suggest spending less, never say what fewer purchases would come to, and never propose an " +
+            "action of any kind — not even as arithmetic the user could take or leave. " +
             "Read the field names literally and do not restate a figure as something else: a field containing " +
             "\"ByThisPoint\" was measured to the same day of earlier cycles, NOT a whole cycle; a " +
             "\"PerCycle\" field is a per-cycle figure; \"typicalChargeAmount\" is one typical payment, not a " +
             "monthly total; and a share measured over earlier cycles is a habit, not this cycle's number. " +
+            "\"monthlyRulesAlreadyStartedTotalAmount\" is the total of the monthly repeating payments this " +
+            "user set up that have already started — not all their fixed costs, and not rules that begin " +
+            "later. Never call it either of those. \"usualIncomePerCycleAmount\" is what a cycle USUALLY " +
+            "brings in, taken from earlier completed cycles — it is NOT this cycle's income and NOT income " +
+            "so far, so never write it as either. \"monthlyRulesAlreadyStartedTotalAmount\" describes the " +
+            "user's situation TODAY — never write it in the past tense or tie it to the cycle named in " +
+            "cycleLabel. \"usualIncomePerCycleAmount\" must always be written as what a cycle USUALLY " +
+            "brings in, never as what the user earns now or earned then. " +
             "Echo each finding's \"kind\" and its \"category\" (when it has one) back on its card so the " +
             "order can be checked. Respond with ONLY a JSON object of the form " +
             "{\"cards\":[{\"kind\":\"...\",\"category\":\"...\",\"title\":\"...\",\"body\":\"...\"}]}."
@@ -226,12 +263,52 @@ class InsightNarrator @Inject constructor(
                     if (f.dayShare > 0) o.put("shareOfCycleDaysPercent", f.dayShare)
                     count("cyclesMeasured")
                 }
+                // "monthly rules the user SET UP and that have already STARTED" — not a discovered total of
+                // their fixed costs. A rent paid by card with no rule behind it is not in this number, so a
+                // name like "fixedCosts" would be the app claiming something it never computed.
+                InsightKind.COMMITMENTS -> {
+                    amount("monthlyRulesAlreadyStartedTotalAmount")
+                    // ⭐NOT "so far", and not "this cycle". The denominator is the MEDIAN income of the
+                    // user's COMPLETED cycles — a figure that does not move with the day of the month. A key
+                    // saying "ThisCycle" here would be the single most consequential mis-naming in the whole
+                    // payload, because it is what seven review rounds of a part-month denominator produced.
+                    baseline("usualIncomePerCycleAmount")
+                    // ⭐Unconditional, NOT via share(). Reachable: ₹2,000 of commitments against a usual
+                    // ₹5,00,000 rounds to 0%, and share() would drop the key while the template still renders
+                    // "about 0% of the ₹5,00,000". A model told to use only the figures given would then be
+                    // handed a total with no share attached. ZERO IS A FIGURE — the same lesson as
+                    // SAVINGS_RATE's keptSharePercent below.
+                    o.put("shareOfUsualIncomePercent", f.sharePercent)
+                    count("monthlyRulesAlreadyStartedCounted")
+                }
+                // No `baseline()` here: this card's comparison is between two SHARES, and baselineMinor
+                // carries nothing. Sending it as a rupee figure would hand the model a ₹0 to write about.
+                InsightKind.SAVINGS_RATE -> {
+                    amount("keptSoFarAmount")
+                    // ⭐Unconditional, NOT via share(). One of the TWO kinds whose share can legitimately
+                    // be 0 — the other is COMMITMENTS above, for the same reason. The two that still go
+                    // through `share()` cannot: CONCENTRATION floors at 70% and HABIT_PAYDAY at ~30%. Suppressing it left the payload carrying
+                    // only `usualKeptShareByThisPointPercent` — a figure from a DIFFERENT period — as its
+                    // sole percentage, and a model told to use only the figures given wrote that as this
+                    // cycle's. Exactly the bug that made `amount()` unconditional.
+                    o.put("keptSharePercent", f.sharePercent)
+                    if (f.baselineSharePercent > 0) {
+                        o.put("usualKeptShareByThisPointPercent", f.baselineSharePercent)
+                    }
+                    if (f.days > 0) o.put("dayOfCycle", f.days)
+                }
                 // Never emitted by the engine; the summary card's text comes from AiInsights.
                 InsightKind.CYCLE_SUMMARY -> Unit
             }
         }
 
-        /** Aggregates only. A test asserts this carries no merchant, transaction date or row-level field. */
+        /**
+         * MOSTLY aggregates — two kinds (`OUTLIER_CHARGE`, `DUPLICATE_CHARGE`) additionally carry ONE
+         * charge's amount. Deliberate, and disclosed on the privacy policy, both Play documents and both
+         * in-app surfaces — NOT on the README or the store listing, which describe the payload in summary
+         * and do not enumerate it. `InsightNarratorTest` asserts the stronger and more useful claim: no
+         * merchant, no transaction date, no row-level identity.
+         */
         internal fun buildUserPayload(cycleLabel: String, findings: List<InsightFinding>): String {
             val arr = JSONArray()
             findings.forEach { f ->

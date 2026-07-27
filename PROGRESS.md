@@ -4,10 +4,81 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.61.0** — versionCode **67**, versionName **"1.61.0"**. Insights that compare over time
-  (Phase B of [`docs/AI-INSIGHTS-PLAN.md`](docs/AI-INSIGHTS-PLAN.md)). **No DB schema change (still v16)**,
-  no snapshot, no dependency change; one additive read-only DAO query.
+- **Shipped: v1.62.0** — versionCode **68**, versionName **"1.62.0"**. Two judgement cards — commitments,
+  and what you kept (Phase C of [`docs/AI-INSIGHTS-PLAN.md`](docs/AI-INSIGHTS-PLAN.md)). **No DB schema
+  change (still v16)**, no snapshot, no dependency change; one additive read-only DAO query.
+  APK: https://github.com/aucksy/spends/releases/download/v1.62.0/Spends-v1.62.0.apk
+- Previous: **v1.61.0** — versionCode 67. Insights that compare over time (Phase B).
   APK: https://github.com/aucksy/spends/releases/download/v1.61.0/Spends-v1.61.0.apk
+
+## v1.62.0 — Phase C: two judgement cards (commitments, and what you kept)
+
+Cards that make a *judgement about the shape of your money*, not just a comparison of totals. Full detail,
+every threshold, both dropped cards and all twenty-three review rounds:
+[`docs/AI-INSIGHTS-PHASE-C.md`](docs/AI-INSIGHTS-PHASE-C.md).
+
+**Shipped: two of the four cards planned.**
+- `COMMITMENTS` — the monthly recurring payments already running, as a share of what a cycle usually brings in.
+- `SAVINGS_RATE` — what you've kept so far, against the share you'd usually have kept by the same point.
+
+**Owner decisions (AskUserQuestion):**
+1. **Card 13 (`SAVINGS_OPPORTUNITY`) dropped** at the end of review round 3 — an advice card whose keyword
+   allow-list matched exactly 3 of the 19 seeded expense categories, and which falsified the standing
+   disclosure claim that the AI "only suggests a category, describes only".
+2. **The commitments denominator changed** after **seven** rounds of failed gates: compare against the
+   **median income of COMPLETED cycles**, never this cycle's income-so-far. Narrowing the question deleted
+   five gates and an entire defect class at once.
+3. **The weekend card (`HABIT_WEEKEND`) dropped** after round 11 — charge counts cannot separate standing
+   bills drifting onto a Saturday from a real weekend habit.
+
+**No DB schema change (still v16)**, no snapshot change, no dependency change; one additive read-only DAO
+query (`incomeChargesOnce`) returning a plain non-Room projection.
+
+**⭐⭐⭐THE ROUND'S DURABLE LESSON — a floor that removes observations changes what the average MEANS.**
+Both new cards shipped the *same* self-selecting-baseline defect, one each, five rounds apart. The prior
+windows were selected with `>= ₹5,000`, so a cycle carrying ₹1,000–₹4,999 of genuinely logged income was
+deleted before the median was taken — and "what you usually keep" became the median of the user's *good*
+cycles only. A commission earner with real kept-shares of **[50, 40, 40, −733, −1000, −500]** was told
+*"you've kept 20%, behind the 40% you'd usually have kept"* when their honest median is −500% and the card
+should have said nothing. 47% of fired cards were affected. The rule, now written into the spec: **if a
+threshold is protecting against ABSENCE of data, test for absence (`== 0`, `> 0`), never for smallness.**
+
+**⭐⭐The second lesson — a sweep is only evidence if its generator can produce the failing shape.** Three
+consecutive rounds returned "clean" on sweeps of hundreds of thousands of trials, and all three were
+worthless: the generators used a mean-of-priors yardstick, then lump income arrival, then uniform ranges too
+narrow to express the defect. A clean sweep is a statement about the generator until proven otherwise.
+
+**⭐⭐The third lesson — deletion-testing a gate does not test its threshold.** Round 14 found
+`SAVINGS_MIN_POINTS = 8` feeding two gates that both died when deleted, so thirteen rounds recorded them as
+protected — yet changing the constant to 5, 7, 9 or 12 turned no test red while changing who gets a card.
+A constant is only pinned when a fixture sits on *each side* of it. Fixtured; 8 is now the sole survivor.
+
+**⭐⭐The fourth lesson, found in round 16 — a disclosure sweep scoped to the phase misses the claims that
+are not.** README and `play/PERMISSIONS_DECLARATION.md` claim, of EVERY card, that the model is instructed
+not to suggest what to do, tell the user to spend less, or give financial advice, *"with no exceptions"*.
+That was literally true of `InsightNarrator.SYSTEM` (Phase A/B) and NOT of `AiInsights.SYSTEM` — the prompt
+behind **page 1, the card every user sees**, shipped v1.56.0 — which said only "never give financial
+advice" and which no test had asserted anything about in nine months. Fifteen rounds missed it because
+every one was scoped to Phase C. The prompt was brought up to the claim rather than the claim down to the
+prompt, and both prompts are now pinned by tests. **A public absolute is only as true as its weakest
+surface, and the sweep must follow the CLAIM, not the diff.**
+
+**⭐The fifth, round 18 — a prohibition test must assert the prohibition, not the topic.** Making the advice
+assertion verb-agnostic (the two prompts word it "Never give" and "Do not give") dropped the negation with
+the verb: `contains("give financial advice")` is satisfied by *"You may give financial advice"*. Inverting
+the rule left both tests green. Now a verb alternation that keeps the negation, mutation-confirmed to kill
+inversion, deletion and appended carve-outs while still tolerating harmonisation.
+
+**Disclosure.** All six surfaces updated and re-checked for absolutes. Two errors in previously shipped
+copy were corrected in the process: the published privacy policy said the AI helper "sends only a
+number-masked extract" when it also sends the merchant name as the bank wrote it, and
+`play/PLAY_SUBMISSION_CHECKLIST.md` §4 told the owner to answer **"No data collected/shared"** on the Play
+Data Safety form — false since v1.56.0.
+
+**Review: twenty-three rounds, two adversarial agents each.** The pure engine was ported to Python and executed
+rather than reasoned about; every gate on both cards is mutation-tested by deletion, and both roles of
+`SAVINGS_MIN_POINTS` by value. 117 unit tests across the three AI suites, twelve of them added during review because a
+reviewer proved the existing ones could not catch something.
 
 ## v1.61.0 — Phase B: pace, year-on-year, category trends, payday habit
 Four new carousel cards, all about *time* rather than this cycle alone. Full detail, every threshold and the

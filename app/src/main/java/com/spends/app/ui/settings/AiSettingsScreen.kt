@@ -126,7 +126,8 @@ fun AiSettingsScreen(
                 SwitchRow(
                     title = "Spending insights",
                     subtitle = "Swipeable cards at the top of Analytics: a summary of the cycle you're " +
-                        "viewing, plus anything unusual, your pace, and how things compare over time.",
+                        "viewing, plus anything unusual, your pace, how things compare over time, and what " +
+                        "you've committed and kept.",
                     checked = state.aiInsights,
                     onChange = viewModel::setInsights,
                 )
@@ -164,7 +165,8 @@ fun AiSettingsScreen(
                 )
                 BulletLine(
                     "Insights: your category totals and income/expense totals for the cycle you're viewing " +
-                        "and, in most views, the one before it. For the \"unusual spending\" cards, Spends " +
+                        "and, in most views, the SPENDING totals for the one before it — never its income. " +
+                        "For the \"unusual spending\" cards, Spends " +
                         "works out on your " +
                         "phone what you typically spend in a category over the last six cycles, and sends only " +
                         "the comparison — for example \"Fuel: ₹12,500 this cycle, usually ₹4,100\". Your older " +
@@ -173,7 +175,8 @@ fun AiSettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 BulletLine(
                     "Two insight cards are about one payment rather than a category — \"a large charge\" and " +
-                        "\"charged twice?\". For those, that single charge's amount and its category are sent. " +
+                        "\"charged twice?\". For those, that single charge's amount and its category are sent, " +
+                        "and for \"charged twice?\" how many identical charges there were. " +
                         "Never its merchant or its date.",
                 )
                 Spacer(Modifier.height(8.dp))
@@ -183,17 +186,30 @@ fun AiSettingsScreen(
                         "(just the word \"July\" — never a full date), what the same stretch of the cycle came " +
                         "to a year ago, what one category cost per cycle earlier compared with lately, and — " +
                         "for the payday card — the SHARE of your spending that lands in the week after you're " +
-                        "paid. That last one describes when in the month you tend to spend.",
+                        "paid, what share of the cycle's days that week is, and how many earlier cycles it " +
+                        "was measured over. That last one describes when in the month you tend to spend.",
+                )
+                Spacer(Modifier.height(8.dp))
+                BulletLine(
+                    "The newer \"commitments\" and \"what you kept\" cards add: the total of the monthly " +
+                        "repeating payments already running and how many there are, against what a cycle " +
+                        "USUALLY brings in (worked out from your finished cycles — not this one); and how " +
+                        "much of this cycle's income you still have, alongside the " +
+                        "share you had usually kept by the same point in earlier cycles. Shares, totals, counts " +
+                        "and how many days into the cycle you are — never which day anything actually " +
+                        "happened on.",
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "Never sent: your full unmasked message, your balances, your account and card numbers, or " +
                         "the date of any transaction. The insight cards never send a merchant either — only " +
                         "category suggestions do, and only for the one message being reviewed, as described " +
-                        "above. For the insight cards, the cycle's month name and your day within the cycle " +
-                        "are the only date-shaped values sent (a masked message can still contain a month " +
-                        "written in letters, as explained above). The AI helper can never add, edit " +
-                        "or delete a transaction — it only suggests a category you still confirm yourself.",
+                        "above. For the insight cards, the only date-shaped values sent are the cycle's month " +
+                        "name and your day within the cycle — never the date of anything you actually " +
+                        "bought (a masked message can still " +
+                        "contain a month written in letters, as explained above). The AI helper can never add, edit " +
+                        "or delete a transaction. The only thing it can change in your app is a category, and " +
+                        "only when you tap to accept it.",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -215,20 +231,30 @@ fun AiSettingsScreen(
                         "words with every run of digits replaced by #, whether it was money in or out, plus " +
                         "your category names and your saved " +
                         "merchant→category shortcuts (for category suggestions); and your category and " +
-                        "income/expense totals for the cycle you're viewing and, in most views, the one " +
-                        "before it, what you " +
+                        "income/expense totals for the cycle you're viewing and, in most views, the " +
+                        "SPENDING totals for the one before it — never its income; what you " +
                         "typically spend in a category, for two of the cards a single charge's amount and " +
-                        "category, and for the cards that compare over time your day into the cycle, its " +
+                        "category and, for \"charged twice?\", how many identical charges there were; and " +
+                        "for the cards that compare " +
+                        "over time your day into the cycle, its " +
                         "calendar month, the same stretch a year ago, what one category cost per cycle " +
                         "earlier compared with lately, and the share of your spending that falls in the week " +
-                        "after payday (for insights) are sent to Groq. " +
+                        "after payday, what share of the cycle's days that week is and how many earlier cycles it " +
+                        "covered; plus how much of this cycle's income you still have and " +
+                        "the share you had usually kept by the same point in earlier cycles, the total of the " +
+                        "monthly repeating payments already running and how many there are against what a " +
+                        "cycle usually brings in (for insights) are sent to Groq. " +
                         "Being straight with you about the limits: the merchant goes as your bank wrote it, so " +
                         "if your bank put a number there (a UPI id) that number goes too, and the masking " +
                         "removes numbers but not letters — a payee's name or a month written as \"Jun\" is " +
                         "still sent. " +
                         "Never your full unmasked message, your balances, your account and card numbers, or " +
                         "the date of any transaction. The insight cards never send a merchant — only category " +
-                        "suggestions do. You'll paste your own free key next.",
+                        "suggestions do. The cards describe what your money did, and the AI is explicitly " +
+                        "instructed not to suggest what to do with it, tell you to spend less, or give " +
+                        "financial advice. (One card does say a repeated charge is \"worth a look in case one " +
+                        "was billed twice\" — that is a prompt to check your own records, not advice about " +
+                        "your spending.) You'll paste your own free key next.",
                 )
             },
             confirmButton = {

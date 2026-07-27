@@ -323,7 +323,7 @@ class AnalyticsViewModel @Inject constructor(
      * `InsightEngine` found worth saying.
      *
      * The two run **concurrently**. They are independent calls, and doing them in sequence would make a
-     * carousel of five cards feel twice as slow as the single card it replaces.
+     * carousel of six cards feel twice as slow as the single card it replaces.
      */
     private suspend fun buildCards(st: AnalyticsUiState, fingerprint: String, forceRefresh: Boolean): List<InsightCard> =
         coroutineScope {
@@ -354,6 +354,11 @@ class AnalyticsViewModel @Inject constructor(
                         currentByCategory = st.categories.groupBy { it.name }
                             .mapValues { (_, slices) -> slices.sumOf { it.amountMinor } },
                         expenseMinor = st.expenseMinor,
+                        // Phase C: the SAVINGS-RATE card is a share of what came in, taken from the same
+                        // reconciled on-screen state as the expense total so it can never quote an income
+                        // the charts above it disagree with. (The commitments card does NOT use this — its
+                        // denominator is the median of prior COMPLETE cycles, read from the ledger.)
+                        incomeMinor = st.incomeMinor,
                         paydayAligned = DateUtils.toLocalDate(st.windowStartMillis).dayOfMonth ==
                             settings.salaryCycleStartDay,
                         // Smart Cycle across all cards buckets a card purchase into the cycle its statement
