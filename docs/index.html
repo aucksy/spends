@@ -106,7 +106,10 @@
       replaced by a single "#"</strong>; your category names; and the names of merchants you previously
       categorised.</li>
     <li><strong>Spending insights:</strong> your category totals and income/expense totals for the cycle you are
-      viewing.</li>
+      viewing and the one before it. For the "unusual spending" cards, Spends works out <em>on your phone</em> what
+      you typically spend in a category over your last six cycles, and sends only the resulting comparison — for
+      example "Fuel: ₹12,500 this cycle, usually ₹4,100". Your older cycles are analysed on the device and are never
+      themselves sent.</li>
   </ul>
   <p>The masking replaces each whole number with one "#", so amounts, balances, account and card numbers, numeric
   dates and phone numbers are removed outright — and because the digit count goes too, not even the size of an amount
@@ -114,10 +117,15 @@
   not <em>letters</em>. So a payee's name written in the message (for example "to JOHN DOE"), a month written as text
   ("Jun"), the letters of a mixed reference ("AB12CD" becomes "AB#CD"), and a merchant name that itself contains
   digits are all sent as-is.</p>
-  <p><strong>Never sent</strong> for either sub-feature: your full unmasked message text, any amount or balance, your
-  account or card numbers, or your individual transaction records. The AI helper can never add, edit or delete a
-  transaction — it only proposes a category that you still confirm yourself. Switching the helper off stops all of
-  this immediately. What you send is then handled under Groq's own privacy policy.</p>
+  <p>Two of the insight cards — "a large charge" and "charged twice?" — are about a single payment rather than a
+  category total, so for those the <strong>amount of that one charge and its category</strong> are sent (for example
+  "a Fuel charge of ₹12,500, about 3× the usual ₹4,100"). Never the merchant, the date, or anything else about it.</p>
+
+  <p><strong>Never sent</strong> for either sub-feature: your full unmasked message text, your account or card
+  numbers, your balances, the merchant names or dates of your transactions, or your transaction records themselves.
+  The AI helper can never add, edit or delete a transaction — it only proposes a category that you still confirm
+  yourself. Switching the helper off stops all of this immediately. What you send is then handled under Groq's own
+  privacy policy.</p>
 
   <h2>4. Data we collect and share</h2>
   <p>We do <strong>not</strong> collect, sell, rent, or share your personal data, financial data, or messages —

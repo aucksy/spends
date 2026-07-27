@@ -156,12 +156,24 @@ fun AiSettingsScreen(
                         "month written as text (\"Jun\") and the letters of a mixed reference (\"AB12CD\" → " +
                         "\"AB#CD\") are sent.",
                 )
-                BulletLine("Insights: your category totals for the cycle.")
+                BulletLine(
+                    "Insights: your category totals and income/expense totals for the cycle you're viewing " +
+                        "and the one before it. For the \"unusual spending\" cards, Spends works out on your " +
+                        "phone what you typically spend in a category over the last six cycles, and sends only " +
+                        "the comparison — for example \"Fuel: ₹12,500 this cycle, usually ₹4,100\". Your older " +
+                        "cycles themselves are never sent.",
+                )
+                Spacer(Modifier.height(8.dp))
+                BulletLine(
+                    "Two insight cards are about one payment rather than a category — \"a large charge\" and " +
+                        "\"charged twice?\". For those, that single charge's amount and its category are sent. " +
+                        "Never its merchant or its date.",
+                )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Never sent: your full unmasked message, any amount or balance, or your account and card " +
-                        "numbers. The AI helper can never add, edit or delete a transaction — it only suggests " +
-                        "a category you still confirm yourself.",
+                    "Never sent: your full unmasked message, your balances, your account and card numbers, or " +
+                        "the merchant names and dates of your transactions. The AI helper can never add, edit " +
+                        "or delete a transaction — it only suggests a category you still confirm yourself.",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -181,9 +193,11 @@ fun AiSettingsScreen(
                     "This is the first time any of your data would leave your phone. With it on — and only for the " +
                         "features you enable — a detected bank SMS or notification's merchant name, that message's " +
                         "words with every run of digits replaced by #, plus your saved merchant→category shortcuts " +
-                        "(for category suggestions) and your category totals (for insights) are sent to Groq. " +
-                        "Never your full unmasked message, your amounts or balances, or your account and card " +
-                        "numbers. You'll paste your own free key next.",
+                        "(for category suggestions), and your category and income/expense totals for the cycle " +
+                        "you're viewing plus what you typically spend in a category, and for two of the cards a " +
+                        "single charge's amount and category (for insights) are sent to Groq. " +
+                        "Never your full unmasked message, your balances, your account and card numbers, or the " +
+                        "merchant names and dates of your transactions. You'll paste your own free key next.",
                 )
             },
             confirmButton = {

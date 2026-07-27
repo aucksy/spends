@@ -5,6 +5,7 @@ import com.spends.app.core.time.CycleWindow
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.entity.AllocationEntity
+import com.spends.app.data.db.entity.CategorySliceRow
 import com.spends.app.data.db.entity.CategorySpend
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
@@ -62,6 +63,10 @@ class ExpenseRepository @Inject constructor(
     /** One-shot per-category spend for the AI insights previous-cycle read (aggregates only). */
     suspend fun categorySpendOnce(startMillis: Long, endExclusiveMillis: Long): List<CategorySpend> =
         dao.categorySpendOnce(startMillis, endExclusiveMillis)
+
+    /** One-shot per-charge category slices — the transaction-level input to the AI insight engine. */
+    suspend fun categorySlicesOnce(startMillis: Long, endExclusiveMillis: Long): List<CategorySliceRow> =
+        dao.categorySlicesOnce(startMillis, endExclusiveMillis)
 
     /** Earliest active transaction time (null if none) — lower bound for the "All" range. */
     fun observeEarliestDay(): Flow<Long?> = dao.observeEarliestOccurredAt()

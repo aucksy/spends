@@ -16,6 +16,9 @@ import com.spends.app.core.time.DateUtils
 import com.spends.app.data.ai.AiInsights
 import com.spends.app.data.ai.GroqClient
 import com.spends.app.data.ai.InsightPayload
+import com.spends.app.data.ai.insights.InsightCard
+import com.spends.app.data.ai.insights.InsightKind
+import com.spends.app.data.ai.insights.InsightsProvider
 import com.spends.app.data.db.entity.CategorySpend
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -31,6 +34,8 @@ import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.cards.isCardInstrument
 import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -94,7 +99,9 @@ data class AnalyticsUiState(
 data class InsightsUiState(
     val visible: Boolean = false,
     val loading: Boolean = false,
-    val text: String? = null,
+    /** Page 1 is the cycle summary; the rest are findings the engine judged worth saying. Empty = nothing
+     *  to show, which is a legitimate answer for a quiet cycle rather than a failure. */
+    val cards: List<InsightCard> = emptyList(),
     val failed: Boolean = false,
 )
 
@@ -126,6 +133,7 @@ class AnalyticsViewModel @Inject constructor(
     private val periodSelectionStore: PeriodSelectionStore,
     private val paymentMethodRepository: PaymentMethodRepository,
     private val aiInsights: AiInsights,
+    private val insightsProvider: InsightsProvider,
     private val groqClient: GroqClient,
 ) : ViewModel() {
 
@@ -213,6 +221,11 @@ class AnalyticsViewModel @Inject constructor(
     private val _insights = MutableStateFlow(InsightsUiState())
     val insights: StateFlow<InsightsUiState> = _insights
 
+    /** Whether the Analytics tab is actually on screen. See the gate in `init`. */
+    private val analyticsVisible = MutableStateFlow(false)
+
+    fun setAnalyticsVisible(visible: Boolean) { analyticsVisible.value = visible }
+
     init {
         viewModelScope.launch {
             // Gate = master + sub-toggle + a key, all REACTIVE. When OFF, flatMapLatest yields flowOf(null) and we
@@ -220,7 +233,12 @@ class AnalyticsViewModel @Inject constructor(
             combine(
                 settingsRepository.settings.map { it.aiEnabled && it.aiInsights }.distinctUntilChanged(),
                 groqClient.hasKeyFlow,
-            ) { on, hasKey -> on && hasKey }
+                // This ViewModel is scoped to the Home back-stack entry, so it outlives the Analytics tab.
+                // Without a visibility gate the collector stays subscribed and any ledger change — confirming
+                // a capture, adding an expense — fires Groq calls while the user is on another tab. The
+                // shipped promise is "nothing is sent while you're not looking"; this is what keeps it.
+                analyticsVisible,
+            ) { on, hasKey, visible -> on && hasKey && visible }
                 .distinctUntilChanged()
                 .flatMapLatest { gateOn ->
                     if (!gateOn) {
@@ -240,21 +258,61 @@ class AnalyticsViewModel @Inject constructor(
                         return@collectLatest
                     }
                     _insights.value = InsightsUiState(visible = true, loading = true)
-                    val text = aiInsights.summarize(buildInsightPayload(state.value))
-                    _insights.value = InsightsUiState(visible = true, loading = false, text = text, failed = text == null)
+                    val cards = buildCards(state.value, fp, forceRefresh = false)
+                    _insights.value = InsightsUiState(visible = true, loading = false, cards = cards, failed = cards.isEmpty())
                 }
         }
     }
 
-    /** Re-generate the insight bypassing the per-cycle cache (the card's refresh button). */
+    /** Re-generate the carousel bypassing the per-cycle caches (the card's refresh button). */
     fun refreshInsights() = viewModelScope.launch {
         val st = state.value
         val s = settingsRepository.settings.first()
         if (!(s.aiEnabled && s.aiInsights) || !groqClient.hasKey() || st.loading || st.isEmpty) return@launch
         _insights.value = InsightsUiState(visible = true, loading = true)
-        val text = aiInsights.summarize(buildInsightPayload(st), forceRefresh = true)
-        _insights.value = InsightsUiState(visible = true, loading = false, text = text, failed = text == null)
+        val cards = buildCards(st, insightFingerprint(st), forceRefresh = true)
+        _insights.value = InsightsUiState(visible = true, loading = false, cards = cards, failed = cards.isEmpty())
     }
+
+    /**
+     * The carousel: the cycle summary (page 1, unchanged since v1.56.0) followed by whatever the on-device
+     * [InsightEngine] found worth saying.
+     *
+     * The two run **concurrently**. They are independent calls, and doing them in sequence would make a
+     * carousel of five cards feel twice as slow as the single card it replaces.
+     */
+    private suspend fun buildCards(st: AnalyticsUiState, fingerprint: String, forceRefresh: Boolean): List<InsightCard> =
+        coroutineScope {
+            val summary = async { aiInsights.summarize(buildInsightPayload(st), forceRefresh = forceRefresh) }
+            val findings = async {
+                // Finding cards need a single navigable cycle AND on-screen figures drawn from the same
+                // dataset the history query sees. Neither holds otherwise:
+                //  - Single-Card (isComposite) filters the screen to ONE instrument, while the history query
+                //    carries no instrument filter — every category would read as a collapse, and an outlier
+                //    on a different card would be described as if it were on this one.
+                //  - All-time / Last-3 / Custom aren't a cycle, so "so far this cycle" would be a lie.
+                if (st.isComposite || selection.value.range != PeriodRange.CURRENT) {
+                    emptyList()
+                } else {
+                    insightsProvider.cards(
+                        fingerprint = fingerprint,
+                        cycleLabel = selection.value.describe(),
+                        windowStartMillis = st.windowStartMillis,
+                        windowEndExclusiveMillis = st.windowEndExclusiveMillis,
+                        // Sum rather than associate: category names carry no unique index, so two
+                        // same-named categories would silently drop one and understate that category.
+                        currentByCategory = st.categories.groupBy { it.name }
+                            .mapValues { (_, slices) -> slices.sumOf { it.amountMinor } },
+                        expenseMinor = st.expenseMinor,
+                        forceRefresh = forceRefresh,
+                    )
+                }
+            }
+            // A failed summary drops that page rather than showing placeholder prose; the finding cards each
+            // carry their own template fallback, so they survive a failed narration.
+            val summaryCard = summary.await()?.let { InsightCard(InsightKind.CYCLE_SUMMARY, "This cycle", it) }
+            listOfNotNull(summaryCard) + findings.await()
+        }
 
     private fun insightFingerprint(st: AnalyticsUiState): String = buildString {
         append(st.windowStartMillis).append('|').append(st.windowEndExclusiveMillis)

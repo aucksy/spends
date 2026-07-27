@@ -50,12 +50,17 @@ and delete the Drive backup from within Spends or from Google Drive. (No server-
 
 | Data type | Collected | Shared | Purpose | Optional | Notes |
 |---|---|---|---|---|---|
-| Financial info → other financial info (your transactions) | Yes* | No | App functionality (backup & restore) | Yes | *Only via the user's own Google Drive backup, if enabled |
+| Financial info → other financial info (your transactions) | Yes* | Yes** | App functionality (backup & restore; spending insights) | Yes | *Only via the user's own Google Drive backup, if enabled. **ONLY if the user enables the optional AI helper's insights and supplies their own Groq key: per-category and income/expense **totals** for the viewed cycle and the one before it, plus a comparison figure for what they typically spend in a category. Mostly aggregates; two insight cards ("a large charge", "charged twice?") additionally send **one charge's amount and its category**. Never a merchant, a date, a balance, an account/card number, or a transaction record. Off by default. |
 | SMS messages | Yes* | Yes* | App functionality (category suggestion) | Yes | *ONLY if the user enables the optional AI helper and supplies their own Groq key. A number-masked extract (all digit runs replaced by "#") plus the merchant string is sent to Groq. Off by default; nothing is sent otherwise. |
 | Personal identifiers, contacts, location, etc. | No | No | — | — | Not accessed |
 
 Because the AI helper shares message-derived content with Groq, **fill this table even if you otherwise
 prefer the "No collection" answer** — the SMS row above is not optional once that feature ships.
+
+> **Corrected 2026-07-27.** The financial-info row previously said sharing happened *only* via the user's own
+> Drive backup. That has been inaccurate since v1.56.0: the AI helper's insights card already sent spending
+> **aggregates** to Groq. The row now covers both paths. Re-check this table whenever the insights payload
+> changes — it is the declaration a Play reviewer holds the app to.
 
 ---
 

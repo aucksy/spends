@@ -24,18 +24,14 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Autorenew
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,9 +78,16 @@ fun AnalyticsScreen(
     val cardChoices by viewModel.cardChoices.collectAsStateWithLifecycle()
     val insights by viewModel.insights.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
-    // Dismiss hides the insight until a fresh one arrives (new cycle / refresh) — resets when the text changes.
+    // Tell the ViewModel when this tab is actually on screen, so no AI call fires while the user is
+    // elsewhere in the app (the Analytics ViewModel outlives the tab — it's scoped to the Home entry).
+    DisposableEffect(Unit) {
+        viewModel.setAnalyticsVisible(true)
+        onDispose { viewModel.setAnalyticsVisible(false) }
+    }
+
+    // Dismiss hides the carousel until a fresh set arrives (new cycle / refresh) — resets when the cards change.
     var insightsDismissed by remember { mutableStateOf(false) }
-    LaunchedEffect(insights.text) { if (insights.text != null) insightsDismissed = false }
+    LaunchedEffect(insights.cards) { if (insights.cards.isNotEmpty()) insightsDismissed = false }
     // The cycle these numbers belong to (#5): the selection name, plus the concrete date range when it adds
     // information (a composite's label already IS its name). Passed to the drill-down so it updates per cycle.
     val cycleLabel = selection.describe().let { name ->
@@ -110,12 +113,13 @@ fun AnalyticsScreen(
         )
         Spacer(Modifier.height(8.dp))
 
-        // AI insights (#2): a read-only, plain-English summary of this cycle. Hidden unless AI + the sub-toggle
-        // + a key are on; never shown for an empty cycle or a failed call (fail-closed).
-        if (insights.visible && !insightsDismissed && (insights.loading || insights.text != null)) {
-            InsightsCard(
+        // AI insights: a swipeable carousel — the cycle summary first, then whatever the on-device engine
+        // found worth saying. Hidden unless AI + the sub-toggle + a key are on; never shown for an empty
+        // cycle or when nothing came back (fail-closed).
+        if (insights.visible && !insightsDismissed && (insights.loading || insights.cards.isNotEmpty())) {
+            InsightsCarousel(
                 loading = insights.loading,
-                text = insights.text,
+                cards = insights.cards,
                 onRefresh = viewModel::refreshInsights,
                 onDismiss = { insightsDismissed = true },
             )
@@ -147,71 +151,6 @@ fun AnalyticsScreen(
 
         RecurringCard(state.recurring, onOpenRecurring)
         Spacer(Modifier.height(24.dp))
-    }
-}
-
-/** The AI insights card (#2): a plain-English summary of the cycle, with refresh + dismiss. Read-only text. */
-@Composable
-private fun InsightsCard(
-    loading: Boolean,
-    text: String?,
-    onRefresh: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    SpendsCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Insights",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f),
-                )
-                // Refresh only when there's something to refresh; dismiss is ALWAYS available (an escape hatch
-                // even while a summary is generating, so a slow/stuck call is never a dead end).
-                if (!loading) {
-                    IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            Icons.Filled.Refresh,
-                            contentDescription = "Refresh insight",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(4.dp))
-                }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = "Dismiss insight",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            if (loading) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Thinking about your spending…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else if (text != null) {
-                Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
     }
 }
 

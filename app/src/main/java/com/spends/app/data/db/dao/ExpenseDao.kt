@@ -6,6 +6,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.spends.app.data.db.entity.AllocationEntity
+import com.spends.app.data.db.entity.CategorySliceRow
 import com.spends.app.data.db.entity.CategorySpend
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
@@ -132,6 +133,22 @@ interface ExpenseDao {
             "GROUP BY c.id ORDER BY total DESC",
     )
     suspend fun categorySpendOnce(start: Long, end: Long): List<CategorySpend>
+
+    /**
+     * One-shot per-CHARGE category slices for [start, end) — the transaction-level input to the AI insight
+     * engine (a single outsized charge, or the same charge billed twice on one day). Same filters as
+     * [categorySpendOnce], just ungrouped.
+     */
+    @Query(
+        "SELECT e.id AS expenseId, c.name AS name, a.amountMinor AS amountMinor, " +
+            "e.occurredAt AS occurredAt, e.merchantRaw AS merchantRaw " +
+            "FROM allocations a " +
+            "JOIN expenses e ON e.id = a.expenseId " +
+            "JOIN categories c ON c.id = a.categoryId " +
+            "WHERE e.deletedAt IS NULL AND e.kind = 'EXPENSE' " +
+            "AND e.occurredAt >= :start AND e.occurredAt < :end",
+    )
+    suspend fun categorySlicesOnce(start: Long, end: Long): List<CategorySliceRow>
 
     /** Running balance (income − expense) for everything strictly before [before] — for Carry Forward. */
     @Query(

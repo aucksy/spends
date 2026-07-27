@@ -35,10 +35,13 @@ arbitrary bank alerts.
 All parsing happens locally on the device. Message content is never sent to the developer and is never
 used for advertising or marketing. The app has one optional feature, off by default, that can send a
 limited extract off the device: an "AI helper" the user must switch on and supply their own third-party
-API key for. When enabled, it sends the merchant name and the words of that one message with every run
-of digits replaced by "#" (removing amounts, balances, account and card numbers, numeric dates and phone
-numbers) to obtain a suggested spending category, which the user still confirms manually. With the AI
-helper off — its default state — no message content leaves the device at all. The SMS permission itself
+API key for. It has two independently-switchable parts. **Category suggestions** send the merchant name
+and the words of that one message with every run of digits replaced by "#" (removing amounts, balances,
+account and card numbers, numeric dates and phone numbers) to obtain a suggested spending category, which
+the user still confirms manually. **Spending insights** send no message content at all — only spending
+figures: per-category and income/expense totals for the cycle being viewed and the one before it, what the
+user typically spends in a category, and for two of the cards a single charge's amount and category. With
+the AI helper off — its default state — no message content and no spending figures leave the device. The SMS permission itself
 is optional: the app is fully functional with manual entry, and prominently discloses why it needs SMS
 before requesting it.
 ```
