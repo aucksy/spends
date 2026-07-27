@@ -4,7 +4,49 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.59.0** — versionCode **65**, versionName **"1.59.0"**
+- **Shipped: v1.60.0** — versionCode **66**, versionName **"1.60.0"**. AI insights carousel (Phase A of
+  [`docs/AI-INSIGHTS-PLAN.md`](docs/AI-INSIGHTS-PLAN.md)). **No DB schema change (still v16)**, no snapshot,
+  no dependency change; one additive DAO projection.
+  APK: https://github.com/aucksy/spends/releases/download/v1.60.0/Spends-v1.60.0.apk
+
+## v1.60.0 — AI insights carousel (owner-requested 2026-07-26)
+Owner: *"more AI insights in carousel cards format… currently it's the same insight every single time."*
+The single card becomes a `HorizontalPager` with dots: page 1 is the v1.56.0 summary unchanged, then
+findings (unusual category · quiet win · outsized charge · duplicate charge · biggest mover · concentration).
+
+**⭐The architecture rule:** every number is computed on-device by a pure `InsightEngine`; `InsightNarrator`
+only phrases finished figures. One Groq call for all cards, run concurrently with the summary call. Any
+failure falls back to the finding's own templated sentence — the finding IS the insight.
+
+**Reviews (ritual honored):** 2 adversarial agents → **COMPILE: BLOCKED, LOGIC: NO-GO**; all fixed.
+- **⭐BLOCKER** `val width by animateDpAsState(...)` missing the runtime `getValue` import — a hard compile error.
+- **⭐BLOCKER ×2** two of my OWN tests would have failed CI. One exposed a real design flaw: the top 3 of 4
+  categories are ≥75% of spend by arithmetic alone, so a 55% "concentration" bar fired unconditionally for
+  anyone with few categories. Now needs 6+ categories and a 70% share.
+- **⭐HIGH — the baseline was a figure nobody spent.** Pro-rating six complete cycles by elapsed time assumes
+  uniform spending; rent/EMI/insurance are single fixed-day charges. Day 3 of a cycle → *"Rent is ₹20,000 this
+  cycle, against ₹2,000 in a usual one — about 10× as much."* Replaced by **day-aligned windows**
+  (`InsightWindows`): the first N days of this cycle vs the first N days of each previous one. The engine now
+  does **no scaling at all**. **DURABLE LESSON: never scale a comparison figure into a number the user never
+  spent — narrow the question instead.**
+- **HIGH** Single-Card mode narrated other instruments' transactions (screen filters to one card, the history
+  query didn't) → finding cards suppressed there and for non-cycle ranges. **HIGH** a navigable *future* cycle
+  drove the elapsed fraction to its floor → "37× as much" → returns nothing before a cycle starts.
+- **⭐HIGH — disclosures no longer matched the payload.** Two cards send an individual charge's amount while the
+  policy said "never individual transactions". Corrected in **all six** required files including the three that
+  had never mentioned insights at all (store-listing, README, PERMISSIONS_DECLARATION). Also corrected a
+  **pre-existing** error: `play/DATA_SAFETY.md` claimed financial info was shared only via the user's own Drive
+  backup — untrue since v1.56.0.
+- **MED** the mover card restated the unusual card almost every time, and **the test meant to catch it was a
+  tautology** (grouped by the key the engine already deduped on). **MED** Groq calls fired while the user was on
+  another tab, breaking the shipped "nothing is sent while you're not looking" promise → gated on visibility.
+  **MED** narrated cards were paired to findings by index with no check → the model now echoes `kind`.
+  **MED** years of allocation rows were mapped + merchant-normalised on the main thread.
+- Also: months with no spend counted as ₹0 when computing "usual" (halved the median → an ordinary
+  intermittent purchase read as 2× unusual); an evenly-split transaction looked like a double charge; a
+  cancelled call cached its own fallback text; same-named categories silently dropped one.
+
+## Previous: v1.59.0 — versionCode **65**, versionName **"1.59.0"**
   (`app/build.gradle.kts` lines 41–42). Demo mode. **No DB schema change (still v16), no snapshot change,
   no dependency change**; manifest untouched, but `res/xml/backup_rules.xml` +
   `res/xml/data_extraction_rules.xml` now exclude the demo flag from device backup.
