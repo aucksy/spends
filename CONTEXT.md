@@ -40,8 +40,10 @@ capture from **bank SMS + bank/UPI notifications** (review-only — captures lan
    compile/Hilt/Room/migration, one logic/regression/data-safety. **Explicitly tell them
    to scan `app/src/test`** (a stale test assert broke a prior tag once).
 3. Fix all real findings. Only then bump versionCode+versionName, commit, tag, push.
-4. Poll CI green, post the direct APK link, then give me a **manual-test checklist** of
-   things you couldn't verify yourself (money + DB correctness first).
+4. Poll CI green, post the direct APK link, then **append a section to
+   [`docs/MANUAL-TEST-CHECKLIST.md`](docs/MANUAL-TEST-CHECKLIST.md)** — the running list of things only a
+   phone can confirm (money + DB correctness first, ⭐-marked). Post the same list in chat. Nothing is
+   deleted from that file until it has actually been ticked on a device.
 
 ## Working agreement (standing user preferences)
 - **Pause and ask between rounds.** Don't chain multiple feature rounds without a check-in.
