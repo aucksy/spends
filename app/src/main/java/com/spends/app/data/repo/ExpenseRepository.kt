@@ -71,6 +71,10 @@ class ExpenseRepository @Inject constructor(
     /** Earliest active transaction time (null if none) — lower bound for the "All" range. */
     fun observeEarliestDay(): Flow<Long?> = dao.observeEarliestOccurredAt()
 
+    /** One-shot earliest active EXPENSE time — the AI insight engine's "was spending really being logged a
+     *  year ago?" gate before it offers a year-on-year comparison. */
+    suspend fun earliestExpenseOccurredAtOnce(): Long? = dao.earliestExpenseOccurredAtOnce()
+
     /** Income timestamps — to auto-detect the Smart cycle's salary day. */
     fun observeIncomeOccurredAt(): Flow<List<Long>> = dao.observeIncomeOccurredAt()
 

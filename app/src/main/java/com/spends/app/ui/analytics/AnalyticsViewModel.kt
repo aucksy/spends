@@ -12,10 +12,12 @@ import com.spends.app.core.period.PeriodSelectionStore
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.period.SmartCardCycle
 import com.spends.app.core.time.CycleUtils
+import com.spends.app.core.time.CycleWindow
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.ai.AiInsights
 import com.spends.app.data.ai.GroqClient
 import com.spends.app.data.ai.InsightPayload
+import com.spends.app.data.ai.insights.InsightCalendar
 import com.spends.app.data.ai.insights.InsightCard
 import com.spends.app.data.ai.insights.InsightKind
 import com.spends.app.data.ai.insights.InsightsProvider
@@ -34,6 +36,7 @@ import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.cards.isCardInstrument
 import com.spends.app.ui.components.CardChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,7 +98,9 @@ data class AnalyticsUiState(
 }
 
 /** AI insights card state (#2). Read-only text; hidden unless AI + the sub-toggle + a key are on, and never
- *  present for an empty cycle. [failed] = the call didn't return usable text (fail-closed → the card hides). */
+ *  present for an empty cycle. The carousel hides whenever [cards] is empty, so failing closed needs no
+ *  separate flag; [failed] only distinguishes "nothing came back" from "quiet cycle" for a future error
+ *  state, and nothing renders it today. */
 data class InsightsUiState(
     val visible: Boolean = false,
     val loading: Boolean = false,
@@ -248,8 +253,29 @@ class AnalyticsViewModel @Inject constructor(
                         // unrelated DataStore write) keeps the fingerprint the same → distinctUntilChanged drops
                         // it → the in-flight call is NOT cancelled and completes (fixes the "stuck on Thinking…"
                         // hang). null = an empty/loading cycle → hide the card.
-                        state.map { st -> if (st.loading || st.isEmpty) null else insightFingerprint(st) }
-                            .distinctUntilChanged()
+                        //
+                        // The salary day is folded in because it decides whether the payday card may appear at
+                        // all, and on a plain Month view it does NOT move the window bounds — so without it,
+                        // changing your salary day leaves the cached carousel showing (or hiding) that card
+                        // wrongly until some total happens to change. It is mapped to just the day and made
+                        // distinct first, so other settings writes still cause no churn.
+                        combine(
+                            state,
+                            settingsRepository.settings
+                                .map { it.salaryCycleStartDay to it.smartCycleEnabled }
+                                .distinctUntilChanged(),
+                            // The cycle TYPE has to be its own input. With the default reset day, Salary and
+                            // Smart resolve to byte-identical windows — same bounds, same totals, same
+                            // categories — so `state` conflates them and the fingerprint collides, while the
+                            // type is exactly what decides whether the two whole-cycle cards may appear.
+                            selection.map { it.type to it.range }.distinctUntilChanged(),
+                        ) { st, (salaryDay, smartCycle), (type, range) ->
+                            if (st.loading || st.isEmpty) {
+                                null
+                            } else {
+                                insightFingerprint(st, salaryDay, smartCycle, type, range)
+                            }
+                        }.distinctUntilChanged()
                     }
                 }
                 .collectLatest { fp ->
@@ -258,7 +284,7 @@ class AnalyticsViewModel @Inject constructor(
                         return@collectLatest
                     }
                     _insights.value = InsightsUiState(visible = true, loading = true)
-                    val cards = buildCards(state.value, fp, forceRefresh = false)
+                    val cards = buildCardsOrEmpty(state.value, fp, forceRefresh = false)
                     _insights.value = InsightsUiState(visible = true, loading = false, cards = cards, failed = cards.isEmpty())
                 }
         }
@@ -266,24 +292,47 @@ class AnalyticsViewModel @Inject constructor(
 
     /** Re-generate the carousel bypassing the per-cycle caches (the card's refresh button). */
     fun refreshInsights() = viewModelScope.launch {
+        // The settings read is INSIDE the guard: it is a DataStore call like any other, and an unhandled
+        // throw here escapes a bare launch and takes the coroutine down.
         val st = state.value
-        val s = settingsRepository.settings.first()
+        val s = runCatching { settingsRepository.settings.first() }
+            .getOrElse { if (it is CancellationException) throw it else return@launch }
         if (!(s.aiEnabled && s.aiInsights) || !groqClient.hasKey() || st.loading || st.isEmpty) return@launch
         _insights.value = InsightsUiState(visible = true, loading = true)
-        val cards = buildCards(st, insightFingerprint(st), forceRefresh = true)
+        val sel = selection.value
+        val fingerprint = insightFingerprint(st, s.salaryCycleStartDay, s.smartCycleEnabled, sel.type, sel.range)
+        val cards = buildCardsOrEmpty(st, fingerprint, forceRefresh = true)
         _insights.value = InsightsUiState(visible = true, loading = false, cards = cards, failed = cards.isEmpty())
     }
 
     /**
+     * [buildCards], but a thrown exception costs the cards rather than the collector.
+     *
+     * Without this, anything that throws — a DataStore read failing on an unreadable prefs file, say —
+     * propagates out of `collectLatest` and kills the insights collector for the ViewModel's whole lifetime,
+     * leaving the card pinned on "Thinking…" with no error state and no way back. That is the exact hang
+     * v1.56.1 fixed once already, so it gets a guard rather than an argument about whether it can happen.
+     * `CancellationException` is rethrown so structured concurrency still works.
+     */
+    private suspend fun buildCardsOrEmpty(st: AnalyticsUiState, fingerprint: String, forceRefresh: Boolean): List<InsightCard> =
+        runCatching { buildCards(st, fingerprint, forceRefresh) }
+            .getOrElse { if (it is CancellationException) throw it else emptyList() }
+
+    /**
      * The carousel: the cycle summary (page 1, unchanged since v1.56.0) followed by whatever the on-device
-     * [InsightEngine] found worth saying.
+     * `InsightEngine` found worth saying.
      *
      * The two run **concurrently**. They are independent calls, and doing them in sequence would make a
      * carousel of five cards feel twice as slow as the single card it replaces.
      */
     private suspend fun buildCards(st: AnalyticsUiState, fingerprint: String, forceRefresh: Boolean): List<InsightCard> =
         coroutineScope {
-            val summary = async { aiInsights.summarize(buildInsightPayload(st), forceRefresh = forceRefresh) }
+            // Read once and share: both halves need the same settings snapshot, and page 1's "vs last cycle"
+            // now depends on them exactly as the finding cards do.
+            val settings = settingsRepository.settings.first()
+            val summary = async {
+                aiInsights.summarize(buildInsightPayload(st, settings), forceRefresh = forceRefresh)
+            }
             val findings = async {
                 // Finding cards need a single navigable cycle AND on-screen figures drawn from the same
                 // dataset the history query sees. Neither holds otherwise:
@@ -299,11 +348,20 @@ class AnalyticsViewModel @Inject constructor(
                         cycleLabel = selection.value.describe(),
                         windowStartMillis = st.windowStartMillis,
                         windowEndExclusiveMillis = st.windowEndExclusiveMillis,
+                        cycleBoundaries = cycleBoundaries(st.windowStartMillis, selection.value, settings),
                         // Sum rather than associate: category names carry no unique index, so two
                         // same-named categories would silently drop one and understate that category.
                         currentByCategory = st.categories.groupBy { it.name }
                             .mapValues { (_, slices) -> slices.sumOf { it.amountMinor } },
                         expenseMinor = st.expenseMinor,
+                        paydayAligned = DateUtils.toLocalDate(st.windowStartMillis).dayOfMonth ==
+                            settings.salaryCycleStartDay,
+                        // Smart Cycle across all cards buckets a card purchase into the cycle its statement
+                        // BILLS, while the history queries read raw transaction dates. The whole-total
+                        // comparisons are the two that cannot survive that difference.
+                        wholeCycleComparable = !(
+                            settings.smartCycleEnabled && selection.value.type == PeriodType.SMART_CYCLE
+                            ),
                         forceRefresh = forceRefresh,
                     )
                 }
@@ -314,10 +372,84 @@ class AnalyticsViewModel @Inject constructor(
             listOfNotNull(summaryCard) + findings.await()
         }
 
-    private fun insightFingerprint(st: AnalyticsUiState): String = buildString {
+    /**
+     * The **real** starts of the displayed cycle and the six before it, descending, newest first.
+     *
+     * ⭐This exists because the obvious shortcut is wrong. Walking back by subtracting the current cycle's
+     * length six times looks equivalent and isn't: cycles are 28, 30 or 31 days, so the synthetic boundaries
+     * slide further off the real ones the further back you go — for a salary day of 1, February alone drags
+     * every earlier boundary days out of step. Rent paid on the 1st then lands near the *end* of a drifted
+     * window, past the point this cycle has reached, and drops out of the baseline while this cycle's rent
+     * is still counted. The card then says "your recent cycles were at ₹11,000 by this point" about cycles
+     * that were at ₹36,000, which is the same class of confident falsehood day-alignment exists to prevent.
+     *
+     * So the boundaries come from `CycleUtils` — the same code that drew the window on screen — and the
+     * provider refuses to produce anything if the first one doesn't match that window.
+     *
+     * ⭐Anchored on **the displayed window's own start date**, never on today's date replayed through the
+     * cycle offset. `windowFor(w.start, anchor).start == w.start`, so `boundaries[0] == startMillis` holds by
+     * construction on every path, and this stops having to mirror `PeriodResolver`'s anchor rules — a
+     * duplicated invariant that could drift. It also closes a real hole: `resolvedFlow` recomputes its
+     * `today` only when the selection, settings, earliest day or cards change, so an app left open overnight
+     * carries yesterday's window into the next morning. Reading a fresh clock here would then disagree with
+     * it, the provider would fail closed, and the user would silently lose the **whole** carousel — Phase A's
+     * cards included — for one day every month.
+     */
+    private fun cycleBoundaries(startMillis: Long, sel: PeriodSelection, settings: SettingsState): List<Long> {
+        val month = sel.type == PeriodType.MONTH
+        // Mirrors PeriodResolver's anchor choice, including its coercion of Smart to Salary when the Smart
+        // Cycle setting is off.
+        val anchor = if (settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE) {
+            settings.effectiveSmartResetDay
+        } else {
+            settings.salaryCycleStartDay
+        }
+        val startDate = DateUtils.toLocalDate(startMillis)
+        var window = if (month) CycleUtils.calendarMonth(startDate) else CycleUtils.windowFor(startDate, anchor)
+        val out = mutableListOf(window.startMillis())
+        repeat(InsightsProvider.HISTORY_CYCLES) {
+            window = previousCycle(window, month, anchor)
+            out += window.startMillis()
+        }
+        return out
+    }
+
+    private fun previousCycle(window: CycleWindow, month: Boolean, anchor: Int): CycleWindow =
+        if (month) CycleUtils.calendarMonth(window.start.minusDays(1)) else CycleUtils.previousWindow(window, anchor)
+
+    private fun insightFingerprint(
+        st: AnalyticsUiState,
+        salaryDay: Int,
+        smartCycle: Boolean,
+        type: PeriodType,
+        range: PeriodRange,
+    ): String = buildString {
         append(st.windowStartMillis).append('|').append(st.windowEndExclusiveMillis)
         append('|').append(st.incomeMinor).append('|').append(st.expenseMinor)
-        st.categories.forEach { append('|').append(it.categoryId).append(':').append(it.amountMinor) }
+        // All four decide whether a card may appear at all — the salary day gates the payday habit; the Smart
+        // Cycle switch and the cycle type together gate the two whole-cycle comparisons; the range gates every
+        // finding card — while none of them necessarily moves a total. Without them a cached carousel outlives
+        // the setting that should have suppressed it.
+        append('|').append(salaryDay).append('|').append(smartCycle)
+        append('|').append(type).append('|').append(range)
+        // The NAME as well as the id: the provider is handed categories keyed by name and the name is what
+        // ends up on the card, so renaming "Dining" to "Food" leaves a cached carousel talking about a
+        // category that no longer exists.
+        st.categories.forEach {
+            append('|').append(it.categoryId).append(':').append(it.name).append(':').append(it.amountMinor)
+        }
+        // The pace card says "day N of the cycle", which ages on the clock rather than on the data. Without
+        // this, opening Analytics a week later with nothing added would serve the cached card and still claim
+        // day 5. Clamped to the cycle length exactly as the engine clamps it, so a *finished* cycle keeps one
+        // stable fingerprint instead of re-narrating itself every day the user browses back to it.
+        append('|').append(insightDayOfCycle(st))
+    }
+
+    private fun insightDayOfCycle(st: AnalyticsUiState): Int {
+        val cycleDays = InsightCalendar.cycleDays(st.windowStartMillis, st.windowEndExclusiveMillis, DateUtils.ZONE)
+        if (cycleDays <= 0) return 0
+        return InsightCalendar.daysElapsed(st.windowStartMillis, DateUtils.nowMillis(), DateUtils.ZONE)
+            .coerceIn(0, cycleDays)
     }
 
     /**
@@ -325,21 +457,51 @@ class AnalyticsViewModel @Inject constructor(
      * the charts) plus a one-shot previous-cycle read. Sends NO dates, NO rows, NO merchants, NO balances — the
      * cycle label is the descriptive name (e.g. "Current Salary Cycle"), never concrete transaction dates.
      */
-    private suspend fun buildInsightPayload(st: AnalyticsUiState): InsightPayload {
+    private suspend fun buildInsightPayload(st: AnalyticsUiState, settings: SettingsState): InsightPayload {
         val sel = selection.value
         val byCategory = st.categories.map { InsightPayload.CategoryTotal(it.name, it.amountMinor) }
-        // "vs last cycle" only for a single navigable cycle; the previous window is the equal-length span
-        // immediately before this one (a universal approximation across Month / Salary / Smart).
         var lastExpense: Long? = null
         var lastByCategory: List<InsightPayload.CategoryTotal>? = null
-        if (sel.range == PeriodRange.CURRENT && st.windowEndExclusiveMillis > st.windowStartMillis) {
-            val span = st.windowEndExclusiveMillis - st.windowStartMillis
-            val prevStart = st.windowStartMillis - span
-            val prevEnd = st.windowStartMillis
-            lastExpense = expenseRepository.kindSumsOnce(prevStart, prevEnd)
-                .firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
-            lastByCategory = expenseRepository.categorySpendOnce(prevStart, prevEnd)
-                .map { InsightPayload.CategoryTotal(it.name, it.total) }
+        // ⭐"vs last cycle" is dropped outright in the two modes where the comparison cannot be honest — the
+        // same two the finding cards already refuse. Single-Card filters the screen to ONE instrument while
+        // these queries carry no instrument filter, so page 1 was comparing one card's spend against every
+        // instrument's previous window ("spending fell from ₹1,20,000 to ₹8,000"). Smart Cycle buckets a card
+        // purchase into the cycle its statement bills while these read raw dates.
+        val comparable = sel.range == PeriodRange.CURRENT &&
+            !st.isComposite &&
+            !(settings.smartCycleEnabled && sel.type == PeriodType.SMART_CYCLE)
+        if (comparable && st.windowEndExclusiveMillis > st.windowStartMillis) {
+            // ⭐The REAL previous cycle, not this one's length subtracted. Cycles are 28/30/31 days, so a
+            // fixed-span step lands days off: viewing February with a salary day of 1, the "previous cycle"
+            // began on 4 January and the rent paid on the 1st fell outside it — page 1 then read "you spent
+            // ₹25,000 more than last cycle" when nothing had changed. This is the Phase B blocker, and it was
+            // alive here too because this payload predates that fix and never went through it.
+            val boundaries = cycleBoundaries(st.windowStartMillis, sel, settings)
+            // ⭐Fail closed on boundaries that don't describe the window on screen — the same check
+            // InsightsProvider makes, and page 1 needs it for the same reason. Deriving them re-reads the
+            // DEVICE TIMEZONE, while `windowStartMillis` was resolved in whatever zone was in force earlier
+            // and is not recomputed on a zone change. Fly west and the two disagree: without this, page 1
+            // silently compares against a cycle two months out. The arithmetic this replaced could not go
+            // wrong that way, so the guard is the price of using real cycles.
+            if (boundaries.size >= 2 && boundaries.first() == st.windowStartMillis) {
+                val prevStart = boundaries[1]
+                val prevEnd = boundaries[0]
+                val prevCategories = expenseRepository.categorySpendOnce(prevStart, prevEnd)
+                val prevExpense = if (prevCategories.isEmpty()) {
+                    null
+                } else {
+                    expenseRepository.kindSumsOnce(prevStart, prevEnd)
+                        .firstOrNull { it.kind == TxnKind.EXPENSE }?.total
+                }
+                // ⭐No rows means the app wasn't in use, not that nothing was spent. Defaulting to ₹0 told
+                // every brand-new user "₹45,000 this cycle, well above last cycle" about a month Spends
+                // didn't exist for them — the same falsehood the year-on-year card carries three gates
+                // against. Null omits the comparison from the payload entirely.
+                if (prevExpense != null && prevExpense > 0L) {
+                    lastExpense = prevExpense
+                    lastByCategory = prevCategories.map { InsightPayload.CategoryTotal(it.name, it.total) }
+                }
+            }
         }
         return InsightPayload(
             cycleLabel = sel.describe(),

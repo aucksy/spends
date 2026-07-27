@@ -50,7 +50,7 @@
 <div class="wrap">
   <header>
     <h1>Spends — Privacy Policy</h1>
-    <p class="sub">Effective 4 July 2026 · Last updated 26 July 2026</p>
+    <p class="sub">Effective 4 July 2026 · Last updated 27 July 2026</p>
   </header>
 
   <p><strong>Spends</strong> is an offline-first personal expense tracker for Android. It has no account,
@@ -95,8 +95,10 @@
   or from your Google Drive. Backup is off by default.</p>
 
   <h2>3. Optional AI helper (off by default, your own key)</h2>
-  <p>Spends includes an optional "AI helper" that can suggest a category for a detected transaction and write a
-  short plain-English summary of a spending cycle. It is <strong>off by default</strong> and does nothing until you
+  <p>Spends includes an optional "AI helper" that can suggest a category for a detected transaction, and put your
+  own figures into plain English on the Analytics insight cards — a summary of the cycle you are viewing, anything
+  unusual in it, and how it compares over time. Every figure on those cards is worked out on your phone before the
+  AI sees it. It is <strong>off by default</strong> and does nothing until you
   both switch it on and paste <strong>your own</strong> API key, which is stored encrypted on your device and is
   never included in a backup. While it is on — and only for the sub-feature you enable — the following is sent over
   HTTPS to <strong>Groq</strong>, a third-party AI provider:</p>
@@ -106,7 +108,7 @@
       replaced by a single "#"</strong>; your category names; and the names of merchants you previously
       categorised.</li>
     <li><strong>Spending insights:</strong> your category totals and income/expense totals for the cycle you are
-      viewing and the one before it. For the "unusual spending" cards, Spends works out <em>on your phone</em> what
+      viewing and, in most views, the one before it. For the "unusual spending" cards, Spends works out <em>on your phone</em> what
       you typically spend in a category over your last six cycles, and sends only the resulting comparison — for
       example "Fuel: ₹12,500 this cycle, usually ₹4,100". Your older cycles are analysed on the device and are never
       themselves sent.</li>
@@ -121,17 +123,32 @@
   category total, so for those the <strong>amount of that one charge and its category</strong> are sent (for example
   "a Fuel charge of ₹12,500, about 3× the usual ₹4,100"). Never the merchant, the date, or anything else about it.</p>
 
+  <p>Some insight cards compare your spending over time. Every figure on them is still worked out <em>on your
+  phone</em> and only the finished comparison is sent, but that comparison contains a few things the others do not:
+  <strong>how many days into the cycle you are</strong>; <strong>the calendar month the cycle mostly falls in</strong>
+  (the word "July" on its own — never a full date); <strong>what the same stretch of the cycle came to a year
+  ago</strong>; what a single category cost per cycle earlier compared with lately; and, for the payday card, the
+  <strong>share of your spending that lands in the week after you are paid</strong>. That last one describes
+  <em>when in the month</em> you tend to spend, which is more about your habits than a total is. The months of
+  history those comparisons are worked out from, and the transactions inside them, are never themselves sent —
+  only the finished comparison.</p>
+
   <p><strong>Never sent</strong> for either sub-feature: your full unmasked message text, your account or card
-  numbers, your balances, the merchant names or dates of your transactions, or your transaction records themselves.
+  numbers, your balances, the date of any transaction, or your transaction records themselves. The insight cards
+  never send a merchant either — only category suggestions do, and only the merchant on the single message being
+  reviewed, as described above. For the insight cards, the cycle's month name and your day within the cycle are
+  the only date-shaped values sent; a masked message can still contain a month written in letters, as explained
+  above.
   The AI helper can never add, edit or delete a transaction — it only proposes a category that you still confirm
   yourself. Switching the helper off stops all of this immediately. What you send is then handled under Groq's own
   privacy policy.</p>
 
   <h2>4. Data we collect and share</h2>
-  <p>We do <strong>not</strong> collect, sell, rent, or share your personal data, financial data, or messages —
-  <strong>nothing is sent to the developer at all</strong>, and there is no server or account behind Spends. The app
-  contains no advertising or analytics SDKs. Apart from the optional AI helper described in section 3, the only
-  network connection the app makes is to <em>your own</em> Google Drive, and only if you enable backup.</p>
+  <p>We do <strong>not</strong> collect, sell, rent, or share your personal data, financial data, or messages with
+  anyone other than the optional AI helper described in section 3 — and <strong>nothing is sent to the developer at
+  all</strong>, ever. There is no server or account behind Spends, and the app contains no advertising or analytics
+  SDKs. Apart from that AI helper, the only network connection the app makes is to <em>your own</em> Google Drive,
+  and only if you enable backup.</p>
 
   <h2>5. Data retention and deletion</h2>
   <p>Your data remains on your device until you remove it. You can:</p>

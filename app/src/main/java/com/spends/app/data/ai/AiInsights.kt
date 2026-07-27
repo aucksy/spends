@@ -61,11 +61,17 @@ class AiInsights @Inject constructor(
     }
 
     companion object {
+        // The "only the figures given" clause matters as much here as it does in InsightNarrator: this card
+        // is handed both cycles' totals and asked to note a change, which is an invitation to compute the
+        // difference. The app's promise is that every figure on an insight card was worked out on the phone,
+        // so a delta the model subtracted itself would break it on page 1 — the card everyone sees.
         const val SYSTEM = "You are a calm, encouraging personal-money assistant for an Indian user. In 2 to 4 " +
             "short sentences of plain English (no jargon), describe this spending cycle: the overall amount, the " +
-            "biggest categories, and any notable change versus last cycle if provided. Use the Rupee sign ₹ for " +
-            "amounts. Never shame the user. Never give financial advice, warnings, or predictions. Respond with " +
-            "ONLY a JSON object of the form {\"summary\":\"...\"}."
+            "biggest categories, and any notable change versus last cycle if provided. " +
+            "Use ONLY the figures given to you — never calculate, subtract, estimate or invent a number, and " +
+            "never state a difference as a figure of its own; say which is larger instead. Use the Rupee " +
+            "sign ₹ for amounts. Never shame the user. Never give financial advice, warnings, or predictions. " +
+            "Respond with ONLY a JSON object of the form {\"summary\":\"...\"}."
 
         private fun rupees(minor: Long): Double = minor / 100.0
 

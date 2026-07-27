@@ -4,10 +4,82 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.60.0** — versionCode **66**, versionName **"1.60.0"**. AI insights carousel (Phase A of
-  [`docs/AI-INSIGHTS-PLAN.md`](docs/AI-INSIGHTS-PLAN.md)). **No DB schema change (still v16)**, no snapshot,
-  no dependency change; one additive DAO projection.
-  APK: https://github.com/aucksy/spends/releases/download/v1.60.0/Spends-v1.60.0.apk
+- **Shipped: v1.61.0** — versionCode **67**, versionName **"1.61.0"**. Insights that compare over time
+  (Phase B of [`docs/AI-INSIGHTS-PLAN.md`](docs/AI-INSIGHTS-PLAN.md)). **No DB schema change (still v16)**,
+  no snapshot, no dependency change; one additive read-only DAO query.
+  APK: https://github.com/aucksy/spends/releases/download/v1.61.0/Spends-v1.61.0.apk
+
+## v1.61.0 — Phase B: pace, year-on-year, category trends, payday habit
+Four new carousel cards, all about *time* rather than this cycle alone. Full detail, every threshold and the
+reasoning behind each: [`docs/AI-INSIGHTS-PHASE-B.md`](docs/AI-INSIGHTS-PHASE-B.md).
+
+**Owner decisions (AskUserQuestion):** carousel grows to 6 pages with slots reserved so anomalies can't take
+them all · month names ARE sent (so year-on-year reads "this July") · the v1.60.0 carry-over settled — the
+"large charge"/"charged twice?" cards keep sending one charge's amount + category.
+
+**Deliberately NOT built, both explained in the doc:** a separate month-on-month card (page 1 and the Phase A
+mover cards already say it twice) and the *weekend* half of habit discovery (across all categories the signal
+is drowned by rent/EMI/insurance on fixed days; the honest version needs Phase C's needs/wants split).
+
+**⭐⭐THE ROUND'S DURABLE LESSON — the Phase A lesson had a second door.** History was walked back by
+subtracting a FIXED SPAN (the current cycle's length) six times. Real cycles are 28/30/31 days, so those
+synthetic boundaries slide off the real ones the further back you go — a sweep found **84% of windows wrong**,
+worst drift 3 days. Rent on a fixed day then falls outside a drifted window and drops out of the baseline
+while THIS cycle's rent still counts: *"your recent cycles were at ₹11,000 by this point"* about cycles that
+were at ₹36,000. Fixed by passing the **real** `CycleUtils` boundaries and deleting the fixed-span entry point
+entirely. **And the same defect was alive on page 1** (`buildInsightPayload`, shipped v1.56.0, never audited)
+— plus two guards the finding cards had and it didn't: Single-Card compared one card's spend against every
+instrument's previous window, Smart Cycle compared billing-bucketed totals against raw-date history.
+
+**⭐The other recurring defect: a key name is an assertion.** The model is told to use only the figures given,
+so a payload key is not a label. Four rounds each found another over-claim — `timesUsual` on a ratio of two
+percentages (40% ÷ 23% = "1.7× your usual" on a card with no amount); `usualAmount` on a MOVER, which is one
+previous cycle ("well above your usual ₹9,000" when the usual was ₹18,000); `usualAmount` on the day-aligned
+cards, which is five days' worth on day 5; `amount` on the trend card, a per-cycle median from months not on
+screen. **The generic `else` branch was the bug.** Now one `when` over all 12 kinds, no fallthrough, auditable
+in one place. Also: `median()` averaged the two middle values on an even list — the ordinary case — producing
+a "usual" no cycle ever reached; now always a real observation.
+
+**Reviews (ritual honored, and then some): 7 rounds × 2 adversarial agents = 14 passes. Every round found
+something real.** Both agents ported the engine to Python and executed it rather than reasoning about it.
+- **⭐3 of my own tests would have red-CI'd** (`assertTrue(cycleStillRunning)` on a fixture that never set
+  `days`; the old `contains("₹")` assertion against a habit card that carries only percentages). Caught by
+  hand-execution, not by review. **The ritual's value keeps coming from running the tests, not reading them.**
+- **⭐A "regression guard" that guarded nothing** — the directional-invariant test's MOVER_UP/MOVER_DOWN
+  branches never executed, because both fixtures gave the mover's category an anomaly card and
+  `RESTATES_A_JUDGED_CATEGORY` stripped it first. Same tautology trap as the Phase A dedupe test. Fixed with
+  an un-judged category (Rent) plus explicit liveness assertions.
+- **⭐The reply-pairing guard didn't guard.** Cards were matched to findings by `kind` — but a normal carousel
+  carries 2–4 `UNUSUAL_CATEGORY` findings, so a kind-only check passes for every permutation. The model now
+  echoes `category` too, a *partial* echo is rejected, and a card is taken whole or not at all.
+- **⭐New-user falsehood on page 1:** `?: 0L` turned "no records" into "₹0 spent", so a first cycle read *"well
+  above last cycle"* against a month Spends didn't exist for. The year-on-year card carries three gates
+  against exactly this; page 1 had none.
+- **⭐I introduced a timezone bug and the review caught it.** Deriving real boundaries re-reads the device
+  zone, while the window was resolved in whatever zone was in force earlier — fly west and they disagree,
+  page 1 quotes a cycle two months out and the whole carousel silently vanishes. Now fail-closed on
+  `boundaries[0] == windowStartMillis`, the same check the provider makes. Verified over **4.5M** cases:
+  0 false passes, 0 false failures, DST-safe.
+- Also fixed: a "Thinking…" hang I reintroduced via an unguarded DataStore read; the one-whole-cycle cap
+  leaking through the backfill (pace *and* year-on-year about the same total, consecutive pages); the outlier
+  card pushed off the carousel by the new slot reservation; ₹0 sent as "absent" so a card carried only its
+  baseline; a cache that outlived the setting meant to suppress it.
+- **Disclosure sweep, four times.** Six mandated files. Caught: four surfaces (incl. the first-enable consent
+  dialog) claiming merchant names are never sent while the *categoriser* sends them verbatim; the Play
+  permissions declaration never mentioning that up to 100 learned merchant shortcuts leave; `README`'s "every
+  rupee stays on your device" and "100% offline"; `DATA_SAFETY.md` opening with "nothing is sent to any third
+  party" and recommending a "No" its own table contradicts; and a paragraph I wrote that denied sending the
+  month five lines after disclosing it.
+- **Tests:** 78 across 4 files (~1,240 lines) — new `InsightCalendarTest`, rewritten `InsightWindowsTest`
+  (real 28/30/31-day cycles) and `InsightNarratorTest` (payload key naming + 6 pairing tests), extended
+  `InsightEngineTest`. Both agents confirmed the new guards **fail against the pre-fix code**, so they are
+  regression guards rather than decoration.
+
+**Accepted residuals (owner-told, all in the doc):** back-dated edits leave every card with a baseline stale
+until refresh (page 1 included — this is bigger than the Phase A note implied); pace/concentration quote
+categorised spend; Smart-Cycle-with-no-cards over-suppresses pace/YoY; a leap-day stretch shifts the year-ago
+window by a day; a device-zone change can skew older boundaries 1–2 h; page 1 is the only card with no
+structural check on the model's output; category names are user-chosen free text sent verbatim.
 
 ## v1.60.0 — AI insights carousel (owner-requested 2026-07-26)
 Owner: *"more AI insights in carousel cards format… currently it's the same insight every single time."*

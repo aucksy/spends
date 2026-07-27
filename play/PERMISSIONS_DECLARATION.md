@@ -35,12 +35,17 @@ arbitrary bank alerts.
 All parsing happens locally on the device. Message content is never sent to the developer and is never
 used for advertising or marketing. The app has one optional feature, off by default, that can send a
 limited extract off the device: an "AI helper" the user must switch on and supply their own third-party
-API key for. It has two independently-switchable parts. **Category suggestions** send the merchant name
-and the words of that one message with every run of digits replaced by "#" (removing amounts, balances,
-account and card numbers, numeric dates and phone numbers) to obtain a suggested spending category, which
-the user still confirms manually. **Spending insights** send no message content at all — only spending
+API key for. It has two independently-switchable parts. **Category suggestions** send the merchant name,
+whether it was money in or out, the words of that one message with every run of digits replaced by "#"
+(removing amounts, balances, account and card numbers, numeric dates and phone numbers — but not a month
+written in letters), the user's category names, and up to 100 of their saved merchant→category shortcuts
+(merchant and category names only, no amounts or dates) so a merchant they have tagged before can be
+recognised. This obtains a suggested spending category, which the user still confirms manually. **Spending insights** send no message content at all — only spending
 figures: per-category and income/expense totals for the cycle being viewed and the one before it, what the
-user typically spends in a category, and for two of the cards a single charge's amount and category. With
+user typically spends in a category, for two of the cards a single charge's amount and category, and for the
+cards that compare over time the day reached in the cycle, the cycle's calendar month name, the same
+stretch's total a year earlier, one category's per-cycle figures, and the share of spending falling in the
+week after payday. No transaction dates and no transaction records are ever sent. With
 the AI helper off — its default state — no message content and no spending figures leave the device. The SMS permission itself
 is optional: the app is fully functional with manual entry, and prominently discloses why it needs SMS
 before requesting it.

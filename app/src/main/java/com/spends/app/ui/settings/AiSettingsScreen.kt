@@ -47,9 +47,10 @@ fun AiSettingsScreen(
     SettingsSubScaffold(title = "AI helper", onBack = onBack) {
         Spacer(Modifier.height(8.dp))
         Text(
-            "An optional helper powered by your own free Groq key. It only suggests categories and writes a " +
-                "short spending summary — it can never add, edit, or change a transaction or an amount. Turn it " +
-                "off and Spends works exactly as before.",
+            "An optional helper powered by your own free Groq key. It suggests categories, and puts your own " +
+                "figures into plain English on the Analytics insight cards — it can never add, edit, or " +
+                "change a transaction or an amount, and every number on those cards is worked out on your " +
+                "phone before the AI sees it. Turn it off and Spends works exactly as before.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -57,7 +58,11 @@ fun AiSettingsScreen(
         SettingsSection("AI helper") {
             SwitchRow(
                 title = "Use AI helper",
-                subtitle = if (state.aiEnabled) "On — set your key and pick features below" else "Off — Spends stays 100% offline",
+                subtitle = if (state.aiEnabled) {
+                    "On — set your key and pick features below"
+                } else {
+                    "Off — nothing is sent to any AI service"
+                },
                 checked = state.aiEnabled,
                 onChange = { on -> if (on) showEnableConfirm = true else viewModel.setEnabled(false) },
             )
@@ -120,7 +125,8 @@ fun AiSettingsScreen(
                 RowDivider()
                 SwitchRow(
                     title = "Spending insights",
-                    subtitle = "A short, friendly summary at the top of Analytics for the cycle you're viewing.",
+                    subtitle = "Swipeable cards at the top of Analytics: a summary of the cycle you're " +
+                        "viewing, plus anything unusual, your pace, and how things compare over time.",
                     checked = state.aiInsights,
                     onChange = viewModel::setInsights,
                 )
@@ -158,7 +164,8 @@ fun AiSettingsScreen(
                 )
                 BulletLine(
                     "Insights: your category totals and income/expense totals for the cycle you're viewing " +
-                        "and the one before it. For the \"unusual spending\" cards, Spends works out on your " +
+                        "and, in most views, the one before it. For the \"unusual spending\" cards, Spends " +
+                        "works out on your " +
                         "phone what you typically spend in a category over the last six cycles, and sends only " +
                         "the comparison — for example \"Fuel: ₹12,500 this cycle, usually ₹4,100\". Your older " +
                         "cycles themselves are never sent.",
@@ -170,9 +177,22 @@ fun AiSettingsScreen(
                         "Never its merchant or its date.",
                 )
                 Spacer(Modifier.height(8.dp))
+                BulletLine(
+                    "The cards that compare over time send a little more, all of it worked out on your phone " +
+                        "first: how many days into the cycle you are, the calendar month it mostly falls in " +
+                        "(just the word \"July\" — never a full date), what the same stretch of the cycle came " +
+                        "to a year ago, what one category cost per cycle earlier compared with lately, and — " +
+                        "for the payday card — the SHARE of your spending that lands in the week after you're " +
+                        "paid. That last one describes when in the month you tend to spend.",
+                )
+                Spacer(Modifier.height(8.dp))
                 Text(
                     "Never sent: your full unmasked message, your balances, your account and card numbers, or " +
-                        "the merchant names and dates of your transactions. The AI helper can never add, edit " +
+                        "the date of any transaction. The insight cards never send a merchant either — only " +
+                        "category suggestions do, and only for the one message being reviewed, as described " +
+                        "above. For the insight cards, the cycle's month name and your day within the cycle " +
+                        "are the only date-shaped values sent (a masked message can still contain a month " +
+                        "written in letters, as explained above). The AI helper can never add, edit " +
                         "or delete a transaction — it only suggests a category you still confirm yourself.",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
@@ -192,12 +212,23 @@ fun AiSettingsScreen(
                 Text(
                     "This is the first time any of your data would leave your phone. With it on — and only for the " +
                         "features you enable — a detected bank SMS or notification's merchant name, that message's " +
-                        "words with every run of digits replaced by #, plus your saved merchant→category shortcuts " +
-                        "(for category suggestions), and your category and income/expense totals for the cycle " +
-                        "you're viewing plus what you typically spend in a category, and for two of the cards a " +
-                        "single charge's amount and category (for insights) are sent to Groq. " +
-                        "Never your full unmasked message, your balances, your account and card numbers, or the " +
-                        "merchant names and dates of your transactions. You'll paste your own free key next.",
+                        "words with every run of digits replaced by #, whether it was money in or out, plus " +
+                        "your category names and your saved " +
+                        "merchant→category shortcuts (for category suggestions); and your category and " +
+                        "income/expense totals for the cycle you're viewing and, in most views, the one " +
+                        "before it, what you " +
+                        "typically spend in a category, for two of the cards a single charge's amount and " +
+                        "category, and for the cards that compare over time your day into the cycle, its " +
+                        "calendar month, the same stretch a year ago, what one category cost per cycle " +
+                        "earlier compared with lately, and the share of your spending that falls in the week " +
+                        "after payday (for insights) are sent to Groq. " +
+                        "Being straight with you about the limits: the merchant goes as your bank wrote it, so " +
+                        "if your bank put a number there (a UPI id) that number goes too, and the masking " +
+                        "removes numbers but not letters — a payee's name or a month written as \"Jun\" is " +
+                        "still sent. " +
+                        "Never your full unmasked message, your balances, your account and card numbers, or " +
+                        "the date of any transaction. The insight cards never send a merchant — only category " +
+                        "suggestions do. You'll paste your own free key next.",
                 )
             },
             confirmButton = {

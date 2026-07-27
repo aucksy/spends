@@ -161,6 +161,19 @@ interface ExpenseDao {
     @Query("SELECT MIN(occurredAt) FROM expenses WHERE deletedAt IS NULL")
     fun observeEarliestOccurredAt(): Flow<Long?>
 
+    /**
+     * How far back the **spending** records actually go. Null when nothing has been recorded.
+     *
+     * Read only by the AI insight engine, to refuse a year-on-year comparison when the year-ago window is
+     * empty because the app wasn't in use then rather than because nothing was spent.
+     *
+     * Deliberately narrower than [observeEarliestOccurredAt]: it filters to `kind = 'EXPENSE'`, because an
+     * old INCOME row or an opening-balance entry says nothing about whether *spending* was being logged a
+     * year ago, and would let the comparison run against a year in which nothing was recorded.
+     */
+    @Query("SELECT MIN(occurredAt) FROM expenses WHERE deletedAt IS NULL AND kind = 'EXPENSE'")
+    suspend fun earliestExpenseOccurredAtOnce(): Long?
+
     /** Income timestamps — used to auto-detect the salary day for the Smart cycle. */
     @Query("SELECT occurredAt FROM expenses WHERE deletedAt IS NULL AND kind = 'INCOME'")
     fun observeIncomeOccurredAt(): Flow<List<Long>>

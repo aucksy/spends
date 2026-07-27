@@ -21,32 +21,47 @@ package com.spends.app.data.ai.insights
  * So instead of scaling the answer, this narrows the question: compare the first N days of this cycle against
  * **the first N days of each previous cycle**. Rent-on-day-1 then appears in both sides and nothing is
  * invented — the baseline is a real figure the user actually spent, and "usually ₹X by this point" is true.
+ *
+ * ## Why cycles arrive as explicit boundaries
+ * ⭐The first version of this walked backwards by subtracting a **fixed span** — the current cycle's length —
+ * six times. Real cycles are 28, 30 or 31 days long, so those synthetic windows slide further off the real
+ * cycle boundaries the further back they go: for a salary day of 1, February drags every earlier boundary
+ * days out of step. The rent paid on the 1st then falls near the *end* of a drifted window, past the point
+ * this cycle has reached, and drops out of the baseline entirely — while this cycle's rent is still counted.
+ * The result is the exact bug the day-alignment above exists to prevent, arriving by a different route:
+ *
+ * > "Day 12 of the cycle and ₹36,000 spent. Your recent cycles were at ₹11,000 by this point."
+ *
+ * They were at ₹36,000 too. So the caller now passes the **real** cycle boundaries, produced by the same
+ * `CycleUtils`/`PeriodResolver` machinery that drew the window on screen. There is deliberately no
+ * fixed-span entry point left to reach for.
  */
 object InsightWindows {
 
     /**
-     * Which prior window [occurredAt] belongs to, or null if it is outside the compared span or falls later
-     * in its cycle than we have yet reached in the current one.
+     * Which prior cycle [occurredAt] falls in, or null if it is outside the compared span.
      *
-     * Window 0 is the cycle immediately before the current one; window `count - 1` is the oldest.
-     *
-     * @param currentStart  start of the cycle being viewed
-     * @param span          cycle length in millis
-     * @param elapsedMillis how far into the current cycle we are; equals [span] for a completed cycle
+     * [boundaries] are real cycle starts in **descending** order, newest first: `boundaries[0]` is the start
+     * of the cycle being viewed, and prior window `k` spans `[boundaries[k + 1], boundaries[k])`. Window 0 is
+     * the cycle immediately before the current one.
      */
-    fun bucketIndex(
-        currentStart: Long,
-        span: Long,
-        elapsedMillis: Long,
-        occurredAt: Long,
-        count: Int,
-    ): Int? {
-        if (span <= 0L || occurredAt >= currentStart) return null
-        // The `- 1` makes each window half-open [start, end): a charge at exactly a window's start belongs to
-        // that window, not the one before it.
-        val index = ((currentStart - occurredAt - 1) / span).toInt()
-        if (index !in 0 until count) return null
-        val windowStart = currentStart - (index + 1) * span
-        return if (occurredAt - windowStart < elapsedMillis) index else null
+    fun fullBucketIndexIn(boundaries: List<Long>, occurredAt: Long): Int? {
+        if (boundaries.size < 2 || occurredAt >= boundaries[0]) return null
+        for (index in 0 until boundaries.size - 1) {
+            // Half-open [start, end): a charge at exactly a cycle's start belongs to that cycle.
+            if (occurredAt >= boundaries[index + 1]) return index
+        }
+        return null
+    }
+
+    /**
+     * As [fullBucketIndexIn], but only when the charge landed no further into its own cycle than we have
+     * reached in this one — the day-aligned comparison the class KDoc describes.
+     *
+     * @param elapsedMillis how far into the current cycle we are; equals its full length once complete.
+     */
+    fun bucketIndexIn(boundaries: List<Long>, occurredAt: Long, elapsedMillis: Long): Int? {
+        val index = fullBucketIndexIn(boundaries, occurredAt) ?: return null
+        return if (occurredAt - boundaries[index + 1] < elapsedMillis) index else null
     }
 }

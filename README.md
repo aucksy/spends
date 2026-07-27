@@ -9,7 +9,7 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7f52ff)
 ![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285f4)
 
-Most trackers make you do the work: type every spend, and read your balance against a calendar month that has nothing to do with when you actually get paid. **Spends flips both.** It reads your bank's transaction SMS *entirely on your phone* so logging is a single tap, it learns your habits as you go, and it shows what's really left to spend based on your salary cycle and each card's billing cycle. No account, no ads, no analytics — every rupee stays on your device (backup, if you want it, goes to your *own* Google Drive).
+Most trackers make you do the work: type every spend, and read your balance against a calendar month that has nothing to do with when you actually get paid. **Spends flips both.** It reads your bank's transaction SMS *entirely on your phone* so logging is a single tap, it learns your habits as you go, and it shows what's really left to spend based on your salary cycle and each card's billing cycle. No account, no ads, no analytics — every rupee stays on your device unless you switch on the optional AI helper (off by default; see Privacy). Backup, if you want it, goes to your *own* Google Drive.
 
 ---
 
@@ -24,7 +24,7 @@ The heart of Spends. Instead of a calendar month, it tracks money by **your sala
 Add rent, salary, EMIs and subscriptions once and Spends materialises the real transactions on schedule — daily / weekly / monthly / yearly, every *N* periods. A fixed run like a 12-month EMI stops itself after the final occurrence. An **exact daily alarm** (default 9:00 AM, configurable) generates what's due and reminds you — reliably, even under Doze — and re-arms itself after a reboot. Missed days are backfilled, and nothing is ever double-created.
 
 ### 📩 SMS Detect + Self-Learning — capture spends the moment they happen
-When a bank or card SMS arrives, Spends spots the transaction **on-device** and offers a one-tap **Add / Edit / Ignore**. Nothing is auto-added, and your messages are parsed on-device. (The optional AI helper — off by default, your own key — is the one feature that sends anything to a third party: a number-masked extract for category suggestions, and spending totals for the insight cards; see the privacy policy.) It gets smarter the more you use it:
+When a bank or card SMS arrives, Spends spots the transaction **on-device** and offers a one-tap **Add / Edit / Ignore**. Nothing is auto-added, and your messages are parsed on-device. (The optional AI helper — off by default, your own key — is the one feature that sends anything to a third party: a number-masked extract for category suggestions, and spending totals plus comparisons over time for the insight cards; see the privacy policy.) It gets smarter the more you use it:
 
 - **Learns your categories** — confirm or re-categorise a captured spend, and Spends remembers that *merchant → category* for next time.
 - **Learns what you ignore** — dismiss the same kind of alert a few times and Spends stops nagging you about it, quietly filing it in your review queue instead of dropping it.
@@ -58,15 +58,15 @@ A **category donut** with a tappable legend that drills into that category's tra
 
 ## 🔒 Private by design
 
-No account. No ads. No analytics or telemetry. Your SMS and transactions are parsed and stored **on-device**, as integer paise (money never touches floating point, and rupees use Indian digit grouping — `12,34,567.00`). The only network Spends ever uses is **your own** Google Drive backup, and only if you turn it on.
+No account. No ads. No analytics or telemetry. Your SMS and transactions are parsed and stored **on-device**, as integer paise (money never touches floating point, and rupees use Indian digit grouping — `12,34,567.00`). The only network Spends uses is **your own** Google Drive backup, and only if you turn it on — apart from the optional **AI helper**, which is off by default, needs your own API key, and is described above.
 
 ---
 
 ## 🛠️ Under the hood
 
 - **Kotlin + Jetpack Compose + Material 3**, edge-to-edge, a hand-tuned brand palette (light/dark/system/auto).
-- **MVVM** with **Hilt**, **Room** (schema v13), **DataStore**, Coroutines/Flow, **WorkManager** + **exact AlarmManager**.
-- 100% offline; all money is `Long` paise end-to-end.
+- **MVVM** with **Hilt**, **Room** (schema v16), **DataStore**, Coroutines/Flow, **WorkManager** + **exact AlarmManager**.
+- Offline by default (the optional AI helper is the one exception, off unless you enable it); all money is `Long` paise end-to-end.
 - Correctness-critical logic — money formatting/parsing, salary/card cycle windows, the SMS parser (30 golden fixtures gate every release), largest-remainder splits — is covered by JUnit tests under `app/src/test`.
 - Feature-first, layered architecture (`core/`, `data/`, `domain/`, `ui/`, `di/`). See `docs/PHASE_PLAN.md` and `docs/PLATFORM_NOTES.md`.
 
@@ -91,4 +91,4 @@ Grab the latest **signed APK** from the [**Releases**](https://github.com/aucksy
 
 ## 🔐 Privacy
 
-No account, no ads, no analytics, no telemetry on financial content. SMS parsing happens entirely on-device; backup goes only to your own Google Drive. See the [privacy policy](https://aucksy.github.io/spends/). Never commit raw SMS exports, account numbers, or personal spreadsheet exports — see `.gitignore`.
+No account, no ads, no analytics, no telemetry on financial content. SMS parsing happens entirely on-device; backup goes only to your own Google Drive. The **one** feature that sends anything to a third party is the optional AI helper — off by default, your own key — which sends a number-masked message extract plus that message's merchant for category suggestions, and spending totals plus over-time comparisons for the insight cards. Never your unmasked message text, your balances, your account/card numbers, or the date of any transaction; the insight cards never send a merchant at all. See the [privacy policy](https://aucksy.github.io/spends/). Never commit raw SMS exports, account numbers, or personal spreadsheet exports — see `.gitignore`.

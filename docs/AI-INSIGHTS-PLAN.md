@@ -126,9 +126,21 @@ The structural work, plus the cards the owner asked for first.
 - One Groq call returning a JSON array; cached per cycle fingerprint; templated fallback on failure.
 - Tests: each detector against fixtures + the demo dataset; payload asserted aggregates-only.
 
-### Phase B — comparisons over time
+### Phase B — comparisons over time ✅ SHIPPED — see [`AI-INSIGHTS-PHASE-B.md`](AI-INSIGHTS-PHASE-B.md)
 Cards 7–10. Needs longer history windows and a `monthlyCategoryTotals` one-shot query.
 - Year-on-year needs 13+ months; the card stays hidden until there is enough history to be honest.
+
+**As built:** `PACE`, `YEAR_ON_YEAR`, `CATEGORY_TREND`, `HABIT_PAYDAY`. Two deviations from the list above,
+both deliberate and both explained in the Phase B doc:
+- **Month-on-month was not built as its own card** — page 1's summary already carries the previous cycle's
+  total, and the Phase A mover cards are month-on-month per category. A third telling would be padding.
+- **The weekend habit moved to Phase C.** Across all categories the weekend signal is diluted by rent, EMI
+  and insurance, which land on fixed days; the honest version needs the discretionary/needs split that
+  Phase C introduces.
+
+The one query it added is the year-ago read, gated on the records genuinely reaching back that far — an
+empty year-ago window means the app wasn't in use, and a card built on it would be false rather than
+unflattering. Carousel grew to 6 pages with reserved slots so the over-time cards are actually seen.
 
 ### Phase C — judgement calls
 Cards 11–13. Carries the DB v16→v17 change, the needs/wants editor in Settings → Categories, the prompt
@@ -145,7 +157,14 @@ change, and the full disclosure sweep listed above.
 ## Open questions for the owner
 
 1. Should the carousel **replace** the single insights card on Analytics, or sit alongside a "See all"
-   entry into the dedicated screen? (Proposal: replace, with "See all" as the last page.)
-2. How many cards on Analytics before it becomes a scroll of its own — cap at 5 and put the rest in the
-   dedicated section? (Proposal: yes, cap at 5, ranked by materiality.)
+   entry into the dedicated screen? (Proposal: replace, with "See all" as the last page.) — *Phase A
+   replaced it; the "See all" entry point is Phase D's to add.*
+2. ~~How many cards on Analytics before it becomes a scroll of its own?~~ **Answered (Phase B, 2026-07-27):**
+   six pages — the summary plus five findings — with slots reserved so anomalies cannot take every one.
+   Ranking purely by materiality would have meant the over-time cards were never seen.
 3. Needs vs Wants: accept the default classification above, or set it during a short one-time setup?
+   — *still open; belongs to Phase C.*
+
+**Also answered in the Phase B round (2026-07-27):** month names *are* sent (so year-on-year can say "this
+July"), and the v1.60.0 carry-over is settled — the "large charge" / "charged twice?" cards keep sending
+that one charge's amount and category.
