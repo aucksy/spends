@@ -24,7 +24,7 @@ Owner evidence, gathered 2026-07-28:
 | Review queue | empty | in-app |
 | **Last successful capture** | **~21:00, Sun 26 Jul 2026, via the "Review & Add" popup** | a transaction in the ledger the owner did not type |
 
-The last-capture timestamp is the load-bearing fact. `v1.57.0` was tagged at **19:08** that evening and
+The last-capture timestamp is the load-bearing fact. `v1.57.0` was tagged at **19:14** that evening and
 `v1.58.0` at **21:19** — so capture was alive on v1.57.0 and died with v1.58.0 or later.
 
 ### Every code change in that window, and why none of them can be the cause
@@ -103,8 +103,13 @@ can be recorded, so only the counter moves and the verdict keys on `totalReceive
 IS in hand, so the message is recorded as `APP_NOT_READY` — because `recordReceived()` has already run
 by then, and keying the verdict on a zero count would have missed the likelier failure entirely. That
 gap shipped for one round: a database that would not open produced "its sender name has changed, that's
-a one-line fix", printed above an empty list. The sender advice is now withheld whenever a fault is
-recorded, since it is only safe when every message was actually inspected.
+a one-line fix", printed above an empty list. The sender advice is now withheld whenever `APP_NOT_READY`
+rows are VISIBLE — evidence the reader can see, not a counter. Three rounds were spent moving a
+`graphFailures > 0` test up and down the branch list: too high it latched (the counter never decays, so
+one cold-start hiccup suppressed every actionable diagnosis for the rest of the run); too low, the
+blocked-prompt branch claimed "nothing is lost" while a corrupt database dropped every message. Keying
+on the entries settles both, and decays with "Clear what's recorded" and the 60-entry ring exactly as
+the reader's own evidence does.
 
 The counter is a plain object — the injected log is the thing that failed — and is never reset,
 including by "Clear what's recorded": a confirmed fault outranks tidiness, and the failing broadcasts
@@ -141,11 +146,15 @@ a caller cannot assert "this came from a bank" and be believed:
    `SenderAllowlist`. Everything else keeps `body = null` regardless of what was passed in.
 2. **…and only for an outcome reached with the capture switch ON** (`BODY_BEARING`). An owner who never
    enabled capture never has a bank alert transcribed.
-3. **Every stored body has every number masked, every link removed and every address removed** —
-   unconditionally. Links matter because Indian bank alerts carry per-customer short paths that identify
-   the recipient; addresses matter because statement and UPI alerts quote the registered email or the
-   payee's VPA. The honest claim is "every number", not "every secret": a code written in letters would
-   survive, which no Indian bank uses.
+3. **Every stored body has every number masked, every link PATH removed and every address removed** —
+   unconditionally, and the same rules are applied to `detail`. Links matter because Indian bank alerts
+   carry per-customer short paths that identify the recipient; the HOST is kept, because it is the
+   merchant and never the identifier (`AMAZON.IN/(link)`, `HDFCBK.IO/(link)`). Addresses matter because
+   statement and UPI alerts quote the registered email or the payee's VPA — and because `detail` carries
+   the PARSED merchant, which is a verbatim substring of the bank's text, so for
+   `INR 250 spent at coffeeday@ybl` the body rule stripped the VPA and `detail` reprinted it one line
+   above until round 6. The honest claim is "every number", not "every secret": a code written in
+   letters, or a personal name, survives. No Indian bank uses a lettered passcode.
 4. **Only header-shaped senders are kept.** This is an ALLOW-LIST, not an address detector, and that
    distinction is the whole lesson: `contains('@')` masked genuine GSM 03.38 padding (`AD-HDFCBK@`,
    where septet 0x00 *is* `@`), hiding the string the verdict asks the owner to report; the anchored
@@ -170,7 +179,9 @@ power here, and this narrows the loss rather than papering over it with a claim.
 
 Consequently `buildReport` needs no redaction pass: what reaches it is already safe to paste. That is a
 stronger guarantee than the notification screen's redact-on-the-way-out, which depends on getting an
-outcome allow-list right forever.
+outcome allow-list right forever — **but it is only as good as the rules being applied to every stored
+field.** `detail` was gated but not masked for two rounds, which made the same sentence false while it
+was written in this file. If a field is added to `Entry`, it needs a rule here or it needs to not exist.
 
 ### The rule-3 near-miss, kept as a warning
 

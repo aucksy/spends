@@ -20,13 +20,29 @@ import kotlin.reflect.KFunction6
  */
 class SmsVerdictTest {
 
-    private fun snapshot(received: Int = 0, fromBanks: Int = 0, lastReceivedAt: Long? = null) =
-        SmsDebugLog.Snapshot(
-            totalReceived = received,
-            lastReceivedAt = lastReceivedAt,
-            fromKnownBanks = fromBanks,
-            entries = emptyList(),
-        )
+    private fun snapshot(
+        received: Int = 0,
+        fromBanks: Int = 0,
+        lastReceivedAt: Long? = null,
+        appNotReady: Int = 0,
+    ) = SmsDebugLog.Snapshot(
+        totalReceived = received,
+        lastReceivedAt = lastReceivedAt,
+        fromKnownBanks = fromBanks,
+        // Entries are a verdict INPUT, so the factory has to be able to express them. Hard-coding
+        // emptyList() is what let the app-fault branch ship keyed on a counter instead: the state where
+        // failures are visible on screen was unreachable from this file.
+        entries = List(appNotReady) {
+            SmsDebugLog.Entry(
+                timeMillis = 1_000L + it,
+                sender = "AD-HDFCBK",
+                institution = "HDFC Bank",
+                body = null,
+                outcome = SmsDebugLog.Outcome.APP_NOT_READY,
+                detail = null,
+            )
+        },
+    )
 
     private fun verdict(
         receive: Boolean = true,
@@ -37,7 +53,11 @@ class SmsVerdictTest {
         received: Int = 5,
         fromBanks: Int = 2,
         lastReceivedAt: Long? = 1_000L,
-    ) = smsVerdictOf(receive, demo, capture, prompts, graphFailures, snapshot(received, fromBanks, lastReceivedAt))
+        appNotReady: Int = 0,
+    ) = smsVerdictOf(
+        receive, demo, capture, prompts, graphFailures,
+        snapshot(received, fromBanks, lastReceivedAt, appNotReady),
+    )
 
     /**
      * Demo mode outranks everything, including a missing permission: while it is on, no other line on
@@ -103,9 +123,42 @@ class SmsVerdictTest {
      */
     @Test
     fun `a past start-up failure does not hijack an actionable diagnosis`() {
+        // No APP_NOT_READY rows on screen, so the fault is history and the live diagnosis wins.
         val blocked = verdict(graphFailures = 1, prompts = false, received = 40, fromBanks = 6)
 
         assertTrue("the blocked-prompt diagnosis must survive", blocked.contains("Transaction detection"))
+    }
+
+    /**
+     * ⭐ THE round-6 blocker, and the sharpest false claim the screen could make. A corrupt database
+     * delivering only personal texts reached the blocked-prompt branch, which asserts four things —
+     * bank alerts are arriving, they are being read, they are being queued, nothing is lost — and ALL
+     * FOUR were false: nothing resolved to a bank, the graph never built, and every message was dropped.
+     * It contradicted the two rows printed directly beneath it ("from a bank we recognise: 0" and
+     * "App start-up failures: 40"). No test covered fromBanks == 0 with prompts blocked, which is why
+     * it survived two rounds.
+     */
+    @Test
+    fun `a corrupt start-up with prompts blocked never claims nothing is lost`() {
+        val msg = verdict(graphFailures = 40, received = 40, fromBanks = 0, prompts = false, appNotReady = 40)
+
+        assertTrue("must never claim recovery it did not perform", !msg.contains("nothing is lost"))
+        assertTrue("must not claim alerts were read", !msg.contains("being read"))
+        assertTrue(msg.contains("fault inside Spends"))
+    }
+
+    /**
+     * The other half: while the failures are VISIBLE the fault outranks the sender advice, and once they
+     * are gone — cleared, or aged out of the 60-entry ring — the advice comes back. Keying on the
+     * counter could not express this, because the counter never decays.
+     */
+    @Test
+    fun `the fault verdict decays with its own evidence`() {
+        val visible = verdict(graphFailures = 3, received = 40, fromBanks = 0, appNotReady = 3)
+        val aged = verdict(graphFailures = 3, received = 40, fromBanks = 0, appNotReady = 0)
+
+        assertTrue(visible.contains("cannot start up properly"))
+        assertTrue("the live diagnosis returns once the evidence is gone", aged.contains("one-line fix"))
     }
 
     /**
@@ -119,10 +172,10 @@ class SmsVerdictTest {
      */
     @Test
     fun `the sender advice is withheld while a start-up fault is recorded`() {
-        val msg = verdict(graphFailures = 1, received = 40, fromBanks = 0)
+        val msg = verdict(graphFailures = 1, received = 40, fromBanks = 0, appNotReady = 1)
 
         assertTrue("must not send the owner to edit the allowlist", !msg.contains("one-line fix"))
-        assertTrue(msg.contains("failing to start up"))
+        assertTrue(msg.contains("cannot start up properly"))
     }
 
     /** An all-clear must never be given over a recorded fault. */
@@ -209,6 +262,7 @@ class SmsVerdictTest {
             verdict(received = 40, fromBanks = 0),
             verdict(prompts = false, received = 40, fromBanks = 6),
             verdict(graphFailures = 2, received = 40, fromBanks = 6),
+            verdict(graphFailures = 2, received = 40, fromBanks = 6, appNotReady = 2),
             verdict(),
         )
 

@@ -79,7 +79,9 @@ class SmsDebugLogTest {
     fun `a body is stored only when the sender resolves to a bank`() {
         val log = log()
         log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED)
-        log.record(2L, PERSON, "see you at 8, bring the thing", SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
+        // A BODY_BEARING outcome on purpose: paired with SENDER_NOT_RECOGNISED this test stayed GREEN
+        // when rule 1 was deleted, because the outcome gate already excluded it. It now pins its name.
+        log.record(2L, PERSON, "see you at 8, bring the thing", SmsDebugLog.Outcome.PROMPTED)
 
         val personal = log.state.value.entries.first { it.institution == null }
         val bank = log.state.value.entries.first { it.institution != null }
@@ -206,6 +208,17 @@ class SmsDebugLogTest {
         assertEquals("AD-HDFCBK", SmsDebugLog.maskSender("AD-HDFCBK"))
         assertEquals("JD-SBIINB", SmsDebugLog.maskSender("JD-SBIINB"))
         assertEquals("VM-ICICIB", SmsDebugLog.maskSender("VM-ICICIB"))
+    }
+
+    /**
+     * A positive test for the whitespace arm. Without one, deleting that clause left the whole suite
+     * GREEN — the only test touching whitespace was the phone-number case, which the no-letters arm
+     * answers. A privacy clause no test can kill is a privacy clause waiting to be removed.
+     */
+    @Test
+    fun `a sender with letters and whitespace is withheld, not exported`() {
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("AD HDFCBK"))
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("John Smith"))
     }
 
     @Test
@@ -371,10 +384,78 @@ class SmsDebugLogTest {
         val log = log()
         log.record(1L, BANK, "Rs.500 spent at AMAZON.IN/PAY", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
 
-        assertTrue(log.state.value.entries.single().body!!.contains("AMAZON.IN/PAY"))
+        // The HOST survives (it is the merchant); only the PATH is replaced.
+        assertTrue(log.state.value.entries.single().body!!.contains("AMAZON.IN"))
     }
 
     /** A UPI VPA and an email are the same identifier class, and neither is caught by the link rule. */
+    /**
+     * ⭐ The body rule stripped the VPA and `detail` reprinted it one line above, undoing the rule
+     * entirely — `detail` carries the PARSED merchant, which is a verbatim substring of the bank's text.
+     * The reasoning that hid it was "detail is Spends' own parse, not the bank's words"; the parse is
+     * made OF the bank's words.
+     */
+    @Test
+    fun `an address cannot re-enter through detail`() {
+        val log = log()
+        log.record(
+            1L, BANK, "INR 250 spent at coffeeday@ybl Ref 998877",
+            SmsDebugLog.Outcome.PROMPTED,
+            detail = "expense 25000 paise · coffeeday@ybl",
+        )
+
+        val e = log.state.value.entries.single()
+        assertTrue("stripped from the body", !e.body!!.contains("coffeeday"))
+        assertTrue("and from detail, which reprinted it", !e.detail!!.contains("coffeeday"))
+    }
+
+    /**
+     * ⭐ Uppercase hosts are the norm in Indian promotional SMS, and scoping case-insensitivity to the
+     * scheme (to stop the rule eating AMAZON.IN/PAY) left them leaking the per-customer path token —
+     * this file's own worked example of what must not survive. Host and path are now handled separately.
+     */
+    @Test
+    fun `an uppercase link still loses its per-customer path`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.500 debited. View HDFCBK.IO/x/aB9cD2e now", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("the token must not survive in any case", !body.contains("aB"))
+        assertTrue("the host is not the identifier, so it stays", body.contains("HDFCBK.IO"))
+    }
+
+    /**
+     * The address rule must run BEFORE digit masking. Swapped, the commonest Indian VPA form —
+     * a phone number as the local part — became "#@ybl" and the handle leaked. No test used a numeric
+     * local part, so the ordering was unpinned.
+     */
+    @Test
+    fun `a VPA with a numeric local part is removed, not digit-masked`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.5 debited, UPI to 9876543210@ybl", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue(body.contains("(address)"))
+        assertTrue("must not survive as a masked fragment", !body.contains("@ybl"))
+    }
+
+    /**
+     * The scan bound is this class's own and must be pinned: deleting `take(MAX_SCAN_CHARS)` left the
+     * suite green, because the 501 assertion is governed by the output clip, not by the input cut.
+     * Cutting on a whitespace boundary matters too — a cut landing inside an address would leave the
+     * local part exposed, since the masker can no longer match it.
+     */
+    @Test
+    fun `input beyond the scan bound is dropped, and the cut never splits an address`() {
+        val log = log()
+        val filler = "word ".repeat(500) // ~2500 chars, so the cut lands mid-body
+        log.record(1L, BANK, "Rs.5 debited $filler john.smith@gmail.com", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("content past the bound is not scanned, so it must not appear", !body.contains("john"))
+        assertTrue(body.startsWith("Rs.#"))
+    }
+
     @Test
     fun `an address in the body is removed`() {
         val log = log()

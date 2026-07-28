@@ -217,8 +217,16 @@ class CardsViewModel @Inject constructor(
         // wording lives in a pure, tested function rather than inline here.
         val result = runCatching { smsCaptureRepository.scanInboxForCards(start, end) }
         // runCatching also catches CancellationException, which would render as "check Spends still has
-        // SMS permission" for a screen the user simply navigated away from. Let it cancel the coroutine.
-        result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+        // SMS permission" for a screen the user simply navigated away from. Let it cancel the coroutine —
+        // but clear the spinner FIRST, or the rethrow leaves `scanning = true` forever. Not observable
+        // today (the only canceller is onCleared, where the state dies with the ViewModel), and one
+        // added cancel button away from being a permanently stuck spinner.
+        result.exceptionOrNull()?.let {
+            if (it is CancellationException) {
+                banner.update { b -> b.copy(scanning = false) }
+                throw it
+            }
+        }
         banner.update {
             it.copy(
                 scanning = false,

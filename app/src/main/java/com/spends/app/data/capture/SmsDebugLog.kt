@@ -214,10 +214,17 @@ class SmsDebugLog @Inject constructor() {
                 institution = institution,
                 body = storableBody(institution, body, outcome),
                 outcome = outcome,
-                // Gated by BOTH content rules, exactly as the body is. Gating it on the sender alone was
-                // unreachable-but-wrong: this class's whole stance is that it does not trust its callers,
-                // so a rule it claims to enforce must actually be enforced.
-                detail = if (institution != null && outcome in BODY_BEARING) detail?.clip() else null,
+                // Gated by BOTH content rules AND address-masked, exactly as the body is. `detail` carries
+                // the PARSED merchant, which is a verbatim substring of the bank's text — so for
+                // "INR 250 spent at coffeeday@ybl" the body rule stripped the VPA and `detail` reprinted
+                // it one line above, undoing the rule entirely. The amount and kind contain no "@", so
+                // masking costs nothing here. Reasoning that this is "Spends' own parse, not the bank's
+                // words" is what hid it: the parse is made OF the bank's words.
+                detail = if (institution != null && outcome in BODY_BEARING) {
+                    detail?.let { ADDRESS.replace(it, "(address)") }?.clip()
+                } else {
+                    null
+                },
             ),
         )
         while (entries.size > MAX_ENTRIES) entries.removeLast()
@@ -246,10 +253,23 @@ class SmsDebugLog @Inject constructor() {
         if (institution == null || outcome !in BODY_BEARING) return null
         if (body.isNullOrBlank()) return null
         // Bounded BEFORE the regexes: LINK backtracks per start position, so a pathological 5 000-char
-        // body cost hundreds of milliseconds while holding this class's monitor. The output cap runs
-        // after and bounds a different thing.
-        val collapsed = body.take(MAX_SCAN_CHARS).replace('\n', ' ').replace(WHITESPACE, " ").trim()
-        val delinked = LINK.replace(collapsed, "(link)")
+        // body cost hundreds of milliseconds while holding this class's monitor. Cut at a WHITESPACE
+        // boundary, not mid-token: any bound applied before the masker can turn a matched identifier
+        // into an unmatched fragment, and a cut landing inside "…@gmail.com" would leave the local part
+        // exposed. The output cap runs after and bounds a different thing.
+        val window = body.take(MAX_SCAN_CHARS)
+        val scanned = if (window.length < body.length) {
+            val lastSpace = window.lastIndexOf(' ')
+            // Cut back to a token boundary so the bound cannot split an identifier and leave a fragment
+            // the masker no longer matches — but ONLY when that still leaves a usable body. A single
+            // enormous token has no boundary to fall back to, and an unconditional cut-back threw away
+            // everything after the last space: "Rs 5 debited " + 5 000 x's collapsed to twelve characters.
+            if (lastSpace > MAX_SCAN_CHARS / 2) window.take(lastSpace) else window
+        } else {
+            window
+        }
+        val collapsed = scanned.replace('\n', ' ').replace(WHITESPACE, " ").trim()
+        val delinked = LINK_PATH.replace(LINK.replace(collapsed, "(link)"), "$1/(link)")
         val deidentified = ADDRESS.replace(delinked, "(address)")
         val masked = NUMERAL.replace(deidentified, "#").replace(WHITESPACE, " ").trim()
         return masked.takeIf { m -> m.any { it.isLetter() } }?.clip()
@@ -311,7 +331,20 @@ class SmsDebugLog @Inject constructor() {
          * destroying the merchant token in the one outcome where it IS the diagnosis. Real links in bank
          * SMS carry a lowercase host; uppercase descriptors are now left alone.
          */
-        private val LINK = Regex("""\S*(?i:https?://|www\.)\S*|\S*\.[a-z]{2,}/\S*""")
+        private val LINK = Regex("""\S*(?i:https?://|www\.)\S*""")
+
+        /**
+         * A bare host followed by a path — the host is KEPT, the path replaced. Splitting host from path
+         * is what finally satisfied both constraints at once, after two attempts that could each satisfy
+         * only one. Whole-pattern case-insensitivity made `[a-z]{2,}` match uppercase and ate Indian POS
+         * descriptors (`AMAZON.IN/PAY` → `(link)`); scoping the flag to the scheme alternative then left
+         * uppercase links leaking their token — `HDFCBK.IO/x/aB9cD2e` → `HDFCBK.IO/x/aB#cD#e`, which is
+         * this file's own example of what must not survive, and all-caps A2P traffic is the Indian norm.
+         *
+         * The identifier was never the host; it is the path. `AMAZON.IN/(link)` keeps the merchant and
+         * `HDFCBK.IO/(link)` keeps nothing that identifies anyone.
+         */
+        private val LINK_PATH = Regex("""(\S*\.[A-Za-z]{2,})/\S*""")
 
         /**
          * Email addresses and UPI VPAs → `(address)`. `maskSender` covers the sender; this covers the
@@ -324,7 +357,7 @@ class SmsDebugLog @Inject constructor() {
          * reported in `detail` for every parsed outcome, so the diagnosis keeps it; a leaked VPA cannot
          * be taken back.
          */
-        private val ADDRESS = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+""")
+        private val ADDRESS = Regex("""[^\s@]+@[^\s@]*[A-Za-z][^\s@]*""")
 
         /** Bounds the regex work before it runs; the output cap is [MAX_CHARS], applied after. */
         private const val MAX_SCAN_CHARS = 2_000

@@ -143,8 +143,9 @@ fun smsVerdictOf(
     // Covers the failures so early that NOTHING could be recorded — the log itself was unobtainable, so
     // `recordReceived()` never ran either. Must sit above the branch below, which would otherwise assert
     // "Android is not delivering… nothing inside Spends can be the cause" in the one case where Spends
-    // IS the cause. The LATER provisioning failure is handled differently: it can record, so it does.
-    graphFailures > 0 && log.totalReceived == 0 ->
+    // IS the cause. `lastReceivedAt == null` keeps it off the post-Clear state, where the count is zero
+    // for a different reason and this sentence would claim texts arrived that this run never saw.
+    graphFailures > 0 && log.totalReceived == 0 && log.lastReceivedAt == null ->
         "$graphFailures text${if (graphFailures == 1) "" else "s"} reached Spends but the app failed " +
             "to start up properly and couldn't handle ${if (graphFailures == 1) "it" else "them"}. " +
             "That's a fault inside Spends, not your phone — tell me this number."
@@ -158,26 +159,31 @@ fun smsVerdictOf(
     log.totalReceived == 0 ->
         "Nothing has arrived since you cleared this screen. The last SMS before that did reach " +
             "Spends, so delivery was working — send yourself a text to confirm it still is."
-    // Guarded on graphFailures, and that guard is the fix for the round-4 blocker. `recordReceived()`
-    // runs BEFORE the dependency-provisioning guard, so the likeliest in-app failure — the one that
-    // opens the Room database — leaves totalReceived > 0 and fromKnownBanks at 0, and this branch fired:
-    // "its sender name has changed, that's a one-line fix", printed above an empty list, sending the
-    // owner to edit the allowlist while their database was corrupt. The advice is only safe when every
-    // message was actually inspected, which a recorded fault says they were not.
-    log.fromKnownBanks == 0 && graphFailures == 0 ->
+    // ⭐ Keyed on EVIDENCE STILL ON SCREEN, not on the counter. Three rounds were spent moving a
+    // `graphFailures > 0` test up and down this list, and each position broke something else: too high
+    // it latched, because the counter never decays and one cold-start hiccup then suppressed every
+    // actionable diagnosis for the rest of the run; too low the blocked-prompt branch claimed "nothing
+    // is lost" while a corrupt database dropped every message. Counting APP_NOT_READY entries settles
+    // both — it is true only while the failures are visible in the list beneath, and it decays with
+    // "Clear what's recorded" and with the 60-entry ring exactly as the reader's own evidence does.
+    log.entries.any { it.outcome == SmsDebugLog.Outcome.APP_NOT_READY } ->
+        "Texts are reaching Spends, but the app cannot start up properly to handle them — the ⚠️ rows " +
+            "below are ones it dropped. That's a fault inside Spends, not your phone. Tell me this."
+    log.fromKnownBanks == 0 ->
         "Spends is receiving your SMS (${log.totalReceived} so far), but none came from a sender it " +
             "recognises as a bank. If a bank alert IS in the list below, its sender name has changed " +
             "and needs adding — that's a one-line fix."
-    !promptsCanBeSeen ->
+    // Guarded on fromKnownBanks, because that is the fact the sentence ASSERTS. Unguarded it fired for
+    // a corrupt database delivering only personal texts, and every clause was false: nothing resolved
+    // to a bank, nothing was read, and nothing was queued — while it said "so nothing is lost".
+    log.fromKnownBanks > 0 && !promptsCanBeSeen ->
         "Bank alerts are arriving and being read, but your phone won't show the \"Review & Add\" " +
             "prompt — either Spends' notifications are off, or just the \"Transaction detection\" " +
             "category is. They're being put in the review queue instead, so nothing is lost."
-    // Below the actionable diagnoses, so a stale count cannot suppress them — but above the all-clear,
-    // which must never be given over a recorded fault.
-    // Deliberately does NOT claim messages are being handled now. `record()` resolves the sender even
-    // for APP_NOT_READY, so a run where EVERY delivery failed provisioning from a recognised bank header
-    // still reaches this branch with fromKnownBanks > 0 — and "handled now" would be false in exactly
-    // that case. What is true in both cases is that these ones were missed.
+    // Last before the all-clear: the fault is counted but no longer visible (cleared, or aged out of
+    // the ring). Deliberately does NOT claim messages are being handled now — the counter carries no
+    // timestamp, so a still-corrupt database reaches here too. What is true either way is that these
+    // were missed.
     graphFailures > 0 ->
         "$graphFailures text${if (graphFailures == 1) "" else "s"} reached Spends while the app was " +
             "failing to start up properly, and ${if (graphFailures == 1) "it was" else "they were"} " +
