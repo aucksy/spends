@@ -12,6 +12,7 @@ import com.spends.app.data.capture.SmsDebugLog
 import com.spends.app.data.capture.SmsParser
 import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.domain.model.TxnKind
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -130,7 +131,7 @@ class SmsReceiver : BroadcastReceiver() {
             fun note(
                 outcome: SmsDebugLog.Outcome,
                 amountMinor: Long? = null,
-                kind: String? = null,
+                kind: TxnKind? = null,
                 text: String? = null,
             ) = runCatching {
                 debug.record(receivedAt, sender, body, outcome, amountMinor, kind, text)
@@ -161,7 +162,7 @@ class SmsReceiver : BroadcastReceiver() {
                 // The merchant is a verbatim substring of the bank's text — it has carried phone
                 // numbers, reference numbers and OTPs — so it goes through `note`, which is masked.
                 val amount = preview.amountMinor
-                val kind = preview.kind.name.lowercase()
+                val kind = preview.kind
                 val merchant = preview.title
                 // #7: if the user has ignored this exact pattern enough times, stop nagging — drop it
                 // silently into the review queue instead, so it's reviewable but never lost.

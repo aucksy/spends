@@ -1,5 +1,6 @@
 package com.spends.app.data.capture
 
+import com.spends.app.domain.model.TxnKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -204,7 +205,7 @@ class SmsDebugLog @Inject constructor() {
         body: String?,
         outcome: Outcome,
         amountMinor: Long? = null,
-        kind: String? = null,
+        kind: TxnKind? = null,
         note: String? = null,
     ) {
         val institution = SenderAllowlist.lookup(sender)?.name
@@ -224,7 +225,18 @@ class SmsDebugLog @Inject constructor() {
         // Splitting the parameter is what makes the rule enforceable rather than remembered: the amount
         // survives because THIS class prints it, and nothing a caller supplies can carry an identifier
         // past the mask.
-        val figures = if (allowContent && amountMinor != null && kind != null) "$kind $amountMinor paise" else null
+        //
+        // `kind` is a TxnKind, not a String, for exactly that reason — and it was a String for one round
+        // while this comment already claimed otherwise. Nothing reachable passed anything but "income"
+        // or "expense", but the parameter was free text interpolated straight into `detail` with no
+        // mask, so a future caller passing the merchant there would have leaked it and no test would
+        // have caught it. That is the same defect a fourth time. A type closes the class; a rule about
+        // what to pass only closes the instance.
+        val figures = if (allowContent && amountMinor != null && kind != null) {
+            "${kind.name.lowercase()} $amountMinor paise"
+        } else {
+            null
+        }
         val safeNote = if (allowContent) maskContent(note) else null
         entries.addFirst(
             Entry(
@@ -356,7 +368,11 @@ class SmsDebugLog @Inject constructor() {
          * The identifier was never the host; it is the path. `AMAZON.IN/(link)` keeps the merchant and
          * `HDFCBK.IO/(link)` keeps nothing that identifies anyone.
          */
-        private val LINK_PATH = Regex("""(\S*\.[A-Za-z]{2,})[/?#]\S*""")
+        // `\S+` after the separator, not `\S*`: a sentence-final "?" is punctuation, not a query string,
+        // and the permissive form ate the wording around it — "Was this you at BOOKMYSHOW.IN? Reply NO"
+        // became "…BOOKMYSHOW.IN/(link) Reply NO". Requiring something to actually follow the separator
+        // keeps the question mark and still catches "hdfcbk.io?t=aB9cD2e".
+        private val LINK_PATH = Regex("""(\S*\.[A-Za-z]{2,})[/?#]\S+""")
 
         /**
          * Email addresses and UPI VPAs → `(address)`. `maskSender` covers the sender; this covers the

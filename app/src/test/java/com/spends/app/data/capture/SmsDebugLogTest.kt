@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.spends.app.domain.model.TxnKind
 import org.junit.Test
 
 /**
@@ -166,7 +167,7 @@ class SmsDebugLogTest {
     @Test
     fun `the parsed figures survive in detail, not in the body`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = "expense", note = "SHOP")
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = TxnKind.EXPENSE, note = "SHOP")
 
         val e = log.state.value.entries.single()
         assertTrue("the body carries no digits", e.body!!.none { it.isDigit() })
@@ -180,7 +181,7 @@ class SmsDebugLogTest {
         // A BODY_BEARING outcome on purpose. Paired with SENDER_NOT_RECOGNISED this test stayed GREEN
         // when the institution gate was deleted, because the outcome gate already excluded it — the same
         // blind spot this file already found and fixed for the BODY test, never applied to this one.
-        log.record(1L, PERSON, null, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = "expense", note = "SHOP")
+        log.record(1L, PERSON, null, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = TxnKind.EXPENSE, note = "SHOP")
 
         assertNull(log.state.value.entries.single().detail)
     }
@@ -193,7 +194,7 @@ class SmsDebugLogTest {
     @Test
     fun `detail is withheld on an outcome reached before capture was enabled`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.CAPTURE_OFF, amountMinor = 50_000L, kind = "expense", note = "SHOP")
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.CAPTURE_OFF, amountMinor = 50_000L, kind = TxnKind.EXPENSE, note = "SHOP")
 
         assertNull(log.state.value.entries.single().detail)
     }
@@ -201,7 +202,7 @@ class SmsDebugLogTest {
     @Test
     fun `detail is kept for a recognised bank`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = "expense", note = "SHOP")
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = TxnKind.EXPENSE, note = "SHOP")
 
         assertNotNull(log.state.value.entries.single().detail)
     }
@@ -424,7 +425,7 @@ class SmsDebugLogTest {
         log.record(
             1L, BANK, "INR 250 spent at coffeeday@ybl Ref 998877",
             SmsDebugLog.Outcome.PROMPTED,
-            amountMinor = 25_000L, kind = "expense", note = "coffeeday@ybl",
+            amountMinor = 25_000L, kind = TxnKind.EXPENSE, note = "coffeeday@ybl",
         )
 
         val e = log.state.value.entries.single()
@@ -445,6 +446,56 @@ class SmsDebugLogTest {
         val body = log.state.value.entries.single().body!!
         assertTrue("the token must not survive in any case", !body.contains("aB"))
         assertTrue("the host is not the identifier, so it stays", body.contains("HDFCBK.IO"))
+
+        // A per-customer token can hang off "?" or "#" as easily as "/". Reverting the separator class
+        // to "/" alone left the whole suite green.
+        for (sep in listOf("?ref=", "#tok=")) {
+            val l = log()
+            l.record(1L, BANK, "Rs.5 debited. See HDFCBK.IO${sep}aB9cD2e", SmsDebugLog.Outcome.PROMPTED)
+            val b = l.state.value.entries.single().body!!
+            assertTrue("separator '$sep' must be treated as a path", !b.contains("aB"))
+        }
+
+        // …but a sentence-final "?" is punctuation, not a query string.
+        val q = log()
+        q.record(1L, BANK, "Was this you at BOOKMYSHOW.IN? Reply NO", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
+        assertTrue(q.state.value.entries.single().body!!.contains("Reply NO"))
+    }
+
+    /**
+     * Hole A. The scan-bound test above proves the BOUND; this proves the CUT-BACK, which is a separate
+     * mechanism and was left unpinned when the earlier version's email was replaced by a plain token.
+     * `ADDRESS` needs a letter AFTER the "@", so a cut landing just past the "@" yields a fragment the
+     * masker can no longer match — the exact hazard the code comment describes.
+     */
+    @Test
+    fun `the scan cut never splits an address and leaves a fragment`() {
+        val log = log()
+        // 179 is exact, not approximate, and must not be "tidied". It places the "@" at index 2003 —
+        // just PAST the 2 000-char window — so the window ends mid-local-part with no "@" in it at all,
+        // and `ADDRESS` (which needs a letter after the "@") cannot match the fragment. At 178 the whole
+        // address falls inside the window and the mask catches it anyway; at 180 the local part starts
+        // past the bound and never appears. Only this value makes the cut-back the thing under test:
+        // deleting it leaves "…aakashpa" in the report.
+        val filler = "1234567890 ".repeat(179)
+        log.record(1L, BANK, "Rs.5 debited. Sent to ${filler}aakashpahuja@gmail.com tail", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("no fragment of the local part may survive", !body.contains("aakash"))
+        assertTrue("nor a dangling at-sign", !body.contains("@"))
+    }
+
+    /**
+     * Hole C. Dropping the `amountMinor != null && kind != null` guard rendered "null null paise" into
+     * `detail` — reachable on EVERY bank non-transaction, which passes a note and no figures. No test
+     * asserted detail's value for that call, so the guard could be deleted with the suite green.
+     */
+    @Test
+    fun `a note with no figures is reported alone, not beside a null amount`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.NOT_A_TRANSACTION, note = "read as ignored")
+
+        assertEquals("read as ignored", log.state.value.entries.single().detail)
     }
 
     /**
@@ -511,7 +562,7 @@ class SmsDebugLogTest {
     @Test
     fun `long detail is clipped`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 5L, kind = "expense", note = "x".repeat(5_000))
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 5L, kind = TxnKind.EXPENSE, note = "x".repeat(5_000))
 
         val detail = log.state.value.entries.single().detail!!
         assertTrue(detail.length <= 501)
