@@ -10,33 +10,66 @@ import org.junit.Test
  * blame the app for something the phone is doing (or the reverse).
  *
  * Order is load-bearing: each branch assumes the ones above it passed.
+ *
+ * **The snapshot factory takes `lastReceivedAt` independently of `received` on purpose.** The first
+ * version of this test derived it (`if (received > 0) 1_000L else null`), which made the post-`clear()`
+ * state — count zeroed, timestamp deliberately kept — structurally unreachable, and no test here could
+ * ever have caught the verdict lying about it. A factory that cannot express the defect is a blind spot,
+ * not a convenience.
  */
 class SmsVerdictTest {
 
-    private fun snapshot(received: Int = 0, fromBanks: Int = 0) =
+    private fun snapshot(received: Int = 0, fromBanks: Int = 0, lastReceivedAt: Long? = null) =
         SmsDebugLog.Snapshot(
             totalReceived = received,
-            lastReceivedAt = if (received > 0) 1_000L else null,
+            lastReceivedAt = lastReceivedAt,
             fromKnownBanks = fromBanks,
             entries = emptyList(),
         )
 
     private fun verdict(
-        permission: Boolean = true,
+        receive: Boolean = true,
+        demo: Boolean = false,
         capture: Boolean = true,
         prompts: Boolean = true,
         received: Int = 5,
         fromBanks: Int = 2,
-    ) = smsVerdictOf(permission, capture, prompts, snapshot(received, fromBanks))
+        lastReceivedAt: Long? = 1_000L,
+    ) = smsVerdictOf(receive, demo, capture, prompts, snapshot(received, fromBanks, lastReceivedAt))
+
+    /**
+     * Demo mode outranks everything, including a missing permission: while it is on, no other line on
+     * the screen is a statement about the owner's real setup, so every branch below would name a cause
+     * that isn't the cause. Demo mode was a live suspect in the July 2026 investigation.
+     */
+    @Test
+    fun `demo mode wins over every other branch`() {
+        val msg = verdict(demo = true, receive = false, capture = false, prompts = false, received = 0)
+
+        assertTrue(msg.contains("Demo mode is on"))
+        assertTrue("must say how to get out of it", msg.contains("Settings"))
+    }
 
     @Test
-    fun `a missing permission is named first, before anything downstream`() {
-        // Every downstream signal is healthy; the permission must still win, because nothing below it
-        // can be trusted when Android isn't letting the app read SMS at all.
-        val msg = verdict(permission = false)
+    fun `a missing receive permission is named before anything downstream`() {
+        val msg = verdict(receive = false)
 
         assertTrue(msg.contains("permission"))
         assertTrue(msg.contains("Settings"))
+    }
+
+    /**
+     * READ_SMS is used only by "Scan past SMS". Live capture needs RECEIVE_SMS alone, and OEM permission
+     * managers list the two separately — so a missing READ_SMS must NOT produce "nothing can arrive"
+     * beside a counter showing forty messages arriving. `smsVerdictOf` cannot even see READ_SMS, which
+     * is the point; this pins that it stays that way.
+     */
+    @Test
+    fun `read-SMS is not part of the verdict at all`() {
+        // Healthy live capture. If READ_SMS ever leaks into this signature, this stops compiling.
+        val msg = verdict(receive = true, received = 40, fromBanks = 6)
+
+        assertTrue(msg.contains("where it stopped"))
     }
 
     @Test
@@ -53,11 +86,26 @@ class SmsVerdictTest {
      * investigation goes hunting through capture code again.
      */
     @Test
-    fun `nothing delivered points outside the app, explicitly`() {
-        val msg = verdict(received = 0, fromBanks = 0)
+    fun `nothing ever delivered points outside the app, explicitly`() {
+        val msg = verdict(received = 0, fromBanks = 0, lastReceivedAt = null)
 
         assertTrue(msg.contains("not delivering"))
         assertTrue("must rule out the app itself", msg.contains("nothing inside Spends"))
+    }
+
+    /**
+     * THE regression. `clear()` zeroes the count and deliberately KEEPS the timestamp — so branching on
+     * the count alone printed "Android is not delivering them to the app" directly above a row reading
+     * "Last one reached the app: 3:00 pm". That is the screen asserting, with maximum confidence, the
+     * exact conclusion it exists to establish — immediately after the owner's most natural first tap.
+     */
+    @Test
+    fun `zero count with a kept timestamp must not claim delivery is broken`() {
+        val msg = verdict(received = 0, fromBanks = 0, lastReceivedAt = 3_000L)
+
+        assertTrue("must not blame delivery", !msg.contains("not delivering"))
+        assertTrue("must not deny the timestamp shown beneath it", !msg.contains("Not one SMS"))
+        assertTrue(msg.contains("cleared"))
     }
 
     @Test
@@ -80,9 +128,7 @@ class SmsVerdictTest {
 
     @Test
     fun `all healthy defers to the per-message list`() {
-        val msg = verdict()
-
-        assertTrue(msg.contains("where it stopped"))
+        assertTrue(verdict().contains("where it stopped"))
     }
 
     /**
@@ -92,9 +138,11 @@ class SmsVerdictTest {
     @Test
     fun `every branch produces a distinct sentence`() {
         val all = listOf(
-            verdict(permission = false),
+            verdict(demo = true),
+            verdict(receive = false),
             verdict(capture = false),
-            verdict(received = 0, fromBanks = 0),
+            verdict(received = 0, fromBanks = 0, lastReceivedAt = null),
+            verdict(received = 0, fromBanks = 0, lastReceivedAt = 3_000L),
             verdict(received = 40, fromBanks = 0),
             verdict(prompts = false, received = 40, fromBanks = 6),
             verdict(),

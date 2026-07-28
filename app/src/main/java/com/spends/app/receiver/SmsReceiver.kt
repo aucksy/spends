@@ -48,7 +48,12 @@ class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
-        val entry = EntryPointAccessors.fromApplication(context.applicationContext, SmsCaptureEntryPoint::class.java)
+        // Wrapped: this runs on the main looper inside a system broadcast, and it now runs for EVERY SMS
+        // on the phone rather than only capture-eligible ones. A Hilt graph that fails to build must not
+        // take the process down from here.
+        val entry = runCatching {
+            EntryPointAccessors.fromApplication(context.applicationContext, SmsCaptureEntryPoint::class.java)
+        }.getOrNull() ?: return
         val debug = entry.smsDebugLog()
         // Counted for EVERY message, before ANY other check — including in demo mode and with capture
         // switched off. If this stays at zero while texts are visibly arriving, Android is not delivering
@@ -60,12 +65,12 @@ class SmsReceiver : BroadcastReceiver() {
         // captured into a throwaway sandbox and then destroyed by the next "Reset demo data" — a genuinely
         // lost transaction. Drop out entirely; the message stays in the inbox and a later scan can find it.
         if (DemoMode.isEnabled(context)) {
-            runCatching { debug.record(System.currentTimeMillis(), null, null, null, SmsDebugLog.Outcome.DEMO_MODE) }
+            runCatching { debug.record(System.currentTimeMillis(), null, null, SmsDebugLog.Outcome.DEMO_MODE) }
             return
         }
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages == null || messages.isEmpty()) {
-            runCatching { debug.record(System.currentTimeMillis(), null, null, null, SmsDebugLog.Outcome.NO_MESSAGE_DATA) }
+            runCatching { debug.record(System.currentTimeMillis(), null, null, SmsDebugLog.Outcome.NO_MESSAGE_DATA) }
             return
         }
 
@@ -73,9 +78,7 @@ class SmsReceiver : BroadcastReceiver() {
         val body = messages.joinToString(separator = "") { it.messageBody ?: "" }
         val receivedAt = messages.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
         if (body.isBlank()) {
-            runCatching {
-                debug.record(receivedAt, sender, null, null, SmsDebugLog.Outcome.NO_MESSAGE_DATA, "empty body")
-            }
+            runCatching { debug.record(receivedAt, sender, null, SmsDebugLog.Outcome.BLANK_BODY) }
             return
         }
 
@@ -84,15 +87,15 @@ class SmsReceiver : BroadcastReceiver() {
         val notifier = entry.captureNotifier()
         val guard = entry.recentCaptureGuard()
 
-        // Resolved here rather than inside the parse so the diagnostic can separate "we don't know this
-        // bank's header" from "we know it but the text wasn't a transaction" — and because it is also the
-        // privacy gate: [SmsDebugLog] keeps a message body ONLY for a sender that resolved to a bank.
-        val institution = SenderAllowlist.lookup(sender)?.name
+        // Separates "we don't know this bank's header" from "we know it but the text wasn't a
+        // transaction" — the two are indistinguishable from `preview == null` alone. It is NOT the
+        // privacy gate: SmsDebugLog resolves the sender itself and ignores anything a caller claims.
+        val recognised = SenderAllowlist.lookup(sender) != null
 
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             fun note(outcome: SmsDebugLog.Outcome, detail: String? = null) = runCatching {
-                debug.record(receivedAt, sender, institution, body, outcome, detail)
+                debug.record(receivedAt, sender, body, outcome, detail)
             }
             try {
                 // Review-only: never auto-add. A parseable bank SMS always prompts the user (Add/Edit/Ignore).
@@ -103,10 +106,10 @@ class SmsReceiver : BroadcastReceiver() {
                 val preview = capture.preview(sender, body, receivedAt)
                 if (preview == null) {
                     note(
-                        if (institution == null) {
-                            SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED
-                        } else {
+                        if (recognised) {
                             SmsDebugLog.Outcome.NOT_A_TRANSACTION
+                        } else {
+                            SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED
                         },
                     )
                     return@launch
@@ -115,8 +118,15 @@ class SmsReceiver : BroadcastReceiver() {
                 // #7: if the user has ignored this exact pattern enough times, stop nagging — drop it
                 // silently into the review queue instead, so it's reviewable but never lost.
                 if (capture.isPatternSuppressed(sender, body, receivedAt)) {
-                    capture.queueForReview(sender, body, receivedAt)
-                    note(SmsDebugLog.Outcome.PATTERN_SUPPRESSED, money)
+                    // queueForReview returns null when its own dedupe nets already hold this — reported
+                    // as what actually happened, not as what was attempted. A diagnostic that says
+                    // "queued" for a row that was never inserted is the same class of defect as the
+                    // scan message this round is fixing.
+                    val queued = capture.queueForReview(sender, body, receivedAt)
+                    note(
+                        if (queued != null) SmsDebugLog.Outcome.PATTERN_SUPPRESSED else SmsDebugLog.Outcome.ALREADY_KNOWN,
+                        money,
+                    )
                 } else if (capture.isKnownHash(preview.dedupeHash)) {
                     // Already in the ledger or the review queue (e.g. the notification twin of
                     // this alert got there first, Phase 4) — a prompt would only invite a
@@ -131,8 +141,12 @@ class SmsReceiver : BroadcastReceiver() {
                         // simply returned and the transaction was gone: not shown, not queued, not
                         // recorded anywhere. Park it in the review queue, exactly as the notification
                         // listener already does, so a real transaction is never lost in silence.
-                        capture.queueForReview(sender, body, receivedAt)
-                        note(SmsDebugLog.Outcome.PROMPT_BLOCKED, "$money · queued instead")
+                        val queued = capture.queueForReview(sender, body, receivedAt)
+                        if (queued != null) {
+                            note(SmsDebugLog.Outcome.PROMPT_BLOCKED, "$money · queued for review instead")
+                        } else {
+                            note(SmsDebugLog.Outcome.ALREADY_KNOWN, "$money · prompt blocked, and already held")
+                        }
                     }
                 } else {
                     // The notification listener prompted a TWIN of this transaction moments ago (the SMS

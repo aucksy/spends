@@ -10,10 +10,19 @@ import org.junit.Test
  * The SMS diagnostic exists to answer one question the phone cannot: is Android delivering bank texts
  * to Spends at all? These pin the two things that would make it lie — a counter that drifts, and the
  * privacy rules that decide what may be recorded.
+ *
+ * `AD-HDFCBK` and `JD-SBIUPI` are real [SenderAllowlist] headers; the log resolves the sender itself,
+ * so a fake one would not be treated as a bank. That is the point of the resolution living inside.
  */
 class SmsDebugLogTest {
 
     private fun log() = SmsDebugLog()
+
+    private companion object {
+        const val BANK = "AD-HDFCBK"
+        const val PERSON = "+919876543210"
+        const val ALERT = "Rs 500 debited from a/c XX1234 at SHOP on 26-07-26"
+    }
 
     // ---- the load-bearing counter ----
 
@@ -35,14 +44,15 @@ class SmsDebugLogTest {
 
     /**
      * The single most useful line on the screen is "when did an SMS last reach the app". Wiping the list
-     * must not wipe that too — it would read as "none ever has", which is the opposite of the truth and
-     * the exact conclusion the screen exists to prevent.
+     * must not wipe that too — it would read as "none ever has", which is the opposite of the truth.
+     * `SmsVerdictTest.zero count with a kept timestamp…` pins the other half: the verdict must READ this
+     * kept timestamp, or the screen contradicts itself the moment Clear is tapped.
      */
     @Test
     fun `clear resets the counters but keeps when an SMS last arrived`() {
         val log = log()
         log.recordReceived(now = 9_000L)
-        log.record(1L, "AD-HDFCBK", "HDFC", "Rs 100 debited", SmsDebugLog.Outcome.PROMPTED)
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED)
 
         log.clear()
 
@@ -54,11 +64,11 @@ class SmsDebugLogTest {
     }
 
     @Test
-    fun `known-bank tally counts only entries whose sender resolved`() {
+    fun `known-bank tally counts only senders the allowlist actually resolves`() {
         val log = log()
-        log.record(1L, "AD-HDFCBK", "HDFC", "body", SmsDebugLog.Outcome.PROMPTED)
-        log.record(2L, "+919876543210", null, "body", SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
-        log.record(3L, "JD-SBIINB", "SBI", "body", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED)
+        log.record(2L, PERSON, "see you at 8", SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
+        log.record(3L, "JD-SBIUPI", ALERT, SmsDebugLog.Outcome.NOT_A_TRANSACTION)
 
         assertEquals(2, log.state.value.fromKnownBanks)
     }
@@ -66,10 +76,10 @@ class SmsDebugLogTest {
     // ---- privacy: enforced INSIDE the log, so no caller can bypass it ----
 
     @Test
-    fun `a body is stored only when the sender resolved to a bank`() {
+    fun `a body is stored only when the sender resolves to a bank`() {
         val log = log()
-        log.record(1L, "AD-HDFCBK", "HDFC", "Rs 500 debited at SHOP", SmsDebugLog.Outcome.PROMPTED)
-        log.record(2L, "+919876543210", null, "see you at 8, bring the thing", SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED)
+        log.record(2L, PERSON, "see you at 8, bring the thing", SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
 
         val personal = log.state.value.entries.first { it.institution == null }
         val bank = log.state.value.entries.first { it.institution != null }
@@ -79,15 +89,72 @@ class SmsDebugLogTest {
     }
 
     /**
-     * The rule that makes the screen safe to paste into a chat window. A caller passing a body for an
-     * unrecognised sender is not a bug to be found in review — it is impossible for it to leak.
+     * The rule that makes the screen safe to paste into a chat window. The log resolves the sender
+     * itself, so a caller CANNOT assert that a personal message came from a bank and have the body
+     * stored on that word — there is no `institution` parameter to lie in.
      */
     @Test
-    fun `passing a body for an unrecognised sender cannot leak it`() {
+    fun `an unrecognised sender cannot have its body stored however it is labelled`() {
         val log = log()
-        log.record(1L, "SOMEONE", null, "private", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
+        log.record(1L, "AD-NOTABANK", "private", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
 
-        assertNull(log.state.value.entries.single().body)
+        val e = log.state.value.entries.single()
+        assertNull(e.institution)
+        assertNull(e.body)
+    }
+
+    /**
+     * An owner who never switched capture on is never having their bank alerts transcribed. The
+     * notification log takes the same stance by gating its tally; here the tally stays ungated (a count
+     * of zero is the whole point of the screen) and the CONTENT is gated instead.
+     */
+    @Test
+    fun `a bank body is not stored when capture is off`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.CAPTURE_OFF)
+
+        val e = log.state.value.entries.single()
+        assertEquals("HDFC Bank", e.institution)
+        assertNull("capture was never enabled — nothing to transcribe", e.body)
+    }
+
+    /**
+     * Bank OTPs are the largest class of NOT_A_TRANSACTION, and this report is built to be pasted into
+     * a chat window. The words survive (they explain the rejection); the code does not.
+     */
+    @Test
+    fun `a non-transaction from a bank has its digits masked`() {
+        val log = log()
+        log.record(1L, BANK, "Your OTP is 481920. Do not share it with anyone.", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("the passcode must not survive", !body.contains("481920"))
+        assertTrue("the words that explain the rejection must survive", body.contains("OTP"))
+    }
+
+    @Test
+    fun `a real transaction from a bank keeps its numbers - they are the diagnosis`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED)
+
+        assertTrue(log.state.value.entries.single().body!!.contains("500"))
+    }
+
+    /** `detail` carries the parsed merchant and amount, so it is gated exactly as the body is. */
+    @Test
+    fun `detail is withheld for an unrecognised sender`() {
+        val log = log()
+        log.record(1L, PERSON, null, SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED, detail = "expense 50000 paise · SHOP")
+
+        assertNull(log.state.value.entries.single().detail)
+    }
+
+    @Test
+    fun `detail is kept for a recognised bank`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, detail = "expense 50000 paise · SHOP")
+
+        assertNotNull(log.state.value.entries.single().detail)
     }
 
     @Test
@@ -104,6 +171,14 @@ class SmsDebugLogTest {
         assertEquals(SmsDebugLog.MASKED_SENDER, SmsDebugLog.maskSender("+91 98765 43210"))
     }
 
+    /** `Char.isLetter()` is false for every Unicode digit category, so no script bypasses the mask. */
+    @Test
+    fun `non-latin digits do not bypass the sender mask`() {
+        assertEquals(SmsDebugLog.MASKED_SENDER, SmsDebugLog.maskSender("٩٨٧٦٥٤٣٢١٠"))
+        assertEquals(SmsDebugLog.MASKED_SENDER, SmsDebugLog.maskSender("९८७६५४३२१०"))
+        assertEquals(SmsDebugLog.MASKED_SENDER, SmsDebugLog.maskSender("９８７６５４３２１０"))
+    }
+
     @Test
     fun `a missing sender is named rather than left blank`() {
         assertEquals("(no sender)", SmsDebugLog.maskSender(null))
@@ -113,7 +188,7 @@ class SmsDebugLogTest {
     @Test
     fun `the masking rule is applied when recording, not only when asked directly`() {
         val log = log()
-        log.record(1L, "+919876543210", null, null, SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
+        log.record(1L, PERSON, null, SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
 
         assertEquals(SmsDebugLog.MASKED_SENDER, log.state.value.entries.single().sender)
     }
@@ -123,8 +198,8 @@ class SmsDebugLogTest {
     @Test
     fun `entries are newest first`() {
         val log = log()
-        log.record(1L, "A-BANK", "HDFC", null, SmsDebugLog.Outcome.PROMPTED)
-        log.record(2L, "B-BANK", "SBI", null, SmsDebugLog.Outcome.PROMPTED)
+        log.record(1L, BANK, null, SmsDebugLog.Outcome.PROMPTED)
+        log.record(2L, "JD-SBIUPI", null, SmsDebugLog.Outcome.PROMPTED)
 
         assertEquals(listOf(2L, 1L), log.state.value.entries.map { it.timeMillis })
     }
@@ -132,11 +207,10 @@ class SmsDebugLogTest {
     @Test
     fun `the ring is capped so a busy phone cannot grow it without bound`() {
         val log = log()
-        repeat(200) { log.record(it.toLong(), "A-BANK", "HDFC", null, SmsDebugLog.Outcome.PROMPTED) }
+        repeat(200) { log.record(it.toLong(), BANK, null, SmsDebugLog.Outcome.PROMPTED) }
 
         val entries = log.state.value.entries
         assertEquals(60, entries.size)
-        // Newest survive, oldest are evicted.
         assertEquals(199L, entries.first().timeMillis)
         assertEquals(140L, entries.last().timeMillis)
     }
@@ -144,7 +218,7 @@ class SmsDebugLogTest {
     @Test
     fun `long text is clipped so one pathological message cannot bloat the log`() {
         val log = log()
-        log.record(1L, "A-BANK", "HDFC", "x".repeat(5_000), SmsDebugLog.Outcome.PROMPTED)
+        log.record(1L, BANK, "Rs 5 debited " + "x".repeat(5_000), SmsDebugLog.Outcome.PROMPTED)
 
         val body = log.state.value.entries.single().body!!
         assertTrue("clipped to the cap plus an ellipsis", body.length <= 501)

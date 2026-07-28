@@ -1,11 +1,15 @@
 package com.spends.app.ui.capture
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.capture.CaptureNotifier
 import com.spends.app.data.capture.SmsDebugLog
+import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -14,6 +18,7 @@ import javax.inject.Inject
 
 data class SmsDebugUiState(
     val captureEnabled: Boolean = false,
+    val demoMode: Boolean = false,
     val log: SmsDebugLog.Snapshot = SmsDebugLog.Snapshot(0, null, 0, emptyList()),
 )
 
@@ -21,7 +26,7 @@ data class SmsDebugUiState(
  * TEMPORARY: backs the owner-facing "SMS debug" screen. Read-only over [SmsDebugLog] (in-memory, never
  * persisted) plus the capture switch. Remove with the log.
  *
- * The Android-side facts — the SMS permission grant and whether a prompt could actually be shown — are
+ * The Android-side facts — the SMS permission grants and whether a prompt could actually be shown — are
  * read by the SCREEN and passed in, because both can be changed in Android's settings while this screen
  * is open and must be re-read every time it comes back to the front.
  */
@@ -29,12 +34,26 @@ data class SmsDebugUiState(
 class SmsDebugViewModel @Inject constructor(
     private val debugLog: SmsDebugLog,
     settingsRepository: SettingsRepository,
+    captureNotifier: CaptureNotifier,
+    @ApplicationContext context: Context,
 ) : ViewModel() {
+
+    // Read once: flipping demo mode restarts the process (DemoMode.restartInto), so it cannot change
+    // underneath this screen.
+    private val demoMode = DemoMode.isEnabled(context)
+
+    init {
+        // The prompt channel is otherwise created lazily by the first prompt ever posted. Until then the
+        // "Transaction detection" category does not exist in Android's settings — so an owner sent here
+        // to check whether it is switched off would find nothing to look at. Creating it is idempotent
+        // and never resurrects a category the owner switched off.
+        captureNotifier.ensureChannel()
+    }
 
     val state: StateFlow<SmsDebugUiState> =
         combine(debugLog.state, settingsRepository.settings) { log, s ->
-            SmsDebugUiState(captureEnabled = s.smsCaptureEnabled, log = log)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SmsDebugUiState())
+            SmsDebugUiState(captureEnabled = s.smsCaptureEnabled, demoMode = demoMode, log = log)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SmsDebugUiState(demoMode = demoMode))
 
     fun clear() = debugLog.clear()
 
@@ -42,23 +61,26 @@ class SmsDebugViewModel @Inject constructor(
      * The whole picture as plain text for the "Copy report" button — the owner pastes this straight back
      * into chat, which is the entire point of the screen.
      *
-     * No redaction pass is needed here: [SmsDebugLog] refuses to store a message body unless its sender
-     * resolved to a tracked bank, and masks senders that carry no letters. What reaches this method is
-     * already safe to paste, which is a stronger guarantee than redacting on the way out.
+     * No redaction pass happens here, and that is a deliberate stance rather than an omission:
+     * [SmsDebugLog] refuses to STORE anything it would have to redact. What reaches this method is
+     * already safe to paste, which is stronger than the notification screen's redact-on-the-way-out —
+     * that depends on keeping an outcome allow-list correct forever.
      */
-    fun buildReport(smsPermissionGranted: Boolean, promptsCanBeSeen: Boolean): String {
+    fun buildReport(receiveGranted: Boolean, readGranted: Boolean, promptsCanBeSeen: Boolean): String {
         val s = state.value
         val log = s.log
         return buildString {
             appendLine("SPENDS — SMS DEBUG")
-            appendLine("SMS permission granted: ${yesNo(smsPermissionGranted)}")
+            if (s.demoMode) appendLine("DEMO MODE IS ON — real bank texts are deliberately ignored")
+            appendLine("Receive SMS permission: ${yesNo(receiveGranted)}")
+            appendLine("Read SMS permission (Scan past SMS only): ${yesNo(readGranted)}")
             appendLine("\"Detect from bank SMS\" switch on: ${yesNo(s.captureEnabled)}")
             appendLine("Prompt can be shown: ${yesNo(promptsCanBeSeen)}")
-            appendLine("SMS delivered to Spends (this session): ${log.totalReceived}")
-            appendLine("Last SMS reached the app: ${log.lastReceivedAt?.let { DateUtils.formatDayTime(it) } ?: "never this session"}")
-            appendLine("Of those, from a bank we recognise: ${log.fromKnownBanks}")
+            appendLine("SMS delivered to Spends (this app run): ${log.totalReceived}")
+            appendLine("Last SMS reached the app: ${log.lastReceivedAt?.let { DateUtils.formatDayTime(it) } ?: "never this app run"}")
+            appendLine("Of those, from a bank we recognise (this app run): ${log.fromKnownBanks}")
             appendLine()
-            appendLine("MESSAGES (${log.entries.size}, newest first)")
+            appendLine("MESSAGES (${log.entries.size} kept, newest first)")
             if (log.entries.isEmpty()) appendLine("  (none)")
             log.entries.forEach { e ->
                 appendLine("---")
@@ -67,7 +89,7 @@ class SmsDebugViewModel @Inject constructor(
                 appendLine("  bank    : ${e.institution ?: "(not recognised)"}")
                 appendLine("  outcome : ${e.outcome}")
                 e.detail?.let { appendLine("  detail  : $it") }
-                appendLine("  body    : ${e.body ?: "(withheld — sender isn't a known bank, so this may be personal)"}")
+                appendLine("  body    : ${e.body ?: "(not kept)"}")
             }
         }
     }
@@ -76,26 +98,43 @@ class SmsDebugViewModel @Inject constructor(
 }
 
 /**
- * The one line that says which link is broken. Pure so every branch is directly testable — the verdict is
- * the whole point of the screen and it must not be able to contradict the counters printed beneath it.
+ * The one line that says which link is broken. Pure so every branch is directly testable — the verdict
+ * is the whole point of the screen and it must not be able to contradict the counters printed beneath it.
+ *
+ * Only [receiveGranted] is consulted: live capture needs RECEIVE_SMS alone. READ_SMS is used solely by
+ * "Scan past SMS", and OEM permission managers (MIUI, ColorOS — the phones this app runs on) list the
+ * two separately, so blaming a missing READ_SMS would send the owner to fix a permission that is not
+ * the problem while capture is in fact working.
  *
  * Order matters: each check assumes the ones above it passed.
  */
 fun smsVerdictOf(
-    permissionGranted: Boolean,
+    receiveGranted: Boolean,
+    demoMode: Boolean,
     captureEnabled: Boolean,
     promptsCanBeSeen: Boolean,
     log: SmsDebugLog.Snapshot,
 ): String = when {
-    !permissionGranted ->
-        "Android hasn't given Spends permission to read SMS, so nothing can arrive. " +
+    // First, and above the permission: in demo mode nothing else on this screen is a statement about
+    // the owner's real setup, and every branch below would name a cause that isn't the cause.
+    demoMode ->
+        "Demo mode is on, so real bank texts are deliberately ignored — nothing here reflects your " +
+            "actual setup. Turn demo mode off in Settings → Data & Trash, then try again."
+    !receiveGranted ->
+        "Android hasn't given Spends permission to receive SMS, so nothing can arrive. " +
             "Settings → Apps → Spends → Permissions → SMS."
     !captureEnabled ->
         "The SMS permission is granted, but the \"Detect from bank SMS\" switch is off."
+    // Split from the branch below on lastReceivedAt, NOT on the count alone. Tapping "Clear what's
+    // recorded" zeroes the count while deliberately keeping the timestamp, and the un-split version
+    // then asserted "Android is not delivering" directly above a row showing when the last one arrived.
+    log.totalReceived == 0 && log.lastReceivedAt == null ->
+        "Not one SMS has reached Spends since this app run started. If texts have arrived on your " +
+            "phone in that time, Android is not delivering them to the app — nothing inside Spends " +
+            "can be the cause. Leave the app open, send yourself a text, and check this number again."
     log.totalReceived == 0 ->
-        "Not one SMS has reached Spends since the app started. If texts have arrived on your phone " +
-            "in that time, Android is not delivering them to the app — nothing inside Spends can be " +
-            "the cause. Open the app, then send yourself a text and check this number again."
+        "Nothing has arrived since you cleared this screen. The last SMS before that did reach " +
+            "Spends, so delivery was working — send yourself a text to confirm it still is."
     log.fromKnownBanks == 0 ->
         "Spends is receiving your SMS (${log.totalReceived} so far), but none came from a sender it " +
             "recognises as a bank. If a bank alert IS in the list below, its sender name has changed " +

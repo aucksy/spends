@@ -78,18 +78,25 @@ fun SmsDebugScreen(
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Both are system settings the owner may have just changed in Android's own screens, so they are
-    // re-read every time this screen comes back to the front rather than captured once.
-    fun readPermission(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+    // All three are system settings the owner may have just changed in Android's own screens, so they
+    // are re-read every time this screen comes back to the front rather than captured once.
+    //
+    // RECEIVE_SMS and READ_SMS are read SEPARATELY and never conflated. Live capture needs only
+    // RECEIVE_SMS; READ_SMS exists for "Scan past SMS". They are requested together, so they normally
+    // move together — but OEM permission managers (MIUI, ColorOS) list them as two switches, and
+    // reporting a missing READ_SMS as "nothing can arrive" would blame a permission that isn't the
+    // problem while live capture is working perfectly.
+    fun readGranted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-    var permissionGranted by remember { mutableStateOf(readPermission()) }
+    var receiveGranted by remember { mutableStateOf(readGranted(Manifest.permission.RECEIVE_SMS)) }
+    var readSmsGranted by remember { mutableStateOf(readGranted(Manifest.permission.READ_SMS)) }
     var promptsVisible by remember { mutableStateOf(CaptureNotifier.promptsCanBeSeen(context)) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                permissionGranted = readPermission()
+                receiveGranted = readGranted(Manifest.permission.RECEIVE_SMS)
+                readSmsGranted = readGranted(Manifest.permission.READ_SMS)
                 promptsVisible = CaptureNotifier.promptsCanBeSeen(context)
             }
         }
@@ -132,19 +139,30 @@ fun SmsDebugScreen(
             SpendsCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
-                        smsVerdictOf(permissionGranted, state.captureEnabled, promptsVisible, log),
+                        smsVerdictOf(
+                            receiveGranted = receiveGranted,
+                            demoMode = state.demoMode,
+                            captureEnabled = state.captureEnabled,
+                            promptsCanBeSeen = promptsVisible,
+                            log = log,
+                        ),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Spacer(Modifier.height(12.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(12.dp))
-                    SmsStatusRow("SMS permission granted", smsYesNo(permissionGranted))
+                    if (state.demoMode) SmsStatusRow("Demo mode", "ON — real texts ignored")
+                    SmsStatusRow("Receive SMS permission", smsYesNo(receiveGranted))
+                    SmsStatusRow("Read SMS (Scan past SMS only)", smsYesNo(readSmsGranted))
                     SmsStatusRow("\"Detect from bank SMS\" on", smsYesNo(state.captureEnabled))
                     SmsStatusRow("Prompt can be shown", smsYesNo(promptsVisible))
-                    SmsStatusRow("SMS delivered to Spends", log.totalReceived.toString())
+                    // Scoped to "this app run", not "this session": the log dies with the process, so a
+                    // freshly-started app legitimately shows 0. Saying "session" invited reading a cold
+                    // start as evidence of a delivery failure.
+                    SmsStatusRow("SMS delivered (this app run)", log.totalReceived.toString())
                     SmsStatusRow(
                         "Last one reached the app",
-                        log.lastReceivedAt?.let { DateUtils.formatDayTime(it) } ?: "never this session",
+                        log.lastReceivedAt?.let { DateUtils.formatDayTime(it) } ?: "never this app run",
                     )
                     SmsStatusRow("…from a bank we recognise", log.fromKnownBanks.toString())
                 }
@@ -153,15 +171,23 @@ fun SmsDebugScreen(
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = {
-                    clipboard.setText(AnnotatedString(viewModel.buildReport(permissionGranted, promptsVisible)))
+                    clipboard.setText(
+                        AnnotatedString(viewModel.buildReport(receiveGranted, readSmsGranted, promptsVisible)),
+                    )
                     scope.launch { snackbarHost.showSnackbar("Report copied") }
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Copy report") }
+            // Precise about what actually leaves the phone. An earlier draft promised personal messages
+            // contribute "no sender", which was false: only senders with no letters are masked, so an
+            // alphanumeric non-bank header ("JD-CLINIC") is exported in full. The masking rule is right —
+            // an unrecognised BANK header is the thing most worth reading — so the promise was corrected
+            // to match the code rather than the code narrowed to match the promise.
             Text(
                 "The report includes the sender names of texts Spends received, and the text of alerts " +
-                    "from senders it recognised as banks. Personal messages contribute nothing but a " +
-                    "count — no number, no sender, no words.",
+                    "from senders it recognised as banks — with every digit masked when the text wasn't " +
+                    "a transaction, so one-time passcodes never leave the phone. No phone numbers, and " +
+                    "no words from anything that isn't a recognised bank.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
@@ -174,13 +200,16 @@ fun SmsDebugScreen(
 
             // ---- Per-message detail ----
             Spacer(Modifier.height(20.dp))
-            SectionLabel("Messages Spends was handed (${log.entries.size})")
+            // "kept", not a total: the ring holds the newest 60, so on a busy phone this is fewer than
+            // the delivered count above it. Naming it avoids reading the gap as messages going missing.
+            SectionLabel("Messages kept (${log.entries.size}, newest first)")
             Spacer(Modifier.height(6.dp))
             if (log.entries.isEmpty()) {
                 Text(
                     if (log.totalReceived == 0) {
-                        "Nothing yet. Send yourself any text — if this stays empty, Android isn't " +
-                            "delivering SMS to Spends at all, which is the answer in itself."
+                        "Nothing yet. Leave the app open and send yourself any text — if this stays " +
+                            "empty, Android isn't delivering SMS to Spends at all, which is the " +
+                            "answer in itself."
                     } else {
                         "Counted ${log.totalReceived}, but none recorded in detail yet."
                     },
@@ -240,7 +269,7 @@ private fun SmsStatusRow(label: String, value: String) {
 @Composable
 private fun SmsDebugField(label: String, value: String?) {
     Text(
-        "$label: ${value ?: "(withheld — not a known bank sender)"}",
+        "$label: ${value ?: "(not kept)"}",
         style = MaterialTheme.typography.bodySmall,
         fontFamily = FontFamily.Monospace,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -254,6 +283,7 @@ private fun smsYesNo(v: Boolean) = if (v) "Yes" else "No"
 private fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
     SmsDebugLog.Outcome.DEMO_MODE -> "Ignored — demo mode is on, so real alerts are left alone"
     SmsDebugLog.Outcome.NO_MESSAGE_DATA -> "Arrived with no readable message in it"
+    SmsDebugLog.Outcome.BLANK_BODY -> "Arrived, but the message text was empty"
     SmsDebugLog.Outcome.CAPTURE_OFF -> "Ignored — the \"Detect from bank SMS\" switch is off"
     SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "The sender isn't a bank Spends knows"
     SmsDebugLog.Outcome.NOT_A_TRANSACTION -> "From a known bank, but not a transaction (OTP / promo / statement)"

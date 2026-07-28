@@ -15,8 +15,31 @@ import org.junit.Test
  */
 class ScanMessageTest {
 
-    private fun result(scanned: Int, queued: Int, skipped: Int) =
-        SmsCaptureRepository.ScanResult(scanned = scanned, queued = queued, skippedDuplicate = skipped)
+    private fun result(scanned: Int, queued: Int, skipped: Int, demo: Boolean = false) =
+        SmsCaptureRepository.ScanResult(
+            scanned = scanned,
+            queued = queued,
+            skippedDuplicate = skipped,
+            refusedDemoMode = demo,
+        )
+
+    /**
+     * Demo mode refuses to read the inbox and returns zero counts. Rendering that as "no messages at
+     * all" would be an affirmative lie about the owner's real inbox — from the very function whose
+     * purpose is to stop conflating opposite facts. Capture settings are NOT hidden in demo mode
+     * (only Backup & Restore is), so this is reachable with two taps.
+     */
+    @Test
+    fun `demo mode is never reported as an empty inbox`() {
+        val demo = SmsCaptureRepository.scanMessage(result(0, 0, 0, demo = true))
+
+        assertTrue(demo.contains("demo mode"))
+        assertTrue(
+            "must not claim anything about the real inbox",
+            !demo.contains("No messages at all"),
+        )
+        assertTrue(demo != SmsCaptureRepository.scanMessage(result(0, 0, 0)))
+    }
 
     /** THE case the old message could not express. An empty inbox must never read like a full one. */
     @Test

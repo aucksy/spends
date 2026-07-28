@@ -54,8 +54,20 @@ class SmsCaptureRepository @Inject constructor(
     // Serialises capture so concurrent broadcasts / a scan can't both pass the read-then-insert check.
     private val captureMutex = Mutex()
 
-    /** Outcome of a historical inbox scan. */
-    data class ScanResult(val scanned: Int, val queued: Int, val skippedDuplicate: Int)
+    /**
+     * Outcome of a historical inbox scan.
+     *
+     * [refusedDemoMode] is its own field rather than a zero count: demo mode refuses to read the inbox at
+     * all, and reporting that as `scanned = 0` would render as "there are no messages in that range" —
+     * an affirmative lie about the owner's real inbox, from the very code path this round exists to stop
+     * conflating opposite facts.
+     */
+    data class ScanResult(
+        val scanned: Int,
+        val queued: Int,
+        val skippedDuplicate: Int,
+        val refusedDemoMode: Boolean = false,
+    )
 
     /** A read-only summary of a parsed SMS for the live capture prompt. [dedupeHash] + [relaxedHash] +
      *  [refNumber] let both live paths collapse the SMS + notification twins of one alert into ONE
@@ -355,13 +367,18 @@ class SmsCaptureRepository @Inject constructor(
      * for review. Skips anything already in the ledger or queue (dedupe hash) AND anything that would
      * duplicate one of the user's own manual/imported entries (same day + amount + kind) — the exact
      * bug that made enabling capture double the manual transactions.
+     *
+     * **Returns null when the inbox could not be READ** (the content query came back null). That is a
+     * different fact from an empty range and must not be reported as one: `query` returning null does
+     * not throw, so without this the caller's `runCatching{}.getOrNull()` could never see it and "I
+     * couldn't read your inbox" rendered as "your inbox is empty" — the same conflation, inverted.
      */
-    suspend fun scanHistory(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): ScanResult =
+    suspend fun scanHistory(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): ScanResult? =
         withContext(Dispatchers.IO) {
             // Demo mode: this reads the REAL inbox. Queuing genuine bank alerts — raw bodies, balances,
             // card digits — into the demo sandbox would both display them on screen mid-demo and destroy
             // them at the next reset. Refuse; the messages stay in the inbox for a scan after demo mode.
-            if (DemoMode.isEnabled(context)) return@withContext ScanResult(0, 0, 0)
+            if (DemoMode.isEnabled(context)) return@withContext ScanResult(0, 0, 0, refusedDemoMode = true)
             captureMutex.withLock {
                 val seenHashes = (expenseDao.allDedupeHashes() + pendingDao.allHashes()).toHashSet()
                 val liveExpenses = expenseDao.getAllExpensesOnce().filter { it.deletedAt == null }
@@ -388,7 +405,9 @@ class SmsCaptureRepository @Inject constructor(
                 val uri: Uri = Telephony.Sms.Inbox.CONTENT_URI
                 val selection = "${Telephony.Sms.DATE} >= ? AND ${Telephony.Sms.DATE} < ?"
                 val args = arrayOf(startMillis.toString(), endExclusiveMillis.toString())
-                context.contentResolver.query(uri, cols, selection, args, "${Telephony.Sms.DATE} DESC")?.use { c ->
+                val cursor = context.contentResolver.query(uri, cols, selection, args, "${Telephony.Sms.DATE} DESC")
+                    ?: return@withLock null // could not READ the inbox — never report this as "empty"
+                cursor.use { c ->
                     val iAddr = c.getColumnIndex(Telephony.Sms.ADDRESS)
                     val iBody = c.getColumnIndex(Telephony.Sms.BODY)
                     val iDate = c.getColumnIndex(Telephony.Sms.DATE)
@@ -938,6 +957,10 @@ class SmsCaptureRepository @Inject constructor(
          */
         fun scanMessage(r: ScanResult?): String = when {
             r == null -> "Couldn't read the inbox."
+            // Must come first: demo mode refuses to read at all, and its zero counts are not a statement
+            // about the owner's real inbox. Reporting it as "no messages" would be a confident lie about
+            // the exact thing this function exists to report honestly.
+            r.refusedDemoMode -> "Not while demo mode is on — your real messages are left alone."
             r.scanned == 0 -> "No messages at all in that range — Spends couldn't see a single one."
             r.queued == 0 -> "Read ${r.scanned} message${plural(r.scanned)}, nothing new to review" +
                 if (r.skippedDuplicate > 0) " · skipped ${r.skippedDuplicate} you already have" else ""

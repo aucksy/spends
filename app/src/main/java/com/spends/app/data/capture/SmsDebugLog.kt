@@ -29,15 +29,25 @@ import javax.inject.Singleton
  * everything is dropped when the app's process restarts.
  *
  * ## Privacy — stricter than the notification log, on purpose
- * Every SMS on the phone flows through the receiver, so most of what passes here is personal mail. Two
+ * Every SMS on the phone flows through the receiver, so most of what passes here is personal mail. Four
  * rules are enforced INSIDE this class rather than at the call site, so no future caller can leak by
- * forgetting them:
+ * forgetting them. [record] deliberately takes no `institution` parameter — it resolves the sender
+ * itself, so a caller cannot assert "this is a bank" and have the log believe it:
  *
- *  1. **A message body is stored only when the sender resolved to a tracked bank.** A recognised sender
- *     means the text is a bank alert; everything else keeps `body = null` no matter what is passed in.
- *  2. **A numeric sender is masked.** Indian bank/A2P alerts arrive from alphanumeric headers
+ *  1. **A message body is stored only when the sender resolves to a tracked bank** — resolved here, via
+ *     [SenderAllowlist], not by the caller. Everything else keeps `body = null` whatever is passed in.
+ *  2. **…and only for an outcome reached with capture switched ON** ([BODY_BEARING]). An owner who has
+ *     capture off is never having their bank alerts transcribed, which is the stance the notification
+ *     log takes by gating its tally. Here the tally stays ungated — a count of zero is the whole point
+ *     of the screen — and the CONTENT is gated instead.
+ *  3. **A non-transaction from a bank has every digit masked.** Bank OTPs are the single largest class
+ *     of `NOT_A_TRANSACTION`, and this report is built to be pasted into a chat window. Masking via
+ *     [SmsParser.aiContextFor] keeps the words that explain the rejection and destroys the code.
+ *  4. **A numeric sender is masked.** Indian bank/A2P alerts arrive from alphanumeric headers
  *     ("AD-HDFCBK"), which are exactly what we need to read when the allowlist misses one. A sender with
  *     no letters is a person's phone number, carries no diagnostic value, and is replaced by a marker.
+ *
+ * `detail` is gated by rule 1 as well: it carries the parsed merchant and amount.
  *
  * Remove this class and the debug screen once the root cause is fixed (see
  * `docs/NOTIFICATION-CAPTURE-DEBUG.md`).
@@ -50,8 +60,12 @@ class SmsDebugLog @Inject constructor() {
         /** Demo mode is active — real alerts are dropped on purpose so the sandbox can't eat them. */
         DEMO_MODE,
 
-        /** The broadcast carried no readable message, or an empty body. */
+        /** The broadcast carried no readable message at all. */
         NO_MESSAGE_DATA,
+
+        /** A message arrived, but its text was empty. Separate from [NO_MESSAGE_DATA] so the reason can
+         *  be named without a free-text detail, which would sit outside the privacy gate. */
+        BLANK_BODY,
 
         /** The "Detect from bank SMS" switch is off. */
         CAPTURE_OFF,
@@ -125,31 +139,46 @@ class SmsDebugLog @Inject constructor() {
     }
 
     /**
-     * Record where one message stopped. [body] is accepted for every call and **kept only when
-     * [institution] is non-null** — the privacy rule lives here so a caller cannot bypass it.
+     * Record where one message stopped.
+     *
+     * [body] and [detail] are accepted for every call and kept only when all of this class's privacy
+     * rules allow it. **There is deliberately no `institution` parameter**: the sender is resolved here
+     * against [SenderAllowlist], so a caller cannot assert that a personal message came from a bank and
+     * have the log store its text on that word.
      */
     @Synchronized
     fun record(
         timeMillis: Long,
         sender: String?,
-        institution: String?,
         body: String?,
         outcome: Outcome,
         detail: String? = null,
     ) {
+        val institution = SenderAllowlist.lookup(sender)?.name
         if (institution != null) fromKnownBanks++
         entries.addFirst(
             Entry(
                 timeMillis = timeMillis,
                 sender = maskSender(sender),
                 institution = institution,
-                body = if (institution != null) body?.clip() else null,
-                outcome = outcome,
-                detail = detail?.clip(),
+                body = storableBody(institution, body, outcome),
+                // Carries the parsed merchant and amount, so it is gated exactly as the body is.
+                detail = if (institution != null) detail?.clip() else null,
             ),
         )
         while (entries.size > MAX_ENTRIES) entries.removeLast()
         publish()
+    }
+
+    /**
+     * The three content rules, applied in one place. Returns null unless the sender resolved to a bank
+     * AND the outcome is one only reachable with capture switched on; and digit-masks a non-transaction,
+     * which is overwhelmingly an OTP.
+     */
+    private fun storableBody(institution: String?, body: String?, outcome: Outcome): String? {
+        if (institution == null || outcome !in BODY_BEARING) return null
+        val text = if (outcome == Outcome.NOT_A_TRANSACTION) SmsParser.aiContextFor(body) else body
+        return text?.clip()
     }
 
     @Synchronized
@@ -179,6 +208,21 @@ class SmsDebugLog @Inject constructor() {
 
         private const val MAX_ENTRIES = 60
         private const val MAX_CHARS = 500
+
+        /**
+         * The only outcomes whose message text may be stored. Every one is reached AFTER the capture
+         * switch has been read and found ON, so an owner who never enabled SMS capture never has a bank
+         * alert transcribed. `CAPTURE_OFF` is absent for exactly that reason, and `DEMO_MODE`,
+         * `NO_MESSAGE_DATA`, `BLANK_BODY` and `SENDER_NOT_RECOGNISED` have nothing worth keeping.
+         */
+        private val BODY_BEARING = setOf(
+            Outcome.NOT_A_TRANSACTION,
+            Outcome.PATTERN_SUPPRESSED,
+            Outcome.ALREADY_KNOWN,
+            Outcome.TWIN_ALREADY_PROMPTED,
+            Outcome.PROMPT_BLOCKED,
+            Outcome.PROMPTED,
+        )
 
         /**
          * Bank and other A2P alerts arrive from alphanumeric headers ("AD-HDFCBK", "JD-SBIINB") — the

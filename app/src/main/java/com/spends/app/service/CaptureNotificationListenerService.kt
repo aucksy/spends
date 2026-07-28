@@ -319,8 +319,15 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             if (captureNotifier.postCapturePrompt(c.sender, c.body, c.timestamp, preview, sourceApp = pkg)) {
                 note(NotificationDebugLog.Outcome.PROMPTED)
             } else {
-                captureRepository.queueForReview(c.sender, c.body, c.timestamp, pkg)
-                note(NotificationDebugLog.Outcome.QUEUED, "queued instead (prompts are blocked)")
+                // The returned id decides what is reported: queueForReview's own dedupe nets can refuse
+                // the row, and recording QUEUED for a row that was never inserted would make the
+                // diagnostic claim a recovery that did not happen.
+                val queued = captureRepository.queueForReview(c.sender, c.body, c.timestamp, pkg)
+                if (queued != null) {
+                    note(NotificationDebugLog.Outcome.QUEUED, "queued instead (prompts are blocked)")
+                } else {
+                    note(NotificationDebugLog.Outcome.DUPLICATE, "prompts are blocked, and already held")
+                }
             }
         } else {
             note(NotificationDebugLog.Outcome.DUPLICATE, "SMS twin already prompted")
