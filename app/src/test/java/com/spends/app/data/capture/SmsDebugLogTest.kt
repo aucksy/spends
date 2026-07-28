@@ -459,7 +459,12 @@ class SmsDebugLogTest {
         // …but a sentence-final "?" is punctuation, not a query string.
         val q = log()
         q.record(1L, BANK, "Was this you at BOOKMYSHOW.IN? Reply NO", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
-        assertTrue(q.state.value.entries.single().body!!.contains("Reply NO"))
+        // Asserting on "(link)" rather than on the surviving words: under the permissive `\S*` the body
+        // reads "…BOOKMYSHOW.IN/(link) Reply NO", which still CONTAINS "Reply NO" — so the obvious
+        // assertion was green either way and could not detect a revert of the very change it names.
+        val qBody = q.state.value.entries.single().body!!
+        assertTrue("a sentence-final ? is punctuation, not a query string", !qBody.contains("(link)"))
+        assertTrue(qBody.contains("Reply NO"))
     }
 
     /**
