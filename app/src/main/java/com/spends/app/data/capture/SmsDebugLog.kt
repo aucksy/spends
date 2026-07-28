@@ -203,28 +203,37 @@ class SmsDebugLog @Inject constructor() {
         sender: String?,
         body: String?,
         outcome: Outcome,
-        detail: String? = null,
+        amountMinor: Long? = null,
+        kind: String? = null,
+        note: String? = null,
     ) {
         val institution = SenderAllowlist.lookup(sender)?.name
         if (institution != null) fromKnownBanks++
+        val allowContent = institution != null && outcome in BODY_BEARING
+        // The figures are RENDERED HERE from typed values, and the free text is masked with the same
+        // pipeline as the body. There is deliberately no way to pass a pre-built detail string.
+        //
+        // The previous shape took `detail: String?` and address-masked it, on the reasoning — written
+        // into the code — that "the amount and kind contain no @, so masking costs nothing here". That
+        // considered only "@" and never digits, while the caller's string was
+        // "$kind $amount paise · ${preview.title}" and `preview.title` is `parsed.merchant`, a verbatim
+        // substring of the bank's text. So a UPI transfer put the payee's PHONE NUMBER and the reference
+        // number on the clipboard, and a card alert put the OTP there — one line above a body in which
+        // the numeral rule had masked all three. Exactly the round-6 defect with digits instead of "@".
+        //
+        // Splitting the parameter is what makes the rule enforceable rather than remembered: the amount
+        // survives because THIS class prints it, and nothing a caller supplies can carry an identifier
+        // past the mask.
+        val figures = if (allowContent && amountMinor != null && kind != null) "$kind $amountMinor paise" else null
+        val safeNote = if (allowContent) maskContent(note) else null
         entries.addFirst(
             Entry(
                 timeMillis = timeMillis,
                 sender = maskSender(sender),
                 institution = institution,
-                body = storableBody(institution, body, outcome),
+                body = if (allowContent) maskContent(body) else null,
                 outcome = outcome,
-                // Gated by BOTH content rules AND address-masked, exactly as the body is. `detail` carries
-                // the PARSED merchant, which is a verbatim substring of the bank's text — so for
-                // "INR 250 spent at coffeeday@ybl" the body rule stripped the VPA and `detail` reprinted
-                // it one line above, undoing the rule entirely. The amount and kind contain no "@", so
-                // masking costs nothing here. Reasoning that this is "Spends' own parse, not the bank's
-                // words" is what hid it: the parse is made OF the bank's words.
-                detail = if (institution != null && outcome in BODY_BEARING) {
-                    detail?.let { ADDRESS.replace(it, "(address)") }?.clip()
-                } else {
-                    null
-                },
+                detail = listOfNotNull(figures, safeNote).joinToString(" · ").ifEmpty { null },
             ),
         )
         while (entries.size > MAX_ENTRIES) entries.removeLast()
@@ -232,8 +241,9 @@ class SmsDebugLog @Inject constructor() {
     }
 
     /**
-     * The content rules, applied in one place. Returns null unless the sender resolved to a bank AND the
-     * outcome is one only reachable with capture switched on — and masks what survives.
+     * The content mask, applied in one place to EVERY caller-supplied string this class stores — the
+     * message body and the free-text half of `detail` alike. Returns null when nothing with a letter
+     * survives.
      *
      * **Masking is unconditional, and an earlier version got this exactly backwards.** It masked only
      * `NOT_A_TRANSACTION`, on the reasoning that a non-transaction from a bank is overwhelmingly an OTP.
@@ -249,16 +259,15 @@ class SmsDebugLog @Inject constructor() {
      * of this class's own bound. A privacy control must not be a borrowed function whose purpose, and
      * therefore whose future edits, belong to something else.
      */
-    private fun storableBody(institution: String?, body: String?, outcome: Outcome): String? {
-        if (institution == null || outcome !in BODY_BEARING) return null
-        if (body.isNullOrBlank()) return null
+    private fun maskContent(text: String?): String? {
+        if (text.isNullOrBlank()) return null
         // Bounded BEFORE the regexes: LINK backtracks per start position, so a pathological 5 000-char
         // body cost hundreds of milliseconds while holding this class's monitor. Cut at a WHITESPACE
         // boundary, not mid-token: any bound applied before the masker can turn a matched identifier
         // into an unmatched fragment, and a cut landing inside "…@gmail.com" would leave the local part
         // exposed. The output cap runs after and bounds a different thing.
-        val window = body.take(MAX_SCAN_CHARS)
-        val scanned = if (window.length < body.length) {
+        val window = text.take(MAX_SCAN_CHARS)
+        val scanned = if (window.length < text.length) {
             val lastSpace = window.lastIndexOf(' ')
             // Cut back to a token boundary so the bound cannot split an identifier and leave a fragment
             // the masker no longer matches — but ONLY when that still leaves a usable body. A single
@@ -268,7 +277,8 @@ class SmsDebugLog @Inject constructor() {
         } else {
             window
         }
-        val collapsed = scanned.replace('\n', ' ').replace(WHITESPACE, " ").trim()
+        val collapsed = scanned.replace('
+', ' ').replace(WHITESPACE, " ").trim()
         val delinked = LINK_PATH.replace(LINK.replace(collapsed, "(link)"), "$1/(link)")
         val deidentified = ADDRESS.replace(delinked, "(address)")
         val masked = NUMERAL.replace(deidentified, "#").replace(WHITESPACE, " ").trim()
@@ -344,7 +354,7 @@ class SmsDebugLog @Inject constructor() {
          * The identifier was never the host; it is the path. `AMAZON.IN/(link)` keeps the merchant and
          * `HDFCBK.IO/(link)` keeps nothing that identifies anyone.
          */
-        private val LINK_PATH = Regex("""(\S*\.[A-Za-z]{2,})/\S*""")
+        private val LINK_PATH = Regex("""(\S*\.[A-Za-z]{2,})[/?#]\S*""")
 
         /**
          * Email addresses and UPI VPAs → `(address)`. `maskSender` covers the sender; this covers the

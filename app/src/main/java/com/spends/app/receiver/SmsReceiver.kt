@@ -125,8 +125,15 @@ class SmsReceiver : BroadcastReceiver() {
 
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            fun note(outcome: SmsDebugLog.Outcome, detail: String? = null) = runCatching {
-                debug.record(receivedAt, sender, body, outcome, detail)
+            // Typed figures, never a pre-built string: SmsDebugLog renders the amount itself so nothing
+            // a caller passes can carry an identifier past the mask. `note` is free text and IS masked.
+            fun note(
+                outcome: SmsDebugLog.Outcome,
+                amountMinor: Long? = null,
+                kind: String? = null,
+                text: String? = null,
+            ) = runCatching {
+                debug.record(receivedAt, sender, body, outcome, amountMinor, kind, text)
             }
             try {
                 // Review-only: never auto-add. A parseable bank SMS always prompts the user (Add/Edit/Ignore).
@@ -145,13 +152,17 @@ class SmsReceiver : BroadcastReceiver() {
                         // A diagnostic asserting a cause it cannot know is the defect this round exists
                         // to remove, so it now says only what it actually knows.
                         val p = SmsParser.parse(sender, body, receivedAt)
-                        note(SmsDebugLog.Outcome.NOT_A_TRANSACTION, "read as ${p.result.name.lowercase()}")
+                        note(SmsDebugLog.Outcome.NOT_A_TRANSACTION, text = "read as ${p.result.name.lowercase()}")
                     } else {
                         note(SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
                     }
                     return@launch
                 }
-                val money = "${preview.kind.name.lowercase()} ${preview.amountMinor} paise · ${preview.title}"
+                // The merchant is a verbatim substring of the bank's text — it has carried phone
+                // numbers, reference numbers and OTPs — so it goes through `note`, which is masked.
+                val amount = preview.amountMinor
+                val kind = preview.kind.name.lowercase()
+                val merchant = preview.title
                 // #7: if the user has ignored this exact pattern enough times, stop nagging — drop it
                 // silently into the review queue instead, so it's reviewable but never lost.
                 if (capture.isPatternSuppressed(sender, body, receivedAt)) {
@@ -166,16 +177,17 @@ class SmsReceiver : BroadcastReceiver() {
                     val queued = capture.queueForReview(sender, body, receivedAt)
                     note(
                         SmsDebugLog.Outcome.PATTERN_SUPPRESSED,
-                        if (queued != null) money else "$money · already held",
+                        amount, kind,
+                        if (queued != null) merchant else "$merchant · already held",
                     )
                 } else if (capture.isKnownHash(preview.dedupeHash)) {
                     // Already in the ledger or the review queue (e.g. the notification twin of
                     // this alert got there first, Phase 4) — a prompt would only invite a
                     // double-add attempt the hash guards would then have to swallow.
-                    note(SmsDebugLog.Outcome.ALREADY_KNOWN, money)
+                    note(SmsDebugLog.Outcome.ALREADY_KNOWN, amount, kind, merchant)
                 } else if (guard.claimPrompt(preview.relaxedHash, preview.refNumber)) {
                     if (notifier.postCapturePrompt(sender, body, receivedAt, preview)) {
-                        note(SmsDebugLog.Outcome.PROMPTED, money)
+                        note(SmsDebugLog.Outcome.PROMPTED, amount, kind, merchant)
                     } else {
                         // The phone will not show the prompt — the app's notifications are off, or the
                         // "Transaction detection" category alone was switched off. Until now this path
@@ -184,16 +196,16 @@ class SmsReceiver : BroadcastReceiver() {
                         // listener already does, so a real transaction is never lost in silence.
                         val queued = capture.queueForReview(sender, body, receivedAt)
                         if (queued != null) {
-                            note(SmsDebugLog.Outcome.PROMPT_BLOCKED, "$money · queued for review instead")
+                            note(SmsDebugLog.Outcome.PROMPT_BLOCKED, amount, kind, "$merchant · queued for review instead")
                         } else {
-                            note(SmsDebugLog.Outcome.ALREADY_KNOWN, "$money · prompt blocked, and already held")
+                            note(SmsDebugLog.Outcome.ALREADY_KNOWN, amount, kind, "$merchant · prompt blocked, and already held")
                         }
                     }
                 } else {
                     // The notification listener prompted a TWIN of this transaction moments ago (the SMS
                     // + Messages/Truecaller twins of one alert, even when one text lost the reference
                     // number) — one prompt is the contract.
-                    note(SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED, money)
+                    note(SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED, amount, kind, merchant)
                 }
             } finally {
                 pending.finish()

@@ -221,6 +221,13 @@ class SmsVerdictTest {
         assertTrue("must not blame delivery", !msg.contains("not delivering"))
         assertTrue("must not deny the timestamp shown beneath it", !msg.contains("Not one SMS"))
         assertTrue(msg.contains("cleared"))
+
+        // The same state WITH a recorded start-up fault. `ReceiverFailures` is deliberately never reset,
+        // so this is reachable the moment the owner taps Clear after a fault — and without the
+        // `lastReceivedAt == null` term the early branch claims texts arrived that this run never saw.
+        val afterClearWithFault = verdict(graphFailures = 2, received = 0, fromBanks = 0, lastReceivedAt = 3_000L)
+        assertTrue(afterClearWithFault.contains("cleared"))
+        assertTrue(!afterClearWithFault.contains("reached Spends but the app failed"))
     }
 
     @Test

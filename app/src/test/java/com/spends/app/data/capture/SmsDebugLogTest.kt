@@ -166,7 +166,7 @@ class SmsDebugLogTest {
     @Test
     fun `the parsed figures survive in detail, not in the body`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, detail = "expense 50000 paise · SHOP")
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = "expense", note = "SHOP")
 
         val e = log.state.value.entries.single()
         assertTrue("the body carries no digits", e.body!!.none { it.isDigit() })
@@ -177,7 +177,10 @@ class SmsDebugLogTest {
     @Test
     fun `detail is withheld for an unrecognised sender`() {
         val log = log()
-        log.record(1L, PERSON, null, SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED, detail = "expense 50000 paise · SHOP")
+        // A BODY_BEARING outcome on purpose. Paired with SENDER_NOT_RECOGNISED this test stayed GREEN
+        // when the institution gate was deleted, because the outcome gate already excluded it — the same
+        // blind spot this file already found and fixed for the BODY test, never applied to this one.
+        log.record(1L, PERSON, null, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = "expense", note = "SHOP")
 
         assertNull(log.state.value.entries.single().detail)
     }
@@ -190,7 +193,7 @@ class SmsDebugLogTest {
     @Test
     fun `detail is withheld on an outcome reached before capture was enabled`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.CAPTURE_OFF, detail = "expense 50000 paise · SHOP")
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.CAPTURE_OFF, amountMinor = 50_000L, kind = "expense", note = "SHOP")
 
         assertNull(log.state.value.entries.single().detail)
     }
@@ -198,7 +201,7 @@ class SmsDebugLogTest {
     @Test
     fun `detail is kept for a recognised bank`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, detail = "expense 50000 paise · SHOP")
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = "expense", note = "SHOP")
 
         assertNotNull(log.state.value.entries.single().detail)
     }
@@ -240,6 +243,19 @@ class SmsDebugLogTest {
     fun `a missing sender is named rather than left blank`() {
         assertEquals("(no sender)", SmsDebugLog.maskSender(null))
         assertEquals("(no sender)", SmsDebugLog.maskSender("   "))
+        // Blank only AFTER the padding is trimmed — a separate arm, and the two cases above hit the
+        // first null/blank check instead, leaving it deletable with the suite green.
+        assertEquals("(no sender)", SmsDebugLog.maskSender("@@@"))
+    }
+
+    /** Without this, a digits-only body was stored as "#" instead of withheld, and the letter check
+     *  could be deleted with the whole suite green. */
+    @Test
+    fun `a body with nothing but digits is not stored`() {
+        val log = log()
+        log.record(1L, BANK, "9876543210", SmsDebugLog.Outcome.PROMPTED)
+
+        assertNull(log.state.value.entries.single().body)
     }
 
     /**
@@ -372,6 +388,14 @@ class SmsDebugLogTest {
         val body = log.state.value.entries.single().body!!
         assertTrue(!body.contains("KqLm"))
         assertTrue(body.contains("(link)"))
+
+        // Uppercase too — all-caps A2P traffic is the Indian norm, and without this the (?i:) scoping
+        // could be dropped with the whole suite green.
+        val upper = log()
+        upper.record(1L, BANK, "Rs.5 debited. Visit WWW.HDFCBANKKQLM for more", SmsDebugLog.Outcome.PROMPTED)
+        val upperBody = upper.state.value.entries.single().body!!
+        assertTrue(!upperBody.contains("KQLM"))
+        assertTrue(upperBody.contains("(link)"))
     }
 
     /**
@@ -400,7 +424,7 @@ class SmsDebugLogTest {
         log.record(
             1L, BANK, "INR 250 spent at coffeeday@ybl Ref 998877",
             SmsDebugLog.Outcome.PROMPTED,
-            detail = "expense 25000 paise · coffeeday@ybl",
+            amountMinor = 25_000L, kind = "expense", note = "coffeeday@ybl",
         )
 
         val e = log.state.value.entries.single()
@@ -424,9 +448,14 @@ class SmsDebugLogTest {
     }
 
     /**
-     * The address rule must run BEFORE digit masking. Swapped, the commonest Indian VPA form —
-     * a phone number as the local part — became "#@ybl" and the handle leaked. No test used a numeric
-     * local part, so the ordering was unpinned.
+     * The commonest Indian VPA form puts a phone number in the local part, and the address rule must
+     * still catch it.
+     *
+     * It does NOT pin rule ORDER, and an earlier version of this comment claimed it did. Running NUMERAL
+     * first is an EQUIVALENT mutation: it only ever replaces digit runs with "#", which is still
+     * `[^\s@]`, so it can neither remove the letter the ADDRESS domain requires nor cross an "@" —
+     * `#@ybl` matches exactly as `9876543210@ybl` does. Verified over 200 000 inputs with zero
+     * divergence. A comment claiming a guarantee no assertion can hold is worse than no comment.
      */
     @Test
     fun `a VPA with a numeric local part is removed, not digit-masked`() {
@@ -447,11 +476,16 @@ class SmsDebugLogTest {
     @Test
     fun `input beyond the scan bound is dropped, and the cut never splits an address`() {
         val log = log()
-        val filler = "word ".repeat(500) // ~2500 chars, so the cut lands mid-body
-        log.record(1L, BANK, "Rs.5 debited $filler john.smith@gmail.com", SmsDebugLog.Outcome.PROMPTED)
+        // The past-bound token must be one NO other rule catches. The first version used an email
+        // address, which ADDRESS masks anyway — so the assertion held with or without the bound and the
+        // test proved the address rule, not the thing it is named for. The filler is amounts, so masking
+        // SHRINKS the prefix well under the 500-char clip; otherwise the clip hides the tail regardless.
+        val filler = "1,23,456.78 ".repeat(200) // ~2400 chars, each collapsing to a single "#"
+        log.record(1L, BANK, "Rs.5 debited $filler PASTBOUND", SmsDebugLog.Outcome.PROMPTED)
 
         val body = log.state.value.entries.single().body!!
-        assertTrue("content past the bound is not scanned, so it must not appear", !body.contains("john"))
+        assertTrue("content past the bound is never scanned, so it cannot appear", !body.contains("PASTBOUND"))
+        assertTrue("and the clip is not what hid it", body.length < 500)
         assertTrue(body.startsWith("Rs.#"))
     }
 
@@ -477,7 +511,7 @@ class SmsDebugLogTest {
     @Test
     fun `long detail is clipped`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, detail = "x".repeat(5_000))
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 5L, kind = "expense", note = "x".repeat(5_000))
 
         val detail = log.state.value.entries.single().detail!!
         assertTrue(detail.length <= 501)

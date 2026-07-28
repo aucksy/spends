@@ -147,10 +147,18 @@ a caller cannot assert "this came from a bank" and be believed:
 2. **…and only for an outcome reached with the capture switch ON** (`BODY_BEARING`). An owner who never
    enabled capture never has a bank alert transcribed.
 3. **Every stored body has every number masked, every link PATH removed and every address removed** —
-   unconditionally — and the ADDRESS rule is applied to `detail` too (not the numeral rule: the parsed
-   amount is precisely what makes masking the body free). Links matter because Indian bank alerts
-   carry per-customer short paths that identify the recipient; the HOST is kept, because it is the
-   merchant and never the identifier (`AMAZON.IN/(link)`, `HDFCBK.IO/(link)`). Addresses matter because
+   unconditionally — **and `detail` goes through the identical mask.** `detail` is no longer a string a
+   caller supplies: `record` takes the amount and kind as TYPED values and renders "expense 50000 paise"
+   itself, so the only caller-supplied part is free text and it is masked like any other. That shape is
+   the fix for a leak that survived two rounds: `detail` carried `preview.title`, i.e. `parsed.merchant`,
+   a verbatim substring of the bank's text — so a UPI transfer put the payee's phone number and the
+   reference number on the clipboard, and a card alert put the OTP there, one line above a body in which
+   all three had just been masked. Address-masking `detail` (round 7) closed the `@` half and left the
+   digits, because the comment justifying it reasoned only about `@`. Links matter because Indian bank alerts
+   carry per-customer short paths that identify the recipient; the HOST is kept, because it is usually
+   the merchant (`AMAZON.IN/(link)`, `HDFCBK.IO/(link)`). **Known gap:** a per-customer SUBDOMAIN
+   (`u-aakash.hdfcbk.io/pay`) is an identifier and survives, as do dotless, IDN and single-letter-TLD
+   hosts. The path rule covers `/`, `?` and `#`; a port (`host:8080/x`) is not matched. Addresses matter because
    statement and UPI alerts quote the registered email or the payee's VPA — and because `detail` carries
    the PARSED merchant, which is a verbatim substring of the bank's text, so for
    `INR 250 spent at coffeeday@ybl` the body rule stripped the VPA and `detail` reprinted it one line

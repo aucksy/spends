@@ -173,10 +173,13 @@ fun smsVerdictOf(
         "Spends is receiving your SMS (${log.totalReceived} so far), but none came from a sender it " +
             "recognises as a bank. If a bank alert IS in the list below, its sender name has changed " +
             "and needs adding — that's a one-line fix."
-    // Guarded on fromKnownBanks, because that is the fact the sentence ASSERTS. Unguarded it fired for
-    // a corrupt database delivering only personal texts, and every clause was false: nothing resolved
-    // to a bank, nothing was read, and nothing was queued — while it said "so nothing is lost".
-    log.fromKnownBanks > 0 && !promptsCanBeSeen ->
+    // ORDER is what protects this branch, not a guard on it. Every clause here asserts that recognised
+    // bank alerts were read — false for a corrupt database delivering only personal texts, which is how
+    // it once said "so nothing is lost" while every message was dropped. Both states are now taken
+    // above: APP_NOT_READY rows first, then fromKnownBanks == 0. A `fromKnownBanks > 0 &&` term was
+    // added here as well and removed again — it is unreachable-false, so no test could ever kill it,
+    // and a guard no test can kill is indistinguishable from protection this file does not have.
+    !promptsCanBeSeen ->
         "Bank alerts are arriving and being read, but your phone won't show the \"Review & Add\" " +
             "prompt — either Spends' notifications are off, or just the \"Transaction detection\" " +
             "category is. They're being put in the review queue instead, so nothing is lost."

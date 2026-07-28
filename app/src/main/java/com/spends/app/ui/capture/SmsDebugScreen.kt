@@ -190,11 +190,12 @@ fun SmsDebugScreen(
             // Every stored body is now masked unconditionally, so this paragraph is finally true — and
             // the fix was to widen the code, not to narrow the promise.
             Text(
-                "The report includes the sender names of texts Spends received, and — only for senders " +
-                    "it recognised as banks — the wording of the alert with every number replaced by " +
-                    "\"#\" and any link removed. The amount Spends actually read is shown separately. " +
-                    "Nothing at all from anything that isn't a recognised bank, and never a phone " +
-                    "number or an email address. Have a quick look before you send it.",
+                "The report lists the sender name of every text Spends received — that is how a bank " +
+                    "whose name has changed gets spotted — but the WORDS only from senders it " +
+                    "recognised as banks, with every number replaced by \"#\", addresses removed and " +
+                    "links cut back to their site. The amount Spends read is shown separately. Phone " +
+                    "numbers and email addresses never appear; a person's name written inside an alert " +
+                    "can. Have a quick look before you send it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
