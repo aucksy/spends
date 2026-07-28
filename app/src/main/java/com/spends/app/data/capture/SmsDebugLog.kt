@@ -1,6 +1,5 @@
 package com.spends.app.data.capture
 
-import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -158,18 +157,15 @@ class SmsDebugLog @Inject constructor() {
         private val _graphFailures = MutableStateFlow(0)
         val graphFailures: StateFlow<Int> = _graphFailures.asStateFlow()
 
+        /**
+         * NOTE for any future test that calls this: it mutates a JVM-global object, and Gradle runs the
+         * module's unit tests in one JVM, so the first test to increment it will pollute every later
+         * reader. Nothing increments it today ([smsVerdictOf] takes the count as a parameter, so the
+         * verdict is tested without touching this). If that changes, add a reset here — not to `clear()`,
+         * which must never zero it, for the reason in the class doc.
+         */
         fun recordGraphFailure() {
             _graphFailures.update { it + 1 }
-        }
-
-        /**
-         * Test-only. This is a JVM-global object and Gradle runs the module's unit tests in one JVM, so
-         * without an escape hatch the first test that ever increments it silently pollutes every later
-         * reader. Deliberately NOT called by `clear()` — see the class doc for why.
-         */
-        @VisibleForTesting
-        internal fun resetForTest() {
-            _graphFailures.value = 0
         }
     }
 
@@ -377,9 +373,12 @@ class SmsDebugLog @Inject constructor() {
             val bare = sender.trim().trim(AT_PADDING)
             return when {
                 bare.isBlank() -> "(no sender)"
+                // Ordered BEFORE the address arm, and the order is load-bearing: a spaced Indian MSISDN
+                // ("+91 98765 43210") is a common displayOriginatingAddress shape, and testing whitespace
+                // first labelled it "an email address" on the very screen the owner is told to paste back.
+                bare.none { it.isLetter() } -> MASKED_SENDER
                 // An interior "@" or any whitespace means an address or a display name, never a header.
                 bare.any { it == AT_PADDING || it.isWhitespace() } -> MASKED_EMAIL_SENDER
-                bare.none { it.isLetter() } -> MASKED_SENDER
                 else -> sender
             }
         }

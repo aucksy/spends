@@ -174,11 +174,14 @@ fun smsVerdictOf(
             "category is. They're being put in the review queue instead, so nothing is lost."
     // Below the actionable diagnoses, so a stale count cannot suppress them — but above the all-clear,
     // which must never be given over a recorded fault.
+    // Deliberately does NOT claim messages are being handled now. `record()` resolves the sender even
+    // for APP_NOT_READY, so a run where EVERY delivery failed provisioning from a recognised bank header
+    // still reaches this branch with fromKnownBanks > 0 — and "handled now" would be false in exactly
+    // that case. What is true in both cases is that these ones were missed.
     graphFailures > 0 ->
-        "Messages are being handled now, but $graphFailures earlier " +
-            "text${if (graphFailures == 1) "" else "s"} reached Spends while the app was failing to " +
-            "start up properly, and ${if (graphFailures == 1) "it was" else "they were"} missed. " +
-            "Tell me this number."
+        "$graphFailures text${if (graphFailures == 1) "" else "s"} reached Spends while the app was " +
+            "failing to start up properly, and ${if (graphFailures == 1) "it was" else "they were"} " +
+            "missed. Tell me this number."
     else ->
         "SMS is reaching Spends and bank senders are being recognised. Each message below says " +
             "exactly where it stopped."
