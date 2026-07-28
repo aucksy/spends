@@ -233,7 +233,10 @@ class SmsDebugLog @Inject constructor() {
                 institution = institution,
                 body = if (allowContent) maskContent(body) else null,
                 outcome = outcome,
-                detail = listOfNotNull(figures, safeNote).joinToString(" · ").ifEmpty { null },
+                // Clipped AFTER the join, not before. `maskContent` caps the note, and prepending the
+                // figures then pushed the stored string past the cap — 519 chars against a 501 bound.
+                // A cap applied to a part is not a cap on the whole.
+                detail = listOfNotNull(figures, safeNote).joinToString(" · ").ifEmpty { null }?.clip(),
             ),
         )
         while (entries.size > MAX_ENTRIES) entries.removeLast()
