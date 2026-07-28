@@ -922,6 +922,31 @@ class SmsCaptureRepository @Inject constructor(
     companion object {
         const val REVIEW_THRESHOLD = 70
 
+        /**
+         * The plain-English result of a scan. Pure, so it is directly testable.
+         *
+         * **It must always report how many messages were READ.** The old wording said "Nothing new to
+         * review in that range" whenever nothing was queued — identically for a scan that read zero
+         * messages and one that read two hundred and recognised every one as already held. Those are
+         * opposite facts: the first means Spends cannot see the inbox at all, the second means it can
+         * see it perfectly. During the July 2026 capture investigation that single sentence sent the
+         * diagnosis down a dead end, because the owner's manual entries were legitimately masking every
+         * message and the screen gave no way to tell.
+         *
+         * [ScanResult.scanned] counts every row read from the inbox, so `scanned == 0` is the honest
+         * "there is nothing here to read" signal, and it now gets said out loud.
+         */
+        fun scanMessage(r: ScanResult?): String = when {
+            r == null -> "Couldn't read the inbox."
+            r.scanned == 0 -> "No messages at all in that range — Spends couldn't see a single one."
+            r.queued == 0 -> "Read ${r.scanned} message${plural(r.scanned)}, nothing new to review" +
+                if (r.skippedDuplicate > 0) " · skipped ${r.skippedDuplicate} you already have" else ""
+            else -> "Queued ${r.queued} to review · read ${r.scanned}" +
+                if (r.skippedDuplicate > 0) " · skipped ${r.skippedDuplicate} already-known" else ""
+        }
+
+        private fun plural(n: Int) = if (n == 1) "" else "s"
+
         /** #7: after this many ignores of the SAME alert pattern, stop notifying (queue silently instead). */
         private const val IGNORE_SUPPRESS_THRESHOLD = 3
 

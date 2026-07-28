@@ -15,6 +15,7 @@ import com.spends.app.ui.breakdown.CycleBreakdownScreen
 import com.spends.app.ui.cards.CardsScreen
 import com.spends.app.ui.capture.CaptureSettingsScreen
 import com.spends.app.ui.capture.NotificationDebugScreen
+import com.spends.app.ui.capture.SmsDebugScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
 import com.spends.app.ui.home.HomeScreen
@@ -195,12 +196,18 @@ fun SpendsNavHost(
                 onBack = { navController.popBackStack() },
                 onOpenReview = { navController.navigate(Routes.REVIEW) },
                 onOpenNotificationDebug = { navController.navigate(Routes.NOTIFICATION_DEBUG) },
+                onOpenSmsDebug = { navController.navigate(Routes.SMS_DEBUG) },
             )
         }
 
         // TEMPORARY diagnostic screen — remove with NotificationDebugLog.
         composable(Routes.NOTIFICATION_DEBUG) {
             NotificationDebugScreen(onBack = { navController.popBackStack() })
+        }
+
+        // TEMPORARY diagnostic screen — remove with SmsDebugLog.
+        composable(Routes.SMS_DEBUG) {
+            SmsDebugScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.CATEGORIES) {

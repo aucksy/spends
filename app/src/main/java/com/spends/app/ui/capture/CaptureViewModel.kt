@@ -129,15 +129,7 @@ class CaptureViewModel @Inject constructor(
             _local.update { it.copy(working = true, message = "Scanning your SMS…") }
             val r = runCatching { captureRepository.scanHistory(startMillis, endExclusiveMillis) }.getOrNull()
             _local.update {
-                it.copy(
-                    working = false,
-                    message = when {
-                        r == null -> "Couldn't read the inbox."
-                        r.queued == 0 -> "Nothing new to review in that range."
-                        else -> "Queued ${r.queued} to review" +
-                            if (r.skippedDuplicate > 0) " · skipped ${r.skippedDuplicate} already-known" else ""
-                    },
-                )
+                it.copy(working = false, message = SmsCaptureRepository.scanMessage(r))
             }
         }
     }

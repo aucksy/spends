@@ -25,6 +25,8 @@ object Routes {
     const val CAPTURE = "capture"
     // TEMPORARY: owner-facing notification-capture diagnostic. Remove with NotificationDebugLog.
     const val NOTIFICATION_DEBUG = "notification_debug"
+    // TEMPORARY: owner-facing live-SMS-capture diagnostic. Remove with SmsDebugLog.
+    const val SMS_DEBUG = "sms_debug"
     const val RESTORE = "restore"
     // Smart Cycle per-instrument breakdown (Round B), reached from the composite summary header.
     const val CYCLE_BREAKDOWN = "cycle_breakdown"

@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import com.spends.app.data.capture.CaptureNotifier
 import com.spends.app.data.capture.NotificationCapture
 import com.spends.app.data.capture.NotificationDebugLog
@@ -311,14 +310,18 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             note(NotificationDebugLog.Outcome.NOT_A_TRANSACTION)
             return
         }
-        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
-            captureRepository.queueForReview(c.sender, c.body, c.timestamp, pkg)
-            note(NotificationDebugLog.Outcome.QUEUED, "queued instead (prompts are blocked)")
-            return
-        }
         if (guard.claimPrompt(preview.relaxedHash, preview.refNumber)) {
-            captureNotifier.postCapturePrompt(c.sender, c.body, c.timestamp, preview, sourceApp = pkg)
-            note(NotificationDebugLog.Outcome.PROMPTED)
+            // The blocked-prompt fallback now hangs off postCapturePrompt's return value rather than a
+            // separate areNotificationsEnabled() pre-check. That pre-check only saw the app's MASTER
+            // notification toggle, so a prompt hidden by the "Transaction detection" category alone was
+            // handed to Android, silently binned, and lost — the same hole the SMS path had. The notifier
+            // now reports whether the prompt could actually be seen, and both paths queue when it can't.
+            if (captureNotifier.postCapturePrompt(c.sender, c.body, c.timestamp, preview, sourceApp = pkg)) {
+                note(NotificationDebugLog.Outcome.PROMPTED)
+            } else {
+                captureRepository.queueForReview(c.sender, c.body, c.timestamp, pkg)
+                note(NotificationDebugLog.Outcome.QUEUED, "queued instead (prompts are blocked)")
+            }
         } else {
             note(NotificationDebugLog.Outcome.DUPLICATE, "SMS twin already prompted")
         }

@@ -57,6 +57,8 @@ fun CaptureSection(
     onOpenReview: () -> Unit,
     // TEMPORARY: notification-capture diagnostic. Remove with NotificationDebugLog.
     onOpenNotificationDebug: () -> Unit,
+    // TEMPORARY: live-SMS-capture diagnostic. Remove with SmsDebugLog.
+    onOpenSmsDebug: () -> Unit,
     viewModel: CaptureViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -252,9 +254,27 @@ fun CaptureSection(
             )
         }
 
-        // TEMPORARY: notification-capture diagnostic. Deliberately OUTSIDE the enabled-only block —
-        // the whole point is to diagnose the case where capture looks on but nothing is happening.
+        // TEMPORARY: the two capture diagnostics. Deliberately OUTSIDE the enabled-only blocks — the
+        // whole point is to diagnose the case where capture looks on but nothing is happening, and
+        // "the switch reads on while the switch is what's wrong" is one of the answers they can give.
         HorizontalDivider(Modifier.padding(vertical = 10.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenSmsDebug)
+                .padding(vertical = 10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("SMS debug", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Temporary: shows whether bank texts are reaching Spends, and where each one stopped.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier

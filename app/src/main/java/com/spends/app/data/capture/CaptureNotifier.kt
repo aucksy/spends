@@ -35,19 +35,30 @@ class CaptureNotifier @Inject constructor(
         }
     }
 
-    /** [sourceApp] = the watched app's package when this alert came from the notification listener
-     *  (Phase 4); carried through the edit intent into the draft so Save can apply the notification-
-     *  only twin guard. Null for the SMS path. */
+    /**
+     * Post the "Review & Add / Ignore" prompt.
+     *
+     * **Returns whether the prompt was actually handed to Android**, and a `false` obliges the caller to
+     * queue the capture for review instead. It is never safe to ignore: a parsed bank alert that is
+     * neither shown nor queued is a real transaction lost in silence, with no record anywhere that it
+     * ever existed. Both live paths now honour this (the SMS path used to drop it on the floor).
+     *
+     * [sourceApp] = the watched app's package when this alert came from the notification listener
+     * (Phase 4); carried through the edit intent into the draft so Save can apply the notification-only
+     * twin guard. Null for the SMS path.
+     */
     fun postCapturePrompt(
         sender: String?,
         body: String,
         receivedAt: Long,
         preview: SmsCaptureRepository.CapturePreview,
         sourceApp: String? = null,
-    ) {
+    ): Boolean {
         val manager = NotificationManagerCompat.from(context)
-        if (!manager.areNotificationsEnabled()) return // POST_NOTIFICATIONS not granted — nothing to show
+        // Created BEFORE the importance is read, or a first-ever prompt would look blocked. Re-creating a
+        // channel never resurrects one the user switched off, so the check below stays meaningful.
         ensureChannel()
+        if (!promptsCanBeSeen(context)) return false
 
         val notifId = body.hashCode() * 31 + receivedAt.hashCode() // stable per message (dedup re-delivery)
         val kindLabel = when (preview.kind) {
@@ -69,10 +80,12 @@ class CaptureNotifier @Inject constructor(
             .addAction(0, "Ignore", broadcast(CaptureActionReceiver.ACTION_IGNORE, sender, body, receivedAt, notifId, 2))
             .build()
 
-        try {
+        return try {
             manager.notify(notifId, notification)
+            true
         } catch (e: SecurityException) {
-            // POST_NOTIFICATIONS revoked between the check and notify — ignore.
+            // POST_NOTIFICATIONS revoked between the check and notify — the caller queues it instead.
+            false
         }
     }
 
@@ -103,5 +116,39 @@ class CaptureNotifier @Inject constructor(
     companion object {
         const val CHANNEL_ID = "capture"
         private const val PENDING_FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+
+        /**
+         * Whether a posted prompt could actually be SEEN. Pure, so the rule is directly testable.
+         *
+         * Two independent switches hide it, and only one of them used to be checked:
+         *  - [notificationsEnabled] — the app's master notification toggle / POST_NOTIFICATIONS;
+         *  - [channelImportance] — the "Transaction detection" CATEGORY. A user long-pressing one prompt
+         *    and tapping "turn these off", or an OEM notification manager, switches this off alone. The
+         *    master toggle keeps reading ON, `notify()` is accepted and silently binned, and every bank
+         *    SMS from that moment on vanishes. Nothing in the app or in Android surfaces the difference.
+         *
+         * A null importance (pre-O, or a channel not created yet) is NOT treated as blocked — there is no
+         * per-channel switch to have been turned off in that case.
+         */
+        fun canPost(notificationsEnabled: Boolean, channelImportance: Int?): Boolean =
+            notificationsEnabled && channelImportance != NotificationManager.IMPORTANCE_NONE
+
+        /**
+         * [canPost] answered for a live context — the single implementation, used both before posting and
+         * by the SMS debug screen, so the screen can never report a different verdict from the one the
+         * capture path actually acts on.
+         */
+        fun promptsCanBeSeen(context: Context): Boolean = canPost(
+            NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            channelImportance(context),
+        )
+
+        /** The live importance of our prompt channel, or null pre-O / when it doesn't exist yet. */
+        private fun channelImportance(context: Context): Int? {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+            return context.getSystemService(NotificationManager::class.java)
+                ?.getNotificationChannel(CHANNEL_ID)
+                ?.importance
+        }
     }
 }
