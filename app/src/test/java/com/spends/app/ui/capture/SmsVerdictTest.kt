@@ -1,5 +1,6 @@
 package com.spends.app.ui.capture
 
+import com.spends.app.data.capture.NotificationDebugLog
 import com.spends.app.data.capture.SmsDebugLog
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -307,6 +308,13 @@ class SmsVerdictTest {
         val counted = smsEmptyStateOf(totalReceived = 7, graphFailures = 0, lastReceivedAt = 1_000L)
         assertTrue(counted.contains("7"))
 
+        // ⭐ The state the first version of this test did not cover, and the one where the two lines
+        // could still disagree: a fault recorded, THEN Clear tapped. `graphFailures` is never reset, so
+        // this is reachable in one tap. The verdict says "delivery was working"; this must agree.
+        val faultThenCleared = smsEmptyStateOf(totalReceived = 0, graphFailures = 2, lastReceivedAt = 3_000L)
+        assertTrue(faultThenCleared.contains("cleared"))
+        assertTrue("must not point at a verdict that names no fault", !faultThenCleared.contains("couldn't start up"))
+
         assertTrue("all four states distinct", setOf(fault, cleared, nothing, counted).size == 4)
     }
 
@@ -325,6 +333,33 @@ class SmsVerdictTest {
         val notTxn = plainSmsOutcome(SmsDebugLog.Outcome.NOT_A_TRANSACTION)
         assertTrue("must not close the list", !notTxn.trimEnd().endsWith("statement)"))
         assertTrue(notTxn.contains("can't parse"))
+    }
+
+    /**
+     * The NOTIFICATION screen's twin, which had no test at all. Every claim fixed on the SMS screen was
+     * still false here one round later — the closed parse-failure list, "this is the RCS limit" naming a
+     * cause the code cannot know, and `DUPLICATE` asserting "a transaction we already have" at the twin
+     * race, where nothing is held: the winner posted a heads-up the owner may dismiss and wrote nothing.
+     * Fixing the instance and leaving the class is the mistake this feature keeps repeating.
+     */
+    @Test
+    fun `the notification screen makes no claim it cannot know either`() {
+        val all = NotificationDebugLog.Outcome.entries.map { plainOutcome(it) }
+
+        assertTrue("no blank lines", all.none { it.isBlank() })
+        assertTrue("no two outcomes read the same", all.toSet().size == all.size)
+
+        val notTxn = plainOutcome(NotificationDebugLog.Outcome.NOT_A_TRANSACTION)
+        assertTrue("must not close the list", !notTxn.trimEnd().endsWith("statement)"))
+
+        val noText = plainOutcome(NotificationDebugLog.Outcome.NO_READABLE_TEXT)
+        assertTrue("must not assert RCS as THE cause", !noText.contains("this is the RCS limit"))
+
+        val dup = plainOutcome(NotificationDebugLog.Outcome.DUPLICATE)
+        assertTrue("must not claim a holding it may not have", !dup.contains("we already have"))
+
+        val queued = plainOutcome(NotificationDebugLog.Outcome.QUEUED)
+        assertTrue("no green tick for a prompt the owner never saw", !queued.contains("✅"))
     }
 
     /**

@@ -170,8 +170,11 @@ fun NotificationDebugScreen(
                 ) { Text("Reconnect") }
             }
             Text(
-                "The copied report includes the list of apps that notify you, and the text of alerts " +
-                    "from senders Spends recognised as banks. Message text from anyone else is left out.",
+                "The copied report includes the list of apps that notify you, the text of alerts from " +
+                    "senders Spends recognised as banks, and — for every watched app, including personal " +
+                    "chats — the sender names and conversation titles it saw, which for an unknown " +
+                    "number is that number. Only the message BODY of a non-bank alert is withheld. " +
+                    "Have a quick look before you send it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
@@ -280,9 +283,12 @@ private fun DebugField(label: String, value: String?) {
 private fun yesNo(v: Boolean) = if (v) "Yes" else "No"
 
 /** Plain-English name for where a message stopped. */
-private fun plainOutcome(o: NotificationDebugLog.Outcome): String = when (o) {
+internal fun plainOutcome(o: NotificationDebugLog.Outcome): String = when (o) {
     NotificationDebugLog.Outcome.SKIPPED_SHAPE -> "Skipped — not a message notification"
-    NotificationDebugLog.Outcome.NO_READABLE_TEXT -> "No readable text at all (this is the RCS limit — nothing to parse)"
+    // "this IS the RCS limit" asserted a cause the code cannot know: NO_READABLE_TEXT fires for any
+    // notification carrying no text anywhere, and a custom-layout Truecaller alert lands here too.
+    NotificationDebugLog.Outcome.NO_READABLE_TEXT ->
+        "No readable text at all — nothing to parse. Often the RCS limit, but any custom-layout alert looks the same"
     NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT ->
         "⚠️ Readable text was there but Spends looked in the wrong place — this one is a bug we can fix"
     NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "Text was readable, but the sender isn't a bank Spends knows"
@@ -292,8 +298,15 @@ private fun plainOutcome(o: NotificationDebugLog.Outcome): String = when (o) {
     // transfer the parser cannot read lands here and is a genuine money movement.
     NotificationDebugLog.Outcome.NOT_A_TRANSACTION ->
         "Read it, but Spends didn't read it as a transaction (OTP, promo, declined, statement — or a format it can't parse yet)"
-    NotificationDebugLog.Outcome.DUPLICATE -> "A transaction we already have"
-    NotificationDebugLog.Outcome.QUEUED -> "✅ Queued in your review list"
+    // NOT "a transaction we already have". One of this outcome's three call sites is the twin race,
+    // where claimPrompt lost to the SMS twin — and at that moment nothing is held at all: the winner
+    // posted a heads-up the owner may simply dismiss, and wrote nothing. Same false claim the SMS
+    // screen removed from TWIN_ALREADY_PROMPTED, worded to be true at all three sites.
+    NotificationDebugLog.Outcome.DUPLICATE ->
+        "Not prompted again — Spends already has this, or its SMS twin claimed the payment first"
+    // No green tick: this covers the blocked-prompt fallback, which the SMS screen flags with a warning
+    // because the owner never saw a prompt and needs to know why.
+    NotificationDebugLog.Outcome.QUEUED -> "Queued in your review list (no prompt was shown)"
     NotificationDebugLog.Outcome.PROMPTED -> "✅ Showed the Review & Add prompt"
 }
 

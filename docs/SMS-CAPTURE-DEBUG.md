@@ -29,7 +29,9 @@ The last-capture timestamp is the load-bearing fact. `v1.57.0` was tagged at **1
 
 ### Every code change in that window, and why none of them can be the cause
 
-`git diff v1.57.0..v1.62.0 -- app/src/main` touches the live SMS path in exactly three places.
+`git diff v1.57.0..v1.62.0` touches **eight** files under capture/receiver/settings/di/service. Three
+carry logic on the live SMS path; the other five are enumerated below so the elimination is exhaustive
+rather than convenient — an earlier version of this line said "exactly three places" and was wrong.
 
 **v1.58.0 — `SmsParser` merchant extraction (`stripReportTrailer`, `looksLikeMerchant`).** The only
 change in the release that touches the SMS path at all. Traced through all five routes by which a
@@ -51,6 +53,14 @@ is off, and its banner is permanent and non-dismissible while it is on.
 
 **v1.60.0 – v1.62.0 — AI insights.** No capture file touched.
 
+**The other five files in that range, and why none of them can be the cause.** `SettingsModule.kt` (new,
+42 lines) now chooses which DataStore FILE backs the capture switch the receiver reads, and
+`DatabaseModule.kt` chooses which Room file opens — both provisioned inside the receiver's own
+`runCatching`. With demo mode off, both take the pre-existing branch and preserve the original file
+names, which was verified directly: `LIVE_SETTINGS_NAME` is byte-identical to the name the old
+`preferencesDataStore` delegate used, so no setting was silently reset on upgrade. `SettingsRepository.kt`,
+`CaptureActionReceiver.kt` and `BootReceiver.kt` changed only in ways already covered above.
+
 **Conclusion: the cause is outside the app's code.** Something on the phone stopped feeding the
 receiver, and the app had no way to say which part.
 
@@ -60,7 +70,10 @@ receiver, and the app had no way to say which part.
 both a one-month and a twelve-month range. That was read as "the inbox is unreadable" and sent the
 diagnosis toward a ColorOS privacy-blanking theory. It was wrong.
 
-`scanHistory` skips any parsed SMS matching a **manual** transaction on `day|amount|kind`. The owner had
+`scanHistory` skips any parsed SMS matching an existing transaction on `day|amount|kind` — a MANUAL one
+always, and since v1.58.0 a transaction from ANY source when the message carries no card last4
+(`anySourceKeys`, added so an improved merchant extraction could not re-queue rows a previous scan had
+already added). The owner had
 been entering every transaction by hand since capture broke — so every bank text in twelve months
 legitimately matched something they had typed, and the scan honestly had nothing to offer. **The owner's
 own workaround had masked the only recovery path.**

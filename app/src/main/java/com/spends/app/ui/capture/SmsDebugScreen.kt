@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 /**
  * TEMPORARY owner-facing diagnostic for **live SMS capture** — the sibling of [NotificationDebugScreen].
  *
- * Live capture fails silently at eleven different points and the phone shows the same thing for all of
+ * Live capture fails silently at a dozen different points and the phone shows the same thing for all of
  * them: nothing. The notification side has had a screen like this since v1.57.0, which is why its
  * failures can be narrowed down in minutes; the SMS side had none, and a July 2026 investigation into
  * total capture loss ran out of road because of it.

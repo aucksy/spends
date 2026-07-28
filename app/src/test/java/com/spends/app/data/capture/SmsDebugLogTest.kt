@@ -121,6 +121,24 @@ class SmsDebugLogTest {
         assertNull("capture was never enabled — nothing to transcribe", e.body)
     }
 
+    /**
+     * `APP_NOT_READY` is recorded at a point BEFORE the capture switch is read, so if it were ever added
+     * to BODY_BEARING a real bank alert would be transcribed for an owner who never enabled capture.
+     * Adding it turned 0 tests red — the same shape this file already guards for `CAPTURE_OFF`, with the
+     * reasoning written there ("unreachable from today's callers, which is exactly why it needs a test")
+     * and never applied here.
+     */
+    @Test
+    fun `a message that arrived before the app was ready is never transcribed`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.APP_NOT_READY, amountMinor = 50_000L, kind = TxnKind.EXPENSE, note = "SHOP")
+
+        val e = log.state.value.entries.single()
+        assertEquals("HDFC Bank", e.institution)
+        assertNull("nothing was inspected, so nothing may be kept", e.body)
+        assertNull(e.detail)
+    }
+
     @Test
     fun `a non-transaction from a bank has its digits masked`() {
         val log = log()
@@ -594,6 +612,13 @@ class SmsDebugLogTest {
         // this feature already produced: asserting on what a change REMOVES, but only half of it.
         assertTrue("nor the handle it was addressed to", !body.contains("okhdfcbank"))
         assertTrue(body.contains("(address)"))
+
+        // A DOTTED domain too. "okhdfcbank" has no dot, so a rule keeping everything from the first dot
+        // onwards would still have passed above — "aakash@company.co.in" -> "(address).co.in".
+        val dotted = log()
+        dotted.record(1L, BANK, "Rs.5 debited, statement to aakash.p@company.co.in", SmsDebugLog.Outcome.PROMPTED)
+        val d = dotted.state.value.entries.single().body!!
+        assertTrue("no part of the domain may survive", !d.contains("company") && !d.contains("co.in"))
     }
 
     /**
@@ -611,7 +636,9 @@ class SmsDebugLogTest {
         log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 5L, kind = TxnKind.EXPENSE, note = "x".repeat(5_000))
 
         val detail = log.state.value.entries.single().detail!!
-        assertTrue(detail.length <= 501)
+        // assertEquals, not <=: the loose form stays green when MAX_CHARS shrinks, which is the exact
+        // criticism this file makes of its own earlier body-clip assertion 200 lines above.
+        assertEquals(501, detail.length)
         assertTrue(detail.endsWith("…"))
     }
 }

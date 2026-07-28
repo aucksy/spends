@@ -128,8 +128,15 @@ class SmsDebugViewModel @Inject constructor(
  */
 fun smsEmptyStateOf(totalReceived: Int, graphFailures: Int, lastReceivedAt: Long?): String = when {
     totalReceived > 0 -> "Counted $totalReceived, but none recorded in detail yet."
-    graphFailures > 0 -> "Nothing recorded — the app couldn't start up to handle what arrived. " +
-        "See the line above; that's a fault inside Spends, not your phone."
+    // `lastReceivedAt == null` is the SAME guard [smsVerdictOf]'s fault branch carries, and extracting
+    // this logic copied the branch WITHOUT it. `graphFailures` is deliberately never reset, so after
+    // "Clear what's recorded" the state is (0 received, fault counted, timestamp kept) — where the
+    // verdict correctly says "delivery was working" and this line said "that's a fault inside Spends,
+    // see the line above", pointing at a sentence that mentions no fault. Copying a branch without its
+    // guard is how the two came to disagree the first time.
+    graphFailures > 0 && lastReceivedAt == null ->
+        "Nothing recorded — the app couldn't start up to handle what arrived. " +
+            "See the line above; that's a fault inside Spends, not your phone."
     lastReceivedAt != null -> "Nothing since you cleared this. Send yourself a text — the last one " +
         "before you cleared did reach Spends, so delivery was working."
     else -> "Nothing yet. Leave the app open and send yourself any text — if this stays empty, " +

@@ -153,8 +153,9 @@ class ScanMessageTest {
     fun `an unreadable card scan is not blamed on demo mode`() {
         val unreadable = SmsCaptureRepository.cardScanMessage(scan = null, threw = false)
 
-        assertTrue(!unreadable.contains("demo"))
-        assertTrue(!unreadable.contains("No new cards"))
+        // The exact string, not two negatives: asserting only what it ISN'T left `-> ""` green, because
+        // the four-distinct test still counts an empty string as distinct.
+        assertEquals("Couldn't read the inbox.", unreadable)
     }
 
     @Test

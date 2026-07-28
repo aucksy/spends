@@ -42,19 +42,23 @@ import javax.inject.Singleton
  *     capture off is never having their bank alerts transcribed, which is the stance the notification
  *     log takes by gating its tally. Here the tally stays ungated — a count of zero is the whole point
  *     of the screen — and the CONTENT is gated instead.
- *  3. **Every stored body has every NUMBER masked and every link removed** — unconditionally, not just
- *     for the outcomes that look like a passcode. This report is built to be pasted into a chat window,
- *     so a numeric one-time passcode cannot reach it by any route, and neither can an amount, a balance,
- *     a card tail or a per-customer short link. The words that explain why a message did or did not
- *     parse survive. (A code written in LETTERS would survive too — no Indian bank uses that form, and
- *     the honest claim here is "every number", not "every secret".)
- *  4. **A sender that isn't an A2P header is masked.** Indian bank alerts arrive from alphanumeric
- *     headers ("AD-HDFCBK"), which are exactly what we need to read when the allowlist misses one. A
- *     sender that is only digits is a person's phone number, and one containing "@" is an email-to-SMS
- *     address — a stronger identifier than the number. Neither carries diagnostic value.
+ *  3. **Every stored string has every NUMBER masked, addresses removed and link PATHS replaced** —
+ *     unconditionally, not just for the outcomes that look like a passcode, and applied to `detail`'s
+ *     free text exactly as to the body. This report is built to be pasted into a chat window, so a
+ *     numeric one-time passcode cannot reach it by any route, and neither can an amount, a balance, a
+ *     card tail, an email, a UPI VPA or a per-customer link path. The words that explain why a message
+ *     did or did not parse survive. Honest limits: the link HOST is kept (it is usually the merchant),
+ *     a code written in LETTERS survives, and so does a person's name written inside an alert — the
+ *     claim is "every number", not "every secret".
+ *  4. **Only header-shaped senders are kept** — an ALLOW-LIST, not an address detector. Indian bank
+ *     alerts arrive from alphanumeric headers ("AD-HDFCBK"), which are exactly what we need to read
+ *     when the allowlist misses one; anything with whitespace, an interior "@" or no letters at all is
+ *     withheld. Two earlier attempts were detectors and both failed, in opposite directions — see
+ *     [maskSender]. A shape nobody anticipated now defaults to hidden.
  *
- * `detail` is gated by rule 1 as well: it carries the parsed merchant and amount, and is the reason
- * rule 3 costs no diagnostic power — the figures Spends actually read are reported there.
+ * `detail` is gated by rules 1 AND 2, and masked by rule 3. It is also the reason rule 3 costs no
+ * diagnostic power: [record] renders the amount and kind from TYPED values itself, so the figures
+ * Spends actually read survive there while nothing a caller writes escapes the mask.
  *
  * Remove this class and the debug screen once the root cause is fixed (see
  * `docs/NOTIFICATION-CAPTURE-DEBUG.md`).
@@ -193,7 +197,7 @@ class SmsDebugLog @Inject constructor() {
     /**
      * Record where one message stopped.
      *
-     * [body] and [detail] are accepted for every call and kept only when all of this class's privacy
+     * [body] and [note] are accepted for every call and kept only when all of this class's privacy
      * rules allow it. **There is deliberately no `institution` parameter**: the sender is resolved here
      * against [SenderAllowlist], so a caller cannot assert that a personal message came from a bank and
      * have the log store its text on that word.
