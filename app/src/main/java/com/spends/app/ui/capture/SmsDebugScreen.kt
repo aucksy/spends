@@ -92,12 +92,16 @@ fun SmsDebugScreen(
     var receiveGranted by remember { mutableStateOf(readGranted(Manifest.permission.RECEIVE_SMS)) }
     var readSmsGranted by remember { mutableStateOf(readGranted(Manifest.permission.READ_SMS)) }
     var promptsVisible by remember { mutableStateOf(CaptureNotifier.promptsCanBeSeen(context)) }
+    // Read live, not from the log's snapshot: a graph failure is the one moment the log cannot publish,
+    // so a copy held inside the snapshot would be stale exactly when it mattered.
+    var graphFailures by remember { mutableStateOf(SmsDebugLog.ReceiverFailures.graphFailures) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 receiveGranted = readGranted(Manifest.permission.RECEIVE_SMS)
                 readSmsGranted = readGranted(Manifest.permission.READ_SMS)
                 promptsVisible = CaptureNotifier.promptsCanBeSeen(context)
+                graphFailures = SmsDebugLog.ReceiverFailures.graphFailures
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -144,6 +148,7 @@ fun SmsDebugScreen(
                             demoMode = state.demoMode,
                             captureEnabled = state.captureEnabled,
                             promptsCanBeSeen = promptsVisible,
+                            graphFailures = graphFailures,
                             log = log,
                         ),
                         style = MaterialTheme.typography.bodyLarge,
@@ -156,6 +161,7 @@ fun SmsDebugScreen(
                     SmsStatusRow("Read SMS (Scan past SMS only)", smsYesNo(readSmsGranted))
                     SmsStatusRow("\"Detect from bank SMS\" on", smsYesNo(state.captureEnabled))
                     SmsStatusRow("Prompt can be shown", smsYesNo(promptsVisible))
+                    if (graphFailures > 0) SmsStatusRow("App start-up failures", graphFailures.toString())
                     // Scoped to "this app run", not "this session": the log dies with the process, so a
                     // freshly-started app legitimately shows 0. Saying "session" invited reading a cold
                     // start as evidence of a delivery failure.
@@ -172,22 +178,27 @@ fun SmsDebugScreen(
             Button(
                 onClick = {
                     clipboard.setText(
-                        AnnotatedString(viewModel.buildReport(receiveGranted, readSmsGranted, promptsVisible)),
+                        AnnotatedString(
+                            viewModel.buildReport(receiveGranted, readSmsGranted, promptsVisible, graphFailures),
+                        ),
                     )
                     scope.launch { snackbarHost.showSnackbar("Report copied") }
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Copy report") }
-            // Precise about what actually leaves the phone. An earlier draft promised personal messages
-            // contribute "no sender", which was false: only senders with no letters are masked, so an
-            // alphanumeric non-bank header ("JD-CLINIC") is exported in full. The masking rule is right —
-            // an unrecognised BANK header is the thing most worth reading — so the promise was corrected
-            // to match the code rather than the code narrowed to match the promise.
+            // Two earlier drafts of this paragraph promised more than the code delivered, and both were
+            // caught in review. The first said personal messages contribute "no sender" — false, since
+            // only senders without letters are masked. The second said passcodes "never leave the phone"
+            // while only NON-transactions were masked, so the three commonest Indian OTP formats (which
+            // contain "debited"/"spent" and therefore parse as real transactions) were exported intact.
+            // Every stored body is now masked unconditionally, so this paragraph is finally true — and
+            // the fix was to widen the code, not to narrow the promise.
             Text(
-                "The report includes the sender names of texts Spends received, and the text of alerts " +
-                    "from senders it recognised as banks — with every digit masked when the text wasn't " +
-                    "a transaction, so one-time passcodes never leave the phone. No phone numbers, and " +
-                    "no words from anything that isn't a recognised bank.",
+                "The report includes the sender names of texts Spends received, and — only for senders " +
+                    "it recognised as banks — the wording of the alert with every number replaced by " +
+                    "\"#\", one-time passcodes included. The amount Spends actually read is shown " +
+                    "separately. Nothing at all from anything that isn't a recognised bank, and never " +
+                    "a phone number or email address.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
@@ -289,7 +300,10 @@ private fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
     SmsDebugLog.Outcome.NOT_A_TRANSACTION -> "From a known bank, but not a transaction (OTP / promo / statement)"
     SmsDebugLog.Outcome.PATTERN_SUPPRESSED -> "✅ Queued quietly — you've ignored this exact alert before"
     SmsDebugLog.Outcome.ALREADY_KNOWN -> "A transaction Spends already has"
-    SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED -> "Its notification twin already prompted — one prompt per payment"
+    // Deliberately "claimed", not "prompted": when prompts are blocked at OS level the twin claims the
+    // slot and then queues instead of showing anything, so "already prompted" would assert a prompt the
+    // owner never saw — in the exact scenario this screen is being used to diagnose.
+    SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED -> "Its notification twin claimed this payment — one prompt per payment"
     SmsDebugLog.Outcome.PROMPT_BLOCKED ->
         "⚠️ Read it fine, but your phone won't show the prompt — queued in your review list instead"
     SmsDebugLog.Outcome.PROMPTED -> "✅ Showed the Review & Add prompt"

@@ -53,7 +53,14 @@ class SmsReceiver : BroadcastReceiver() {
         // take the process down from here.
         val entry = runCatching {
             EntryPointAccessors.fromApplication(context.applicationContext, SmsCaptureEntryPoint::class.java)
-        }.getOrNull() ?: return
+        }.getOrNull() ?: run {
+            // Counted in a plain object, not the injected log — the log is the thing we just failed to
+            // obtain. Swallowing this silently would leave the counter at zero and let the debug screen
+            // assert "Android is not delivering… nothing inside Spends can be the cause" in the one case
+            // where Spends IS the cause.
+            SmsDebugLog.ReceiverFailures.recordGraphFailure()
+            return
+        }
         val debug = entry.smsDebugLog()
         // Counted for EVERY message, before ANY other check — including in demo mode and with capture
         // switched off. If this stays at zero while texts are visibly arriving, Android is not delivering
@@ -122,10 +129,14 @@ class SmsReceiver : BroadcastReceiver() {
                     // as what actually happened, not as what was attempted. A diagnostic that says
                     // "queued" for a row that was never inserted is the same class of defect as the
                     // scan message this round is fixing.
+                    // The outcome stays PATTERN_SUPPRESSED even when the row was already held: the
+                    // suppression is STICKY state (ignored 3+ times) that the owner may need to reset,
+                    // and it is one of the things this screen exists to reveal. Reporting it as a plain
+                    // duplicate would hide it. The duplication goes in the detail instead.
                     val queued = capture.queueForReview(sender, body, receivedAt)
                     note(
-                        if (queued != null) SmsDebugLog.Outcome.PATTERN_SUPPRESSED else SmsDebugLog.Outcome.ALREADY_KNOWN,
-                        money,
+                        SmsDebugLog.Outcome.PATTERN_SUPPRESSED,
+                        if (queued != null) money else "$money · already held",
                     )
                 } else if (capture.isKnownHash(preview.dedupeHash)) {
                     // Already in the ledger or the review queue (e.g. the notification twin of

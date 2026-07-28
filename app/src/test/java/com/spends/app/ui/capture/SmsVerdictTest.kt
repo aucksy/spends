@@ -32,10 +32,11 @@ class SmsVerdictTest {
         demo: Boolean = false,
         capture: Boolean = true,
         prompts: Boolean = true,
+        graphFailures: Int = 0,
         received: Int = 5,
         fromBanks: Int = 2,
         lastReceivedAt: Long? = 1_000L,
-    ) = smsVerdictOf(receive, demo, capture, prompts, snapshot(received, fromBanks, lastReceivedAt))
+    ) = smsVerdictOf(receive, demo, capture, prompts, graphFailures, snapshot(received, fromBanks, lastReceivedAt))
 
     /**
      * Demo mode outranks everything, including a missing permission: while it is on, no other line on
@@ -61,15 +62,32 @@ class SmsVerdictTest {
     /**
      * READ_SMS is used only by "Scan past SMS". Live capture needs RECEIVE_SMS alone, and OEM permission
      * managers list the two separately — so a missing READ_SMS must NOT produce "nothing can arrive"
-     * beside a counter showing forty messages arriving. `smsVerdictOf` cannot even see READ_SMS, which
-     * is the point; this pins that it stays that way.
+     * beside a counter showing forty messages arriving.
+     *
+     * This is pinned by an explicitly-typed function reference rather than an assertion, because there
+     * is nothing to assert: the input does not exist. An earlier version tried, and was green under its
+     * own defect — adding a trailing `readGranted: Boolean = true` parameter with a blame branch left it
+     * passing. A declared function type must match exactly, so the same change breaks compilation here.
      */
     @Test
-    fun `read-SMS is not part of the verdict at all`() {
-        // Healthy live capture. If READ_SMS ever leaks into this signature, this stops compiling.
-        val msg = verdict(receive = true, received = 40, fromBanks = 6)
+    fun `the verdict signature cannot take a READ_SMS input`() {
+        val pinned: (Boolean, Boolean, Boolean, Boolean, Int, SmsDebugLog.Snapshot) -> String = ::smsVerdictOf
 
-        assertTrue(msg.contains("where it stopped"))
+        assertTrue(pinned(true, false, true, true, 0, snapshot(40, 6, 1_000L)).contains("where it stopped"))
+    }
+
+    /**
+     * A broadcast that reached the receiver but died before anything could be recorded leaves the
+     * counter at zero — where the branch below would assert "nothing inside Spends can be the cause",
+     * in the one case where Spends IS the cause. This must outrank it.
+     */
+    @Test
+    fun `an app start-up failure is blamed on the app, not on Android`() {
+        val msg = verdict(graphFailures = 2, received = 0, fromBanks = 0, lastReceivedAt = null)
+
+        assertTrue("must not blame delivery", !msg.contains("not delivering"))
+        assertTrue(msg.contains("fault inside Spends"))
+        assertTrue(msg.contains("2"))
     }
 
     @Test
@@ -141,6 +159,7 @@ class SmsVerdictTest {
             verdict(demo = true),
             verdict(receive = false),
             verdict(capture = false),
+            verdict(graphFailures = 2, received = 0, fromBanks = 0, lastReceivedAt = null),
             verdict(received = 0, fromBanks = 0, lastReceivedAt = null),
             verdict(received = 0, fromBanks = 0, lastReceivedAt = 3_000L),
             verdict(received = 40, fromBanks = 0),

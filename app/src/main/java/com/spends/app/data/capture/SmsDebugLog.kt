@@ -40,14 +40,17 @@ import javax.inject.Singleton
  *     capture off is never having their bank alerts transcribed, which is the stance the notification
  *     log takes by gating its tally. Here the tally stays ungated — a count of zero is the whole point
  *     of the screen — and the CONTENT is gated instead.
- *  3. **A non-transaction from a bank has every digit masked.** Bank OTPs are the single largest class
- *     of `NOT_A_TRANSACTION`, and this report is built to be pasted into a chat window. Masking via
- *     [SmsParser.aiContextFor] keeps the words that explain the rejection and destroys the code.
- *  4. **A numeric sender is masked.** Indian bank/A2P alerts arrive from alphanumeric headers
- *     ("AD-HDFCBK"), which are exactly what we need to read when the allowlist misses one. A sender with
- *     no letters is a person's phone number, carries no diagnostic value, and is replaced by a marker.
+ *  3. **Every stored body has every digit masked**, via [SmsParser.aiContextFor] — unconditionally, not
+ *     just for the outcomes that look like a passcode. This report is built to be pasted into a chat
+ *     window, so a one-time passcode must not be able to reach it by any route. The words that explain
+ *     why a message did or did not parse survive; amounts, balances, card tails and codes do not.
+ *  4. **A sender that isn't an A2P header is masked.** Indian bank alerts arrive from alphanumeric
+ *     headers ("AD-HDFCBK"), which are exactly what we need to read when the allowlist misses one. A
+ *     sender that is only digits is a person's phone number, and one containing "@" is an email-to-SMS
+ *     address — a stronger identifier than the number. Neither carries diagnostic value.
  *
- * `detail` is gated by rule 1 as well: it carries the parsed merchant and amount.
+ * `detail` is gated by rule 1 as well: it carries the parsed merchant and amount, and is the reason
+ * rule 3 costs no diagnostic power — the figures Spends actually read are reported there.
  *
  * Remove this class and the debug screen once the root cause is fixed (see
  * `docs/NOTIFICATION-CAPTURE-DEBUG.md`).
@@ -118,6 +121,35 @@ class SmsDebugLog @Inject constructor() {
         val entries: List<Entry>,
     )
 
+    /**
+     * Broadcasts that reached the receiver but died before anything could be recorded, because the
+     * dependency graph could not be built.
+     *
+     * A plain object with no Hilt involvement, because the thing being counted is Hilt not working —
+     * and deliberately NOT a field on [Snapshot], because a graph failure is precisely the moment
+     * `publish()` cannot run, so a snapshot copy would be stale exactly when it mattered. The screen
+     * reads it live on resume, the same way it reads the permission grants.
+     *
+     * Without this, such a broadcast leaves [Snapshot.totalReceived] at zero and the verdict asserts
+     * "Android is not delivering… nothing inside Spends can be the cause" — a confident claim that is
+     * false in precisely the case it cannot see. Process-scoped; never persisted.
+     */
+    object ReceiverFailures {
+        @Volatile
+        var graphFailures: Int = 0
+            private set
+
+        @Synchronized
+        fun recordGraphFailure() {
+            graphFailures++
+        }
+
+        @Synchronized
+        fun reset() {
+            graphFailures = 0
+        }
+    }
+
     private val _state = MutableStateFlow(Snapshot(0, null, 0, emptyList()))
     val state: StateFlow<Snapshot> = _state.asStateFlow()
 
@@ -162,6 +194,7 @@ class SmsDebugLog @Inject constructor() {
                 sender = maskSender(sender),
                 institution = institution,
                 body = storableBody(institution, body, outcome),
+                outcome = outcome,
                 // Carries the parsed merchant and amount, so it is gated exactly as the body is.
                 detail = if (institution != null) detail?.clip() else null,
             ),
@@ -171,14 +204,24 @@ class SmsDebugLog @Inject constructor() {
     }
 
     /**
-     * The three content rules, applied in one place. Returns null unless the sender resolved to a bank
-     * AND the outcome is one only reachable with capture switched on; and digit-masks a non-transaction,
-     * which is overwhelmingly an OTP.
+     * The content rules, applied in one place. Returns null unless the sender resolved to a bank AND the
+     * outcome is one only reachable with capture switched on — and masks EVERY digit of what survives.
+     *
+     * **Masking is unconditional, and an earlier version got this exactly backwards.** It masked only
+     * `NOT_A_TRANSACTION`, on the reasoning that a non-transaction from a bank is overwhelmingly an OTP.
+     * The gate that produces that outcome is [SmsParser]'s `isOtp`, which excludes any text containing
+     * "spent" or "debited" — so the three commonest Indian one-time-passcode formats
+     * ("Rs.5000 debited… OTP 481920 to confirm") parse as genuine TRANSACTIONS, reached `PROMPTED`, and
+     * had their passcode stored and exported verbatim. A parser heuristic is not a privacy control.
+     *
+     * Masking everything costs almost nothing: for a parsed outcome the amount, kind and merchant are
+     * already carried in `detail`, so the raw body was contributing the balance, the account tail and
+     * the reference number — sensitive, and not what a diagnosis needs. What survives is the wording,
+     * which is the part that explains why a message did or did not parse.
      */
     private fun storableBody(institution: String?, body: String?, outcome: Outcome): String? {
         if (institution == null || outcome !in BODY_BEARING) return null
-        val text = if (outcome == Outcome.NOT_A_TRANSACTION) SmsParser.aiContextFor(body) else body
-        return text?.clip()
+        return SmsParser.aiContextFor(body)?.clip()
     }
 
     @Synchronized
@@ -186,8 +229,11 @@ class SmsDebugLog @Inject constructor() {
         entries.clear()
         totalReceived = 0
         fromKnownBanks = 0
+        ReceiverFailures.reset()
         // lastReceivedAt is deliberately KEPT: "when did an SMS last reach the app" is the single most
         // useful fact on the screen, and clearing the list must not erase it and imply none ever has.
+        // SmsVerdictTest pins the other half of that decision — the verdict must READ the kept
+        // timestamp, or the screen contradicts the row printed directly beneath it.
         publish()
     }
 
@@ -205,6 +251,9 @@ class SmsDebugLog @Inject constructor() {
     companion object {
         /** Shown in place of a personal sender's phone number. */
         const val MASKED_SENDER = "(a phone number)"
+
+        /** Shown in place of an email-to-SMS gateway sender. */
+        const val MASKED_EMAIL_SENDER = "(an email address)"
 
         private const val MAX_ENTRIES = 60
         private const val MAX_CHARS = 500
@@ -226,12 +275,18 @@ class SmsDebugLog @Inject constructor() {
 
         /**
          * Bank and other A2P alerts arrive from alphanumeric headers ("AD-HDFCBK", "JD-SBIINB") — the
-         * exact string we need to read when the allowlist misses a bank whose header has changed. A
-         * sender with no letters at all is a person's phone number: no diagnostic value, so it never
-         * gets recorded. Pure and public so the rule is directly testable.
+         * exact string we need to read when the allowlist misses a bank whose header has changed. Two
+         * shapes are never that, and are replaced by a marker:
+         *  - no letters at all → a person's phone number;
+         *  - contains "@" → an email-to-SMS gateway address, which `displayOriginatingAddress` can
+         *    return and which identifies a person more strongly than the phone number does. The
+         *    letters-present rule alone would have exported it verbatim.
+         *
+         * Pure and public so the rule is directly testable.
          */
         fun maskSender(sender: String?): String = when {
             sender.isNullOrBlank() -> "(no sender)"
+            sender.contains('@') -> MASKED_EMAIL_SENDER
             sender.any { it.isLetter() } -> sender
             else -> MASKED_SENDER
         }

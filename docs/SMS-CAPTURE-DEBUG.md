@@ -115,18 +115,51 @@ in silence, so both are fixed.
 ## Privacy stance (stricter than the notification log, deliberately)
 
 Every SMS on the phone flows through `SmsReceiver`, so most of what passes through this log is personal
-mail. Two rules are enforced **inside `SmsDebugLog.record`**, not at the call site, so no future caller
-can leak by forgetting:
+mail. Four rules are enforced **inside `SmsDebugLog.record`**, not at the call site, so no future caller
+can leak by forgetting. `record` takes **no `institution` parameter** — it resolves the sender itself, so
+a caller cannot assert "this came from a bank" and be believed:
 
-1. **A message body is stored only when its sender resolved to a tracked bank.** A recognised sender means
-   the text is a bank alert. Everything else keeps `body = null` regardless of what was passed in.
-2. **A sender carrying no letters is masked.** Indian bank/A2P alerts arrive from alphanumeric headers
-   (`AD-HDFCBK`) — exactly what has to be readable when a bank changes its header. A sender that is only
-   digits is a person's phone number and has no diagnostic value.
+1. **A message body is stored only when the sender resolves to a tracked bank**, resolved here via
+   `SenderAllowlist`. Everything else keeps `body = null` regardless of what was passed in.
+2. **…and only for an outcome reached with the capture switch ON** (`BODY_BEARING`). An owner who never
+   enabled capture never has a bank alert transcribed.
+3. **Every stored body has every digit masked**, via `SmsParser.aiContextFor` — unconditionally.
+4. **A sender that isn't an A2P header is masked**: no letters at all means a phone number; one
+   containing `@` is an email-to-SMS address, a stronger identifier than the number.
+
+`detail` is gated by rule 1 as well, and is what makes rule 3 free: the amount, kind and merchant Spends
+actually parsed are reported there, already interpreted, so the raw digits were only ever contributing
+the balance, the account tail and the reference number.
 
 Consequently `buildReport` needs no redaction pass: what reaches it is already safe to paste. That is a
 stronger guarantee than the notification screen's redact-on-the-way-out, which depends on getting an
-outcome allow-list right.
+outcome allow-list right forever.
+
+### The rule-3 near-miss, kept as a warning
+
+Rule 3 originally masked **only** `NOT_A_TRANSACTION`, on the reasoning that a non-transaction from a
+bank is overwhelmingly an OTP. The gate producing that outcome is `SmsParser.isOtp`, which excludes any
+text containing `spent` or `debited` — so these all parsed as genuine transactions, reached `PROMPTED`,
+and had the passcode stored and exported verbatim while the screen promised the opposite:
+
+```
+Rs.5000.00 has been debited from your a/c XX1234. OTP 481920 to confirm.
+Rs.500 spent on card XX1234 at SHOP. OTP 481920 to authorise.
+Your OTP for the transaction of Rs 2,000 debited from A/c XX1234 is 481920.
+```
+
+Three lessons, all of which cost a review round:
+
+- **A parser heuristic is not a privacy control.** `isOtp` exists to decide what to log as money. It was
+  never designed to decide what is safe to put on a clipboard, and it fails that job on the commonest
+  formats.
+- **The masking was inverted with respect to diagnostic value.** The one outcome it covered
+  (`NOT_A_TRANSACTION`) is where digits genuinely help — a parse failure is usually an amount format the
+  regex missed. The outcomes it skipped are the ones where `detail` already carries the parsed figures.
+- **A test can pin a defect in place.** `SmsDebugLogTest` asserted that a real transaction "keeps its
+  numbers — they are the diagnosis". That test went red under the correct fix, so anyone attempting the
+  obvious repair would have been told the suite forbade it. It is now inverted, and named for the
+  regression instead.
 
 Nothing is written to disk, nothing enters the backup snapshot, and everything is dropped when the
 process restarts.

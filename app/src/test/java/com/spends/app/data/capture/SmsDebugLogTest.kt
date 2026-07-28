@@ -118,10 +118,6 @@ class SmsDebugLogTest {
         assertNull("capture was never enabled — nothing to transcribe", e.body)
     }
 
-    /**
-     * Bank OTPs are the largest class of NOT_A_TRANSACTION, and this report is built to be pasted into
-     * a chat window. The words survive (they explain the rejection); the code does not.
-     */
     @Test
     fun `a non-transaction from a bank has its digits masked`() {
         val log = log()
@@ -132,12 +128,47 @@ class SmsDebugLogTest {
         assertTrue("the words that explain the rejection must survive", body.contains("OTP"))
     }
 
+    /**
+     * ⭐ THE regression. An earlier version masked ONLY `NOT_A_TRANSACTION`, reasoning that a
+     * non-transaction from a bank is overwhelmingly an OTP. The gate deciding that is `SmsParser.isOtp`,
+     * which excludes any text containing "spent" or "debited" — so the three commonest Indian passcode
+     * formats parse as genuine TRANSACTIONS, reached `PROMPTED`, and had the passcode stored and
+     * exported verbatim while the screen promised passcodes never leave the phone.
+     *
+     * An earlier version of THIS FILE actively pinned that defect in place, with a test asserting a
+     * transaction "keeps its numbers - they are the diagnosis". It went red under the correct fix, so
+     * anyone attempting the obvious repair would have been told the tests forbade it. Masking is now
+     * unconditional, and this test asserts the opposite of the one it replaced.
+     */
     @Test
-    fun `a real transaction from a bank keeps its numbers - they are the diagnosis`() {
+    fun `an OTP that parses as a transaction is masked too`() {
         val log = log()
-        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED)
+        log.record(
+            1L,
+            BANK,
+            "Rs.5000.00 has been debited from your a/c XX1234. OTP 481920 to confirm.",
+            SmsDebugLog.Outcome.PROMPTED,
+        )
 
-        assertTrue(log.state.value.entries.single().body!!.contains("500"))
+        val body = log.state.value.entries.single().body!!
+        assertTrue("a passcode must not survive on ANY outcome", !body.contains("481920"))
+        assertTrue("nor the balance or account tail", !body.contains("5000"))
+        assertTrue("the wording, which is the diagnosis, survives", body.contains("debited"))
+    }
+
+    /**
+     * Masking every body costs no diagnostic power, because the figures Spends actually parsed are
+     * carried in `detail` — which is where they belong, already interpreted, instead of being fished
+     * back out of raw text that also holds the balance and the account tail.
+     */
+    @Test
+    fun `the parsed figures survive in detail, not in the body`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, detail = "expense 50000 paise · SHOP")
+
+        val e = log.state.value.entries.single()
+        assertTrue("the body carries no digits", e.body!!.none { it.isDigit() })
+        assertTrue("the parsed amount is still reportable", e.detail!!.contains("50000"))
     }
 
     /** `detail` carries the parsed merchant and amount, so it is gated exactly as the body is. */
@@ -185,6 +216,17 @@ class SmsDebugLogTest {
         assertEquals("(no sender)", SmsDebugLog.maskSender("   "))
     }
 
+    /**
+     * `displayOriginatingAddress` can return an email-to-SMS gateway address. It has letters, so the
+     * letters-present rule alone exported it verbatim — and an email identifies a person far more
+     * strongly than the phone number the mask was built to hide.
+     */
+    @Test
+    fun `an email-to-SMS sender is masked, not treated as a bank header`() {
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("john.smith@gmail.com"))
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("alerts@somebank.example"))
+    }
+
     @Test
     fun `the masking rule is applied when recording, not only when asked directly`() {
         val log = log()
@@ -215,13 +257,23 @@ class SmsDebugLogTest {
         assertEquals(140L, entries.last().timeMillis)
     }
 
+    /** Bounded by `aiContextFor`'s own 300-char cap, which now sits inside every stored body. */
     @Test
-    fun `long text is clipped so one pathological message cannot bloat the log`() {
+    fun `long text is bounded so one pathological message cannot bloat the log`() {
         val log = log()
         log.record(1L, BANK, "Rs 5 debited " + "x".repeat(5_000), SmsDebugLog.Outcome.PROMPTED)
 
-        val body = log.state.value.entries.single().body!!
-        assertTrue("clipped to the cap plus an ellipsis", body.length <= 501)
-        assertTrue(body.endsWith("…"))
+        assertTrue(log.state.value.entries.single().body!!.length <= 300)
+    }
+
+    /** `detail` is not masked — it is Spends' own parse, not the bank's words — but it is still capped. */
+    @Test
+    fun `long detail is clipped`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, detail = "x".repeat(5_000))
+
+        val detail = log.state.value.entries.single().detail!!
+        assertTrue(detail.length <= 501)
+        assertTrue(detail.endsWith("…"))
     }
 }

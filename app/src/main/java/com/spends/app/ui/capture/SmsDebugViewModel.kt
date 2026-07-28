@@ -66,7 +66,12 @@ class SmsDebugViewModel @Inject constructor(
      * already safe to paste, which is stronger than the notification screen's redact-on-the-way-out —
      * that depends on keeping an outcome allow-list correct forever.
      */
-    fun buildReport(receiveGranted: Boolean, readGranted: Boolean, promptsCanBeSeen: Boolean): String {
+    fun buildReport(
+        receiveGranted: Boolean,
+        readGranted: Boolean,
+        promptsCanBeSeen: Boolean,
+        graphFailures: Int,
+    ): String {
         val s = state.value
         val log = s.log
         return buildString {
@@ -76,6 +81,7 @@ class SmsDebugViewModel @Inject constructor(
             appendLine("Read SMS permission (Scan past SMS only): ${yesNo(readGranted)}")
             appendLine("\"Detect from bank SMS\" switch on: ${yesNo(s.captureEnabled)}")
             appendLine("Prompt can be shown: ${yesNo(promptsCanBeSeen)}")
+            appendLine("App start-up failures handling an SMS: $graphFailures")
             appendLine("SMS delivered to Spends (this app run): ${log.totalReceived}")
             appendLine("Last SMS reached the app: ${log.lastReceivedAt?.let { DateUtils.formatDayTime(it) } ?: "never this app run"}")
             appendLine("Of those, from a bank we recognise (this app run): ${log.fromKnownBanks}")
@@ -113,6 +119,7 @@ fun smsVerdictOf(
     demoMode: Boolean,
     captureEnabled: Boolean,
     promptsCanBeSeen: Boolean,
+    graphFailures: Int,
     log: SmsDebugLog.Snapshot,
 ): String = when {
     // First, and above the permission: in demo mode nothing else on this screen is a statement about
@@ -125,6 +132,12 @@ fun smsVerdictOf(
             "Settings → Apps → Spends → Permissions → SMS."
     !captureEnabled ->
         "The SMS permission is granted, but the \"Detect from bank SMS\" switch is off."
+    // Above the "nothing was delivered" branch, which would otherwise assert "nothing inside Spends can
+    // be the cause" in the one case where Spends IS the cause and simply could not record it.
+    graphFailures > 0 ->
+        "$graphFailures text${if (graphFailures == 1) "" else "s"} reached Spends but the app failed " +
+            "to start up properly and couldn't handle ${if (graphFailures == 1) "it" else "them"}. " +
+            "That's a fault inside Spends, not your phone — tell me this number."
     // Split from the branch below on lastReceivedAt, NOT on the count alone. Tapping "Clear what's
     // recorded" zeroes the count while deliberately keeping the timestamp, and the un-split version
     // then asserted "Android is not delivering" directly above a row showing when the last one arrived.

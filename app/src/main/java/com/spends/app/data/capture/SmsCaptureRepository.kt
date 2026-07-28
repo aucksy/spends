@@ -464,13 +464,18 @@ class SmsCaptureRepository @Inject constructor(
      * Scan the SMS inbox for [startMillis, endExclusiveMillis) and PROPOSE the credit cards it finds
      * (a credit-card sender + a parseable last4) as review candidates — the Cards tab "Scan for cards".
      * Never silent: each lands in "Cards to review" for the user to Confirm / Edit / dismiss. Writes
-     * NOTHING to the ledger. Returns the count of NEW candidates (existing/dismissed cards are skipped).
+     * NOTHING to the ledger. Returns the count of NEW candidates (existing/dismissed cards are skipped),
+     * or **null when the inbox was never read** — see the demo-mode guard below.
      */
-    suspend fun scanInboxForCards(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): Int =
+    suspend fun scanInboxForCards(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): Int? =
         withContext(Dispatchers.IO) {
             // Same reasoning as scanHistory — this reads the real inbox and would write the user's genuine
             // card last4 + institution into a database that gets deleted.
-            if (DemoMode.isEnabled(context)) return@withContext 0
+            //
+            // Returns NULL, not 0: the caller renders 0 as "No new cards found in SMS", which is a
+            // statement about an inbox this code refused to open. Same conflation of "found nothing" with
+            // "didn't look" that the scan message carried, one function below it.
+            if (DemoMode.isEnabled(context)) return@withContext null
             // Serialise with the rest of capture (matching scanHistory) so two scans — or a scan racing
             // another card-discovery — can't both pass discoverCard's read-then-insert check and double-add.
             captureMutex.withLock {
