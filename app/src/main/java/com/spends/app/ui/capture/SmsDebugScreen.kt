@@ -304,7 +304,11 @@ internal fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
     // Deliberately "claimed", not "prompted": when prompts are blocked at OS level the twin claims the
     // slot and then queues instead of showing anything, so "already prompted" would assert a prompt the
     // owner never saw — in the exact scenario this screen is being used to diagnose.
-    SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED -> "Its notification twin claimed this payment — one prompt per payment"
+    // "A twin", not "its NOTIFICATION twin". With notification capture off — the default — an OEM
+    // re-delivering one bank SMS twice reaches this with no notification involved and no listener
+    // running. Naming the channel is the same defect as naming the cause, one level down.
+    SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED ->
+        "A twin of this alert already claimed the prompt — one prompt per payment"
     SmsDebugLog.Outcome.PROMPT_BLOCKED ->
         "⚠️ Read it fine, but your phone won't show the prompt — queued in your review list instead"
     SmsDebugLog.Outcome.PROMPTED -> "✅ Showed the Review & Add prompt"

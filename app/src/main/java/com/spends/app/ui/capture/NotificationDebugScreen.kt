@@ -303,7 +303,7 @@ internal fun plainOutcome(o: NotificationDebugLog.Outcome): String = when (o) {
     // posted a heads-up the owner may simply dismiss, and wrote nothing. Same false claim the SMS
     // screen removed from TWIN_ALREADY_PROMPTED, worded to be true at all three sites.
     NotificationDebugLog.Outcome.DUPLICATE ->
-        "Not prompted again — Spends already has this, or its SMS twin claimed the payment first"
+        "Not prompted again — Spends already has this, or another copy of the same alert claimed the prompt first"
     // No green tick: this covers the blocked-prompt fallback, which the SMS screen flags with a warning
     // because the owner never saw a prompt and needs to know why.
     NotificationDebugLog.Outcome.QUEUED -> "Queued in your review list (no prompt was shown)"

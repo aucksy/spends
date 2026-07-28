@@ -139,6 +139,51 @@ class SmsDebugLogTest {
         assertNull(e.detail)
     }
 
+    /**
+     * BODY_BEARING's RETENTION half, all six members. The exclusion half is well covered (CAPTURE_OFF,
+     * APP_NOT_READY), but only two of the six inclusions were — so four could be DELETED from the set
+     * with the suite green, silently blinding the screen for the outcomes an owner is most likely to be
+     * looking at. Membership is the thing under test, so every member needs a case.
+     */
+    @Test
+    fun `every body-bearing outcome actually keeps its body`() {
+        val bearing = listOf(
+            SmsDebugLog.Outcome.NOT_A_TRANSACTION,
+            SmsDebugLog.Outcome.PATTERN_SUPPRESSED,
+            SmsDebugLog.Outcome.ALREADY_KNOWN,
+            SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED,
+            SmsDebugLog.Outcome.PROMPT_BLOCKED,
+            SmsDebugLog.Outcome.PROMPTED,
+        )
+        bearing.forEach { outcome ->
+            val log = log()
+            log.record(1L, BANK, ALERT, outcome)
+            assertNotNull("$outcome must keep the alert text", log.state.value.entries.single().body)
+        }
+    }
+
+    /**
+     * LINK must run before LINK_PATH, and nothing pinned the order.
+     *
+     * **The input is deliberately synthetic and must not be "tidied" into a realistic one.** For an
+     * ordinary scheme link the two orders converge, so a realistic input pins nothing. They diverge only
+     * when a BARE host's path itself contains a scheme: run LINK_PATH first and it consumes the path,
+     * leaving `u-aakash.hdfcbk.io/(link)` with no scheme left for LINK to match — so the per-customer
+     * SUBDOMAIN, which is an identifier in its own right, survives. The shipped order removes the whole
+     * token. Verified: 178 and 180 characters of realism would prove nothing; this shape is the only one
+     * that does.
+     */
+    @Test
+    fun `the link rules run in the order that removes the most`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.5 debited. See u-aakash.hdfcbk.io/https://x/aB9cD2e", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("the per-customer subdomain must not survive", !body.contains("u-aakash"))
+        assertTrue("nor the host", !body.contains("hdfcbk.io"))
+        assertTrue(body.contains("(link)"))
+    }
+
     @Test
     fun `a non-transaction from a bank has its digits masked`() {
         val log = log()

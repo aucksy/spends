@@ -29,9 +29,12 @@ The last-capture timestamp is the load-bearing fact. `v1.57.0` was tagged at **1
 
 ### Every code change in that window, and why none of them can be the cause
 
-`git diff v1.57.0..v1.62.0` touches **eight** files under capture/receiver/settings/di/service. Three
-carry logic on the live SMS path; the other five are enumerated below so the elimination is exhaustive
-rather than convenient — an earlier version of this line said "exactly three places" and was wrong.
+`git diff v1.57.0..v1.62.0` touches **eight** files under capture/receiver/settings/di/service. **Two**
+carry logic on the LIVE SMS path; a third, `SmsCaptureRepository.kt`, changed only inside `scanHistory`
+(the historical scan, not live capture). The other five are enumerated below so the elimination is
+exhaustive rather than convenient — two earlier versions of this line were wrong, first claiming
+"exactly three places" and then enumerating a file that did not change in the range while omitting one
+that did.
 
 **v1.58.0 — `SmsParser` merchant extraction (`stripReportTrailer`, `looksLikeMerchant`).** The only
 change in the release that touches the SMS path at all. Traced through all five routes by which a
@@ -58,8 +61,10 @@ is off, and its banner is permanent and non-dismissible while it is on.
 `DatabaseModule.kt` chooses which Room file opens — both provisioned inside the receiver's own
 `runCatching`. With demo mode off, both take the pre-existing branch and preserve the original file
 names, which was verified directly: `LIVE_SETTINGS_NAME` is byte-identical to the name the old
-`preferencesDataStore` delegate used, so no setting was silently reset on upgrade. `SettingsRepository.kt`,
-`CaptureActionReceiver.kt` and `BootReceiver.kt` changed only in ways already covered above.
+`preferencesDataStore` delegate used, so no setting was silently reset on upgrade.
+`CaptureNotificationListenerService.kt` gained the same demo-mode early return, already ruled out above
+by direct observation. `SettingsRepository.kt` and `CaptureActionReceiver.kt` changed only in ways
+covered above.
 
 **Conclusion: the cause is outside the app's code.** Something on the phone stopped feeding the
 receiver, and the app had no way to say which part.

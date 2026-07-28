@@ -311,6 +311,13 @@ class SmsVerdictTest {
         // ⭐ The state the first version of this test did not cover, and the one where the two lines
         // could still disagree: a fault recorded, THEN Clear tapped. `graphFailures` is never reset, so
         // this is reachable in one tap. The verdict says "delivery was working"; this must agree.
+        // At the BOUNDARY too: `graphFailures > 0` could be weakened to `> 1` with the suite green, and
+        // ONE cold-start hiccup is the commonest case — there the empty line would read "Android isn't
+        // delivering" while the verdict reads "1 text reached Spends but the app failed to start up".
+        val oneFault = smsEmptyStateOf(totalReceived = 0, graphFailures = 1, lastReceivedAt = null)
+        assertTrue(oneFault.contains("couldn't start up"))
+        assertTrue("must not blame delivery at the boundary", !oneFault.contains("isn't delivering"))
+
         val faultThenCleared = smsEmptyStateOf(totalReceived = 0, graphFailures = 2, lastReceivedAt = 3_000L)
         assertTrue(faultThenCleared.contains("cleared"))
         assertTrue("must not point at a verdict that names no fault", !faultThenCleared.contains("couldn't start up"))
@@ -333,6 +340,13 @@ class SmsVerdictTest {
         val notTxn = plainSmsOutcome(SmsDebugLog.Outcome.NOT_A_TRANSACTION)
         assertTrue("must not close the list", !notTxn.trimEnd().endsWith("statement)"))
         assertTrue(notTxn.contains("can't parse"))
+
+        // The SMS screen's twin line had the mirror-image defect and no ban at all. With notification
+        // capture OFF — the default — an OEM re-delivering one SMS twice reaches this with no
+        // notification involved and no listener running.
+        val twin = plainSmsOutcome(SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED)
+        assertTrue("must not name a channel it cannot know", !twin.contains("notification twin"))
+        assertTrue(twin.contains("A twin of this alert"))
     }
 
     /**
@@ -357,6 +371,12 @@ class SmsVerdictTest {
 
         val dup = plainOutcome(NotificationDebugLog.Outcome.DUPLICATE)
         assertTrue("must not claim a holding it may not have", !dup.contains("we already have"))
+        // Banning the removed WORDS is not the same as pinning the claim: the round-11 blocker could be
+        // restored word-for-word-in-meaning with only that assertion. It must also not name the CHANNEL —
+        // on an RCS-only alert, the case notification capture exists for, the twin is another
+        // notification and no SMS exists at all.
+        assertTrue("must not name a channel it cannot know", !dup.contains("SMS twin"))
+        assertTrue(dup.contains("another copy of the same alert"))
 
         val queued = plainOutcome(NotificationDebugLog.Outcome.QUEUED)
         assertTrue("no green tick for a prompt the owner never saw", !queued.contains("✅"))
