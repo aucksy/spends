@@ -203,9 +203,10 @@ class SmsReceiver : BroadcastReceiver() {
                         }
                     }
                 } else {
-                    // The notification listener prompted a TWIN of this transaction moments ago (the SMS
-                    // + Messages/Truecaller twins of one alert, even when one text lost the reference
-                    // number) — one prompt is the contract.
+                    // A TWIN of this transaction already claimed the prompt — the SMS and notification
+                    // twins of one alert (even when one lost the reference number), or the same SMS
+                    // delivered twice by the phone. Deliberately not "the notification listener": with
+                    // notification capture off, the default, no listener is running at all.
                     note(SmsDebugLog.Outcome.TWIN_ALREADY_PROMPTED, amount, kind, merchant)
                 }
             } finally {

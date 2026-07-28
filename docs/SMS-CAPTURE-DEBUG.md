@@ -30,8 +30,9 @@ The last-capture timestamp is the load-bearing fact. `v1.57.0` was tagged at **1
 ### Every code change in that window, and why none of them can be the cause
 
 `git diff v1.57.0..v1.62.0` touches **eight** files under capture/receiver/settings/di/service. **Two**
-carry logic on the LIVE SMS path; a third, `SmsCaptureRepository.kt`, changed only inside `scanHistory`
-(the historical scan, not live capture). The other five are enumerated below so the elimination is
+carry logic on the LIVE SMS path; a third, `SmsCaptureRepository.kt`, changed only inside the two
+historical-scan entry points — `scanHistory` and `scanInboxForCards` — neither of which is on the live
+capture path. The other five are enumerated below so the elimination is
 exhaustive rather than convenient — two earlier versions of this line were wrong, first claiming
 "exactly three places" and then enumerating a file that did not change in the range while omitting one
 that did.

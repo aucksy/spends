@@ -46,10 +46,14 @@ import javax.inject.Singleton
  *     unconditionally, not just for the outcomes that look like a passcode, and applied to `detail`'s
  *     free text exactly as to the body. This report is built to be pasted into a chat window, so a
  *     numeric one-time passcode cannot reach it by any route, and neither can an amount, a balance, a
- *     card tail, an email, a UPI VPA or a per-customer link path. The words that explain why a message
- *     did or did not parse survive. Honest limits: the link HOST is kept (it is usually the merchant),
- *     a code written in LETTERS survives, and so does a person's name written inside an alert — the
- *     claim is "every number", not "every secret".
+ *     card tail, an email, a UPI VPA, or a per-customer link path **from an ordinary dotted host**.
+ *     The words that explain why a message did or did not parse survive. Honest limits, matching
+ *     `docs/SMS-CAPTURE-DEBUG.md` exactly — an earlier version of this list understated them:
+ *      - the link HOST is kept (it is usually the merchant), INCLUDING a per-customer subdomain;
+ *      - for a dotless, IDN or single-letter-TLD host the PATH survives too (`sbi/pay/aB#cD#e`), and a
+ *        port (`host:#/x`) is not matched at all — those are the identifier the rule exists to remove;
+ *      - a code written in LETTERS survives, and so does a person's name written inside an alert.
+ *     The claim is "every number", not "every secret".
  *  4. **Only header-shaped senders are kept** — an ALLOW-LIST, not an address detector. Indian bank
  *     alerts arrive from alphanumeric headers ("AD-HDFCBK"), which are exactly what we need to read
  *     when the allowlist misses one; anything with whitespace, an interior "@" or no letters at all is
@@ -102,7 +106,9 @@ class SmsDebugLog @Inject constructor() {
         /** Already in the ledger or the review queue, so no prompt is posted. */
         ALREADY_KNOWN,
 
-        /** The notification twin of this alert claimed the prompt moments ago. One prompt is the contract. */
+        /** A twin of this alert claimed the prompt moments ago — the SMS and notification twins of one
+         *  payment, or one SMS the phone delivered twice. Deliberately does NOT name the channel: with
+         *  notification capture off, which is the default, no notification is involved at all. */
         TWIN_ALREADY_PROMPTED,
 
         /**

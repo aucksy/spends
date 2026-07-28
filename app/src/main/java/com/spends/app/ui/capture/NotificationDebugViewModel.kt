@@ -89,22 +89,16 @@ class NotificationDebugViewModel @Inject constructor(
                 appendLine("  outcome : ${e.outcome}")
                 e.detail?.let { appendLine("  detail  : $it") }
                 appendLine("  title   : ${e.title ?: "(none)"}")
-                appendLine("  text    : ${body(e.text, redact)}")
-                appendLine("  bigText : ${body(e.bigText, redact)}")
+                appendLine("  text    : ${bodyFor(e.text, redact)}")
+                appendLine("  bigText : ${bodyFor(e.bigText, redact)}")
                 appendLine("  senders : ${e.messageSenders.joinToString(" | ").ifBlank { "(no messaging style)" }}")
             }
         }
     }
 
-    private fun body(value: String?, redact: Boolean): String = when {
-        value == null -> "(none)"
-        redact -> "(withheld — ${value.length} chars; sender didn't match a bank, so this may be a personal message)"
-        else -> value
-    }
-
     private fun yesNo(v: Boolean) = if (v) "YES" else "NO"
 
-    private companion object {
+    internal companion object {
         /** Outcomes reached WITHOUT the sender resolving to a tracked bank — body withheld from export. */
         val REDACTED_OUTCOMES = setOf(
             NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED,
@@ -112,5 +106,17 @@ class NotificationDebugViewModel @Inject constructor(
             NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT,
             NotificationDebugLog.Outcome.SKIPPED_SHAPE,
         )
+
+        /**
+         * In the companion, internal, so a unit test can reach it: this and [REDACTED_OUTCOMES] together
+         * are the single gate between a personal chat's message body and the clipboard, and they had no
+         * test at all. Ten mutations of that gate (emptying the set, inverting the test, dropping any one
+         * member, never withholding) left the whole suite green. See `NotificationReportRedactionTest`.
+         */
+        internal fun bodyFor(value: String?, redact: Boolean): String = when {
+            value == null -> "(none)"
+            redact -> "(withheld — ${value.length} chars; sender didn't match a bank, so this may be a personal message)"
+            else -> value
+        }
     }
 }

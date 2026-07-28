@@ -331,8 +331,8 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             }
         } else {
             // "a twin", not "the SMS twin": on an RCS-only alert — the case notification capture exists
-                // for — the twin that claimed the prompt is another NOTIFICATION, and no SMS exists at all.
-                note(NotificationDebugLog.Outcome.DUPLICATE, "a twin already claimed the prompt")
+            // for — the twin that claimed the prompt is another NOTIFICATION, and no SMS exists at all.
+            note(NotificationDebugLog.Outcome.DUPLICATE, "a twin already claimed the prompt")
         }
         // A dropped prompt means the SMS receiver already prompted a twin of this transaction; every
         // write path re-checks the exact + relaxed hashes, so nothing can double-add regardless.
