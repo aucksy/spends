@@ -388,7 +388,6 @@ class SmsDebugLogTest {
         assertTrue(log.state.value.entries.single().body!!.contains("AMAZON.IN"))
     }
 
-    /** A UPI VPA and an email are the same identifier class, and neither is caught by the link rule. */
     /**
      * ⭐ The body rule stripped the VPA and `detail` reprinted it one line above, undoing the rule
      * entirely — `detail` carries the PARSED merchant, which is a verbatim substring of the bank's text.
@@ -466,7 +465,15 @@ class SmsDebugLogTest {
         assertTrue(body.contains("(address)"))
     }
 
-    /** `detail` is not masked — it is Spends' own parse, not the bank's words — but it is still capped. */
+    /**
+     * `detail` keeps its NUMBERS — the parsed amount is the whole reason masking the body costs nothing —
+     * but it is address-masked and capped.
+     *
+     * This comment used to read "`detail` is not masked: it is Spends' own parse, not the bank's words".
+     * That sentence was the entire defect: the parse is made OF the bank's words, so `detail` reprinted
+     * the UPI VPA that the body rule had just stripped. Left in place it would have talked the next
+     * reader back into it, seventy lines from the test that now disproves it.
+     */
     @Test
     fun `long detail is clipped`() {
         val log = log()

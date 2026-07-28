@@ -147,7 +147,8 @@ a caller cannot assert "this came from a bank" and be believed:
 2. **…and only for an outcome reached with the capture switch ON** (`BODY_BEARING`). An owner who never
    enabled capture never has a bank alert transcribed.
 3. **Every stored body has every number masked, every link PATH removed and every address removed** —
-   unconditionally, and the same rules are applied to `detail`. Links matter because Indian bank alerts
+   unconditionally — and the ADDRESS rule is applied to `detail` too (not the numeral rule: the parsed
+   amount is precisely what makes masking the body free). Links matter because Indian bank alerts
    carry per-customer short paths that identify the recipient; the HOST is kept, because it is the
    merchant and never the identifier (`AMAZON.IN/(link)`, `HDFCBK.IO/(link)`). Addresses matter because
    statement and UPI alerts quote the registered email or the payee's VPA — and because `detail` carries
