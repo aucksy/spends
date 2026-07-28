@@ -112,6 +112,31 @@ class SmsDebugViewModel @Inject constructor(
 }
 
 /**
+ * What the empty message list means. Pure, and living here beside [smsVerdictOf] rather than inline in
+ * the screen, because inline is how it came to contradict the verdict printed a few dp above it.
+ *
+ * It branched on `totalReceived` ALONE — the exact defect corrected in the verdict across four rounds —
+ * so in two reachable states it asserted the opposite of the card above:
+ *  - a graph failure records nothing and never calls `recordReceived()`, so the verdict correctly said
+ *    "a fault inside Spends, not your phone" while this line said "Android isn't delivering SMS to
+ *    Spends at all", which is the precise claim `ReceiverFailures` was built to prevent;
+ *  - after "Clear what's recorded" the verdict correctly said "delivery was working" beside a kept
+ *    timestamp, while this line said "Nothing yet".
+ *
+ * The lesson is the one this whole screen keeps teaching: a sentence that names a cause has to see
+ * every input that bears on it, and it has to be somewhere a test can reach.
+ */
+fun smsEmptyStateOf(totalReceived: Int, graphFailures: Int, lastReceivedAt: Long?): String = when {
+    totalReceived > 0 -> "Counted $totalReceived, but none recorded in detail yet."
+    graphFailures > 0 -> "Nothing recorded — the app couldn't start up to handle what arrived. " +
+        "See the line above; that's a fault inside Spends, not your phone."
+    lastReceivedAt != null -> "Nothing since you cleared this. Send yourself a text — the last one " +
+        "before you cleared did reach Spends, so delivery was working."
+    else -> "Nothing yet. Leave the app open and send yourself any text — if this stays empty, " +
+        "Android isn't delivering SMS to Spends at all, which is the answer in itself."
+}
+
+/**
  * The one line that says which link is broken. Pure so every branch is directly testable — the verdict
  * is the whole point of the screen and it must not be able to contradict the counters printed beneath it.
  *

@@ -287,7 +287,11 @@ private fun plainOutcome(o: NotificationDebugLog.Outcome): String = when (o) {
         "⚠️ Readable text was there but Spends looked in the wrong place — this one is a bug we can fix"
     NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "Text was readable, but the sender isn't a bank Spends knows"
     NotificationDebugLog.Outcome.TOO_OLD -> "Skipped — older than the capture window"
-    NotificationDebugLog.Outcome.NOT_A_TRANSACTION -> "Read it, but it isn't a transaction (OTP / promo / statement)"
+    // Open-ended, matching the SMS screen: both paths take this verdict from the same SmsParser, so the
+    // closed list was false here for exactly the same reason — a real SBI UPI debit or an HDFC IMPS
+    // transfer the parser cannot read lands here and is a genuine money movement.
+    NotificationDebugLog.Outcome.NOT_A_TRANSACTION ->
+        "Read it, but Spends didn't read it as a transaction (OTP, promo, declined, statement — or a format it can't parse yet)"
     NotificationDebugLog.Outcome.DUPLICATE -> "A transaction we already have"
     NotificationDebugLog.Outcome.QUEUED -> "✅ Queued in your review list"
     NotificationDebugLog.Outcome.PROMPTED -> "✅ Showed the Review & Add prompt"

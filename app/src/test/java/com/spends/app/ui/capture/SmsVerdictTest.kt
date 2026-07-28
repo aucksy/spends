@@ -282,6 +282,52 @@ class SmsVerdictTest {
     }
 
     /**
+     * ⭐ The empty-message-list sentence, which lived inline in the screen and therefore had no test at
+     * all — and branched on `totalReceived` ALONE, the exact defect corrected in the verdict across four
+     * rounds. In two reachable states it asserted the OPPOSITE of the card printed a few dp above it.
+     */
+    @Test
+    fun `the empty list never contradicts the verdict above it`() {
+        // A graph failure records nothing and never calls recordReceived(), so the verdict says "a fault
+        // inside Spends" while this line used to say "Android isn't delivering SMS to Spends at all" —
+        // the precise claim ReceiverFailures exists to prevent.
+        val fault = smsEmptyStateOf(totalReceived = 0, graphFailures = 40, lastReceivedAt = null)
+        assertTrue("must not blame delivery over a recorded fault", !fault.contains("isn't delivering"))
+        assertTrue(fault.contains("couldn't start up"))
+
+        // After Clear the verdict says "delivery was working" beside a kept timestamp.
+        val cleared = smsEmptyStateOf(totalReceived = 0, graphFailures = 0, lastReceivedAt = 3_000L)
+        assertTrue("must not deny the timestamp shown above", !cleared.contains("isn't delivering"))
+        assertTrue(cleared.contains("cleared"))
+
+        // The genuine case survives untouched — this is the whole point of the screen.
+        val nothing = smsEmptyStateOf(totalReceived = 0, graphFailures = 0, lastReceivedAt = null)
+        assertTrue(nothing.contains("isn't delivering"))
+
+        val counted = smsEmptyStateOf(totalReceived = 7, graphFailures = 0, lastReceivedAt = 1_000L)
+        assertTrue(counted.contains("7"))
+
+        assertTrue("all four states distinct", setOf(fault, cleared, nothing, counted).size == 4)
+    }
+
+    /**
+     * `plainSmsOutcome` had no test of any kind, so the per-message line could name any cause at all.
+     * The closed list "(OTP / promo / statement)" was false for a real SBI UPI debit — a genuine money
+     * movement the parser cannot read — which is why the arm must stay open-ended.
+     */
+    @Test
+    fun `every outcome has a distinct plain-English line, and the parse failure stays open-ended`() {
+        val all = SmsDebugLog.Outcome.entries.map { plainSmsOutcome(it) }
+
+        assertTrue("no blank lines", all.none { it.isBlank() })
+        assertTrue("no two outcomes read the same", all.toSet().size == all.size)
+
+        val notTxn = plainSmsOutcome(SmsDebugLog.Outcome.NOT_A_TRANSACTION)
+        assertTrue("must not close the list", !notTxn.trimEnd().endsWith("statement)"))
+        assertTrue(notTxn.contains("can't parse"))
+    }
+
+    /**
      * A verdict that can't tell two opposite states apart is worse than none: it invites a wrong
      * conclusion with full confidence. Every branch must be distinguishable.
      */

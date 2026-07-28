@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 /**
  * TEMPORARY owner-facing diagnostic for **live SMS capture** — the sibling of [NotificationDebugScreen].
  *
- * Live capture fails silently at nine different points and the phone shows the same thing for all of
+ * Live capture fails silently at eleven different points and the phone shows the same thing for all of
  * them: nothing. The notification side has had a screen like this since v1.57.0, which is why its
  * failures can be narrowed down in minutes; the SMS side had none, and a July 2026 investigation into
  * total capture loss ran out of road because of it.
@@ -192,9 +192,10 @@ fun SmsDebugScreen(
             Text(
                 "The report lists the sender name of each text below — that is how a bank whose name " +
                     "has changed gets spotted — but the WORDS only from senders it recognised as " +
-                    "banks, with every number replaced by \"#\", addresses removed and links stripped " +
-                    "out (keeping the shop's site name where there is one). The amount Spends read is " +
-                    "shown separately. Phone numbers and email addresses never appear; a person's name " +
+                    "banks, with every number replaced by \"#\", email addresses removed, and most " +
+                    "links replaced by \"(link)\" — sometimes keeping the shop's site name, and an " +
+                    "unusual one may survive with its numbers masked. The amount Spends read is shown " +
+                    "separately. Phone numbers and email addresses never appear; a person's name " +
                     "written inside an alert can. Have a quick look before you send it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -214,13 +215,7 @@ fun SmsDebugScreen(
             Spacer(Modifier.height(6.dp))
             if (log.entries.isEmpty()) {
                 Text(
-                    if (log.totalReceived == 0) {
-                        "Nothing yet. Leave the app open and send yourself any text — if this stays " +
-                            "empty, Android isn't delivering SMS to Spends at all, which is the " +
-                            "answer in itself."
-                    } else {
-                        "Counted ${log.totalReceived}, but none recorded in detail yet."
-                    },
+                    smsEmptyStateOf(log.totalReceived, state.graphFailures, log.lastReceivedAt),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -288,7 +283,7 @@ private fun SmsDebugField(label: String, value: String?) {
 private fun smsYesNo(v: Boolean) = if (v) "Yes" else "No"
 
 /** Plain-English name for where a message stopped. */
-private fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
+internal fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
     SmsDebugLog.Outcome.DEMO_MODE -> "Ignored — demo mode is on, so real alerts are left alone"
     SmsDebugLog.Outcome.NO_MESSAGE_DATA -> "Arrived with no readable message in it"
     SmsDebugLog.Outcome.BLANK_BODY -> "Arrived, but the message text was empty"

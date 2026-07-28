@@ -588,6 +588,11 @@ class SmsDebugLogTest {
 
         val body = log.state.value.entries.single().body!!
         assertTrue("the VPA must not survive", !body.contains("aakashpahuja"))
+        // The DOMAIN half too. Every address test asserted only on the local part or on "@ybl", so a
+        // rule stripping just the local part and the "@" satisfied all three — "aakashpahuja@okhdfcbank"
+        // would have been stored as "(address)okhdfcbank". Same failure shape as the four dead tests
+        // this feature already produced: asserting on what a change REMOVES, but only half of it.
+        assertTrue("nor the handle it was addressed to", !body.contains("okhdfcbank"))
         assertTrue(body.contains("(address)"))
     }
 
