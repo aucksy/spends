@@ -180,6 +180,19 @@ class SmsDebugLogTest {
         assertNull(log.state.value.entries.single().detail)
     }
 
+    /**
+     * `detail` is gated by BOTH content rules, not just the sender one. Unreachable from today's
+     * callers, which is exactly why it needs a test: the class's stance is that it does not trust its
+     * callers, and without this the gate could be deleted with the whole suite still green.
+     */
+    @Test
+    fun `detail is withheld on an outcome reached before capture was enabled`() {
+        val log = log()
+        log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.CAPTURE_OFF, detail = "expense 50000 paise · SHOP")
+
+        assertNull(log.state.value.entries.single().detail)
+    }
+
     @Test
     fun `detail is kept for a recognised bank`() {
         val log = log()
@@ -236,10 +249,24 @@ class SmsDebugLogTest {
      * telling the owner to report.
      */
     @Test
-    fun `an A2P header carrying an at-sign is not mistaken for an email`() {
+    fun `an A2P header carrying at-sign padding is not mistaken for an email`() {
         assertEquals("AD-HDFCBK@", SmsDebugLog.maskSender("AD-HDFCBK@"))
         assertEquals("VM-ICICIB@@", SmsDebugLog.maskSender("VM-ICICIB@@"))
-        assertEquals("HDFCBK@AIRTEL", SmsDebugLog.maskSender("HDFCBK@AIRTEL"))
+    }
+
+    /**
+     * ⭐ The rule is an ALLOW-LIST — keep what is header-shaped — not an address detector. Both
+     * detector versions failed, in opposite directions: `contains('@')` masked the padded headers above,
+     * and the anchored single-`@` email pattern that replaced it was strictly WEAKER than what it
+     * replaced, letting `john.smith@gmail.com@` (the same GSM padding, on an address) through verbatim.
+     * An allow-list cannot fail that way: a shape it doesn't recognise defaults to withheld.
+     */
+    @Test
+    fun `anything not header-shaped is withheld, however it is spelled`() {
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("john.smith@gmail.com@"))
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("@john.smith@gmail.com"))
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("\"John Smith\" <john@gmail.com>"))
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("HDFCBK@AIRTEL"))
     }
 
     @Test
@@ -283,7 +310,9 @@ class SmsDebugLogTest {
         log.record(1L, BANK, "Rs 5 debited " + "x".repeat(5_000), SmsDebugLog.Outcome.PROMPTED)
 
         val body = log.state.value.entries.single().body!!
-        assertTrue(body.length <= 501)
+        // assertEquals, not <=: the loose bound stayed green for a cap of 300 or even 60, so it pinned
+        // the existence of a cap but not its value.
+        assertEquals(501, body.length)
         assertTrue(body.endsWith("…"))
     }
 
@@ -317,12 +346,43 @@ class SmsDebugLogTest {
         assertTrue(body.contains("(link)"))
     }
 
+    /**
+     * Deliberately a host with NO path: the bare-host alternative requires a "/", so only the
+     * scheme/www alternative can catch this. The first version used an https URL that the bare-host
+     * rule also matched, so deleting the scheme alternative left both link tests green.
+     */
     @Test
-    fun `an https link is removed too`() {
+    fun `a www link with no path is removed by the scheme rule`() {
         val log = log()
-        log.record(1L, BANK, "Rs.5 debited. https://sbi.co.in/s/Kq7Lm2Zx9 to view", SmsDebugLog.Outcome.PROMPTED)
+        log.record(1L, BANK, "Rs.5 debited. Visit www.hdfcbankKqLm for more", SmsDebugLog.Outcome.PROMPTED)
 
-        assertTrue(!log.state.value.entries.single().body!!.contains("Kq"))
+        val body = log.state.value.entries.single().body!!
+        assertTrue(!body.contains("KqLm"))
+        assertTrue(body.contains("(link)"))
+    }
+
+    /**
+     * An Indian POS descriptor reads exactly like a bare host. Case-insensitivity applied to the whole
+     * pattern made `[a-z]{2,}` match uppercase, so AMAZON.IN/PAY became "(link)" — destroying the
+     * merchant token in the one outcome where it IS the diagnosis.
+     */
+    @Test
+    fun `an uppercase merchant descriptor is not mistaken for a link`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.500 spent at AMAZON.IN/PAY", SmsDebugLog.Outcome.NOT_A_TRANSACTION)
+
+        assertTrue(log.state.value.entries.single().body!!.contains("AMAZON.IN/PAY"))
+    }
+
+    /** A UPI VPA and an email are the same identifier class, and neither is caught by the link rule. */
+    @Test
+    fun `an address in the body is removed`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.500 debited and credited to aakashpahuja@okhdfcbank", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("the VPA must not survive", !body.contains("aakashpahuja"))
+        assertTrue(body.contains("(address)"))
     }
 
     /** `detail` is not masked — it is Spends' own parse, not the bank's words — but it is still capped. */

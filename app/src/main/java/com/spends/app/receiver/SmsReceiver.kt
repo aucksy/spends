@@ -110,6 +110,10 @@ class SmsReceiver : BroadcastReceiver() {
             Deps(entry.captureRepository(), entry.settingsRepository(), entry.captureNotifier(), entry.recentCaptureGuard())
         }.getOrNull() ?: run {
             SmsDebugLog.ReceiverFailures.recordGraphFailure()
+            // Recorded, unlike the two failures above it, because here the log IS in hand. Leaving it
+            // to the counter alone left the message list empty beside a non-zero delivered count, and
+            // the verdict then blamed the sender allowlist for a database that would not open.
+            runCatching { debug.record(receivedAt, sender, body, SmsDebugLog.Outcome.APP_NOT_READY) }
             return
         }
         val (capture, settings, notifier, guard) = deps
@@ -133,17 +137,15 @@ class SmsReceiver : BroadcastReceiver() {
                 val preview = capture.preview(sender, body, receivedAt)
                 if (preview == null) {
                     if (recognised) {
-                        // Masking every body cost this outcome its diagnosis: a bank alert usually fails
-                        // to parse on an amount FORMAT the regex missed, and "Rs.#" cannot show which.
-                        // The parser's own verdict is reported instead — words only, no digits, so it
-                        // says what broke without reopening the hole the masking closed.
+                        // The parser's own verdict, and ONLY that. An earlier version also reported
+                        // "amount found / no amount matched" and the direction — both dead: reaching
+                        // here means the result was not TRANSACTION, and every such Parsed carries a
+                        // null amount and kind. Worse, "no amount matched" was usually false, because
+                        // the OTP/promo/declined/mandate rejects fire BEFORE the amount regex ever runs.
+                        // A diagnostic asserting a cause it cannot know is the defect this round exists
+                        // to remove, so it now says only what it actually knows.
                         val p = SmsParser.parse(sender, body, receivedAt)
-                        note(
-                            SmsDebugLog.Outcome.NOT_A_TRANSACTION,
-                            "read as ${p.result.name.lowercase()}" +
-                                (if (p.amountMinor != null) ", amount found" else ", no amount matched") +
-                                (p.kind?.let { ", ${it.name.lowercase()}" } ?: ", no direction word"),
-                        )
+                        note(SmsDebugLog.Outcome.NOT_A_TRANSACTION, "read as ${p.result.name.lowercase()}")
                     } else {
                         note(SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
                     }

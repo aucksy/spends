@@ -9,6 +9,7 @@ import com.spends.app.data.repo.ExpenseRepository
 import com.spends.app.data.repo.PaymentMethodRepository
 import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -211,15 +212,18 @@ class CardsViewModel @Inject constructor(
         banner.update { it.copy(scanning = true, message = null) }
         val end = DateUtils.nowMillis()
         val start = DateUtils.startOfDayMillis(LocalDate.now(DateUtils.ZONE).minusMonths(monthsBack.toLong()))
-        // Three outcomes, three sentences. A throw and a null are DIFFERENT causes — folding both through
-        // getOrNull() and naming only demo mode blamed a mode that wasn't on for a permission that was
-        // missing. The wording lives in a pure, tested function rather than inline here.
+        // Four outcomes, four sentences. A throw, a refusal and an unreadable inbox are DIFFERENT causes;
+        // folding them together named a mode that wasn't on for a permission that was missing. The
+        // wording lives in a pure, tested function rather than inline here.
         val result = runCatching { smsCaptureRepository.scanInboxForCards(start, end) }
+        // runCatching also catches CancellationException, which would render as "check Spends still has
+        // SMS permission" for a screen the user simply navigated away from. Let it cancel the coroutine.
+        result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
         banner.update {
             it.copy(
                 scanning = false,
                 message = SmsCaptureRepository.cardScanMessage(
-                    added = result.getOrNull(),
+                    scan = result.getOrNull(),
                     threw = result.isFailure,
                 ),
             )

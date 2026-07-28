@@ -15,6 +15,9 @@ import org.junit.Test
  */
 class ScanMessageTest {
 
+    private fun scan(added: Int) = SmsCaptureRepository.CardScan(added)
+    private fun demoScan() = SmsCaptureRepository.CardScan(0, refusedDemoMode = true)
+
     private fun result(scanned: Int, queued: Int, skipped: Int, demo: Boolean = false) =
         SmsCaptureRepository.ScanResult(
             scanned = scanned,
@@ -104,7 +107,7 @@ class ScanMessageTest {
      */
     @Test
     fun `a card scan that threw is not blamed on demo mode`() {
-        val threw = SmsCaptureRepository.cardScanMessage(added = null, threw = true)
+        val threw = SmsCaptureRepository.cardScanMessage(scan = null, threw = true)
 
         assertTrue(threw.contains("permission"))
         assertTrue("must not name a cause it cannot know", !threw.contains("demo"))
@@ -112,7 +115,7 @@ class ScanMessageTest {
 
     @Test
     fun `a card scan refused by demo mode says so, and claims nothing about the inbox`() {
-        val demo = SmsCaptureRepository.cardScanMessage(added = null, threw = false)
+        val demo = SmsCaptureRepository.cardScanMessage(scan = demoScan(), threw = false)
 
         assertTrue(demo.contains("demo mode"))
         assertTrue("must not claim the inbox was read", !demo.contains("No new cards"))
@@ -120,25 +123,38 @@ class ScanMessageTest {
 
     @Test
     fun `a genuine empty result still reads as an empty result`() {
-        assertEquals("No new cards found in SMS", SmsCaptureRepository.cardScanMessage(added = 0, threw = false))
+        assertEquals("No new cards found in SMS", SmsCaptureRepository.cardScanMessage(scan = scan(0), threw = false))
     }
 
     @Test
     fun `found cards are counted and pluralised`() {
-        assertEquals("Found 1 new card to review", SmsCaptureRepository.cardScanMessage(1, false))
-        assertEquals("Found 3 new cards to review", SmsCaptureRepository.cardScanMessage(3, false))
+        assertEquals("Found 1 new card to review", SmsCaptureRepository.cardScanMessage(scan(1), false))
+        assertEquals("Found 3 new cards to review", SmsCaptureRepository.cardScanMessage(scan(3), false))
     }
 
-    /** The three "nothing to show" causes must never share a sentence — that identity is the defect. */
+    /**
+     * FOUR causes now, not three. "Refused by demo mode" and "couldn't read the inbox" shared a null for
+     * one review round, and the shared sentence blamed demo mode for a null cursor with demo mode off —
+     * the same defect, relocated. The API could not express the fourth state, so no test could catch it.
+     */
     @Test
-    fun `refused, failed and empty are three distinct sentences`() {
+    fun `refused, unreadable, failed and empty are four distinct sentences`() {
         val all = listOf(
             SmsCaptureRepository.cardScanMessage(null, threw = true),
             SmsCaptureRepository.cardScanMessage(null, threw = false),
-            SmsCaptureRepository.cardScanMessage(0, threw = false),
+            SmsCaptureRepository.cardScanMessage(demoScan(), threw = false),
+            SmsCaptureRepository.cardScanMessage(scan(0), threw = false),
         )
 
-        assertEquals(3, all.toSet().size)
+        assertEquals(4, all.toSet().size)
+    }
+
+    @Test
+    fun `an unreadable card scan is not blamed on demo mode`() {
+        val unreadable = SmsCaptureRepository.cardScanMessage(scan = null, threw = false)
+
+        assertTrue(!unreadable.contains("demo"))
+        assertTrue(!unreadable.contains("No new cards"))
     }
 
     @Test

@@ -69,6 +69,14 @@ class SmsCaptureRepository @Inject constructor(
         val refusedDemoMode: Boolean = false,
     )
 
+    /**
+     * Outcome of a card-discovery inbox scan. [refusedDemoMode] is its own field for the same reason
+     * [ScanResult] has one, and learned the same way: collapsing "demo mode declined to look" into the
+     * same value as "the inbox could not be read" made a null cursor tell the owner to turn off a mode
+     * that wasn't on.
+     */
+    data class CardScan(val added: Int, val refusedDemoMode: Boolean = false)
+
     /** A read-only summary of a parsed SMS for the live capture prompt. [dedupeHash] + [relaxedHash] +
      *  [refNumber] let both live paths collapse the SMS + notification twins of one alert into ONE
      *  prompt — including twins whose texts differ only by a lost reference number (Phase 4). */
@@ -465,17 +473,21 @@ class SmsCaptureRepository @Inject constructor(
      * (a credit-card sender + a parseable last4) as review candidates — the Cards tab "Scan for cards".
      * Never silent: each lands in "Cards to review" for the user to Confirm / Edit / dismiss. Writes
      * NOTHING to the ledger. Returns the count of NEW candidates (existing/dismissed cards are skipped),
-     * or **null when the inbox was never read** — see the demo-mode guard below.
+     * a [CardScan] flagged [CardScan.refusedDemoMode] when demo mode declined to look, or **null when
+     * the inbox could not be READ**.
+     *
+     * Those last two were one value for exactly one review round, and it produced the same defect the
+     * round set out to remove: a null cursor with demo mode OFF told the owner to turn demo mode off.
+     * Three causes, three values — matching [scanHistory], which had already learned this.
      */
-    suspend fun scanInboxForCards(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): Int? =
+    suspend fun scanInboxForCards(startMillis: Long, endExclusiveMillis: Long, maxMessages: Int = 8000): CardScan? =
         withContext(Dispatchers.IO) {
             // Same reasoning as scanHistory — this reads the real inbox and would write the user's genuine
             // card last4 + institution into a database that gets deleted.
             //
-            // Returns NULL, not 0: the caller renders 0 as "No new cards found in SMS", which is a
-            // statement about an inbox this code refused to open. Same conflation of "found nothing" with
-            // "didn't look" that the scan message carried, one function below it.
-            if (DemoMode.isEnabled(context)) return@withContext null
+            // Its own value, not 0 and not null: 0 renders as "No new cards found in SMS" (a statement
+            // about an inbox this code refused to open) and null now means "couldn't read it".
+            if (DemoMode.isEnabled(context)) return@withContext CardScan(0, refusedDemoMode = true)
             // Serialise with the rest of capture (matching scanHistory) so two scans — or a scan racing
             // another card-discovery — can't both pass discoverCard's read-then-insert check and double-add.
             captureMutex.withLock {
@@ -529,7 +541,7 @@ class SmsCaptureRepository @Inject constructor(
                 statementDays.forEach { (last4, days) ->
                     modeDay(days)?.let { paymentMethodRepository.proposeBillingDay(last4, it) }
                 }
-                added
+                CardScan(added)
             }
         }
 
@@ -986,10 +998,11 @@ class SmsCaptureRepository @Inject constructor(
          * revoked READ_SMS — the exact permission split MIUI and ColorOS expose separately — told the
          * owner to turn off a mode that wasn't on, and sent them looking in the wrong place entirely.
          */
-        fun cardScanMessage(added: Int?, threw: Boolean): String = when {
+        fun cardScanMessage(scan: CardScan?, threw: Boolean): String = when {
             threw -> "Couldn't read your messages — check Spends still has SMS permission."
-            added == null -> "Not while demo mode is on — your real messages were left unread."
-            added > 0 -> "Found $added new card${plural(added)} to review"
+            scan == null -> "Couldn't read the inbox."
+            scan.refusedDemoMode -> "Not while demo mode is on — your real messages were left unread."
+            scan.added > 0 -> "Found ${scan.added} new card${plural(scan.added)} to review"
             else -> "No new cards found in SMS"
         }
 

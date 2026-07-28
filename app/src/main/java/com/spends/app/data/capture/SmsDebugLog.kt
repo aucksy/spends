@@ -1,5 +1,6 @@
 package com.spends.app.data.capture
 
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,6 +77,15 @@ class SmsDebugLog @Inject constructor() {
         /** The "Detect from bank SMS" switch is off. */
         CAPTURE_OFF,
 
+        /**
+         * The message arrived but the app could not build what it needed to handle it — the Room
+         * database failing to open is the realistic case. Recorded rather than left as a silent gap:
+         * the counter alone left the entry list empty, which read as "no messages at all" beside a
+         * non-zero delivered count. Deliberately absent from [BODY_BEARING] — nothing was inspected,
+         * so there is nothing worth transcribing.
+         */
+        APP_NOT_READY,
+
         /** The sender header isn't a bank [SenderAllowlist] knows. Body withheld — likely personal. */
         SENDER_NOT_RECOGNISED,
 
@@ -150,6 +160,16 @@ class SmsDebugLog @Inject constructor() {
 
         fun recordGraphFailure() {
             _graphFailures.update { it + 1 }
+        }
+
+        /**
+         * Test-only. This is a JVM-global object and Gradle runs the module's unit tests in one JVM, so
+         * without an escape hatch the first test that ever increments it silently pollutes every later
+         * reader. Deliberately NOT called by `clear()` — see the class doc for why.
+         */
+        @VisibleForTesting
+        internal fun resetForTest() {
+            _graphFailures.value = 0
         }
     }
 
@@ -229,9 +249,13 @@ class SmsDebugLog @Inject constructor() {
     private fun storableBody(institution: String?, body: String?, outcome: Outcome): String? {
         if (institution == null || outcome !in BODY_BEARING) return null
         if (body.isNullOrBlank()) return null
-        val collapsed = body.replace('\n', ' ').replace(WHITESPACE, " ").trim()
+        // Bounded BEFORE the regexes: LINK backtracks per start position, so a pathological 5 000-char
+        // body cost hundreds of milliseconds while holding this class's monitor. The output cap runs
+        // after and bounds a different thing.
+        val collapsed = body.take(MAX_SCAN_CHARS).replace('\n', ' ').replace(WHITESPACE, " ").trim()
         val delinked = LINK.replace(collapsed, "(link)")
-        val masked = NUMERAL.replace(delinked, "#").replace(WHITESPACE, " ").trim()
+        val deidentified = ADDRESS.replace(delinked, "(address)")
+        val masked = NUMERAL.replace(deidentified, "#").replace(WHITESPACE, " ").trim()
         return masked.takeIf { m -> m.any { it.isLetter() } }?.clip()
     }
 
@@ -284,19 +308,38 @@ class SmsDebugLog @Inject constructor() {
          * URL-ish tokens → `(link)`. Indian bank alerts routinely carry a PER-CUSTOMER short link whose
          * path is a token identifying the recipient. Digit-masking alone leaves the letters, so
          * `hdfcbk.io/x/aB9cD2e` survives as `hdfcbk.io/x/aB#cD#e` — still enough to identify someone.
+         *
+         * **Case-insensitivity is scoped to the scheme alternative only.** Applying it to the whole
+         * pattern made `[a-z]{2,}` match uppercase, so the bare-host alternative swallowed Indian POS
+         * descriptors whole — `AMAZON.IN/PAY`, `D.MART/ANDHERI`, `IRCTC.CO.IN/EPAY` all became `(link)`,
+         * destroying the merchant token in the one outcome where it IS the diagnosis. Real links in bank
+         * SMS carry a lowercase host; uppercase descriptors are now left alone.
          */
-        private val LINK = Regex("""\S*(?:https?://|www\.)\S*|\S*\.[a-z]{2,}/\S*""", RegexOption.IGNORE_CASE)
+        private val LINK = Regex("""\S*(?i:https?://|www\.)\S*|\S*\.[a-z]{2,}/\S*""")
+
+        /**
+         * Email addresses and UPI VPAs → `(address)`. `maskSender` covers the sender; this covers the
+         * BODY, which had no address rule at all while the screen promised "never an email address".
+         * Statement and mandate alerts quote the registered email, and a UPI alert quotes the payee's
+         * VPA (`name@okhdfcbank`) — the same identifier class, and neither is caught by [LINK], which
+         * requires a path separator.
+         *
+         * Trade-off taken deliberately: a merchant written as `@SHOP` is masked too. The merchant is
+         * reported in `detail` for every parsed outcome, so the diagnosis keeps it; a leaked VPA cannot
+         * be taken back.
+         */
+        private val ADDRESS = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+""")
+
+        /** Bounds the regex work before it runs; the output cap is [MAX_CHARS], applied after. */
+        private const val MAX_SCAN_CHARS = 2_000
 
         private val WHITESPACE = Regex("\\s+")
 
         /**
-         * A real email address, anchored — NOT a bare `contains('@')`, which was the first attempt.
-         * GSM 03.38 encodes `@` as septet 0x00, so trailing `@` padding turns up on genuine alphanumeric
-         * sender IDs in the wild: `AD-HDFCBK@` would have been masked as "an email address" while
-         * [SenderAllowlist] still resolved it to HDFC Bank, contradicting itself on screen — and for an
-         * UNRECOGNISED header it would hide the exact string the verdict tells the owner to report.
+         * `@` padding from GSM 03.38, where septet 0x00 IS `@`, so it appears on genuine alphanumeric
+         * sender IDs. Stripped before the address test rather than tested for — see [maskSender].
          */
-        private val EMAIL = Regex("""^[^@\s]+@[^@\s]+\.[^@\s]+$""")
+        private val AT_PADDING = '@'
 
         /**
          * The only outcomes whose message text may be stored. Every one is reached AFTER the capture
@@ -315,20 +358,30 @@ class SmsDebugLog @Inject constructor() {
 
         /**
          * Bank and other A2P alerts arrive from alphanumeric headers ("AD-HDFCBK", "JD-SBIINB") — the
-         * exact string we need to read when the allowlist misses a bank whose header has changed. Two
-         * shapes are never that, and are replaced by a marker:
-         *  - no letters at all → a person's phone number;
-         *  - contains "@" → an email-to-SMS gateway address, which `displayOriginatingAddress` can
-         *    return and which identifies a person more strongly than the phone number does. The
-         *    letters-present rule alone would have exported it verbatim.
+         * exact string we need to read when the allowlist misses a bank whose header has changed.
+         * Everything that is NOT header-shaped is replaced by a marker.
+         *
+         * **Written as "keep only what is header-shaped", not "mask what looks like an address".** Both
+         * earlier attempts were address-detectors and both were wrong in opposite directions. A bare
+         * `contains('@')` masked `AD-HDFCBK@` — real GSM 03.38 padding — hiding the one string the
+         * verdict asks the owner to report, while [SenderAllowlist] still resolved it and named the bank
+         * beside it. Replacing that with an anchored single-`@` email pattern was then strictly WEAKER
+         * than what it replaced: `john.smith@gmail.com@` carries the same padding, no longer matched,
+         * and went to the clipboard verbatim. An allow-list cannot fail that way — anything not
+         * recognisably a header is withheld, and a new address shape defaults to safe.
          *
          * Pure and public so the rule is directly testable.
          */
-        fun maskSender(sender: String?): String = when {
-            sender.isNullOrBlank() -> "(no sender)"
-            EMAIL.matches(sender.trim()) -> MASKED_EMAIL_SENDER
-            sender.any { it.isLetter() } -> sender
-            else -> MASKED_SENDER
+        fun maskSender(sender: String?): String {
+            if (sender.isNullOrBlank()) return "(no sender)"
+            val bare = sender.trim().trim(AT_PADDING)
+            return when {
+                bare.isBlank() -> "(no sender)"
+                // An interior "@" or any whitespace means an address or a display name, never a header.
+                bare.any { it == AT_PADDING || it.isWhitespace() } -> MASKED_EMAIL_SENDER
+                bare.none { it.isLetter() } -> MASKED_SENDER
+                else -> sender
+            }
         }
     }
 }

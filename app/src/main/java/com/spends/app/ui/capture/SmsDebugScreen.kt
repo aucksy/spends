@@ -292,6 +292,7 @@ private fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
     SmsDebugLog.Outcome.NO_MESSAGE_DATA -> "Arrived with no readable message in it"
     SmsDebugLog.Outcome.BLANK_BODY -> "Arrived, but the message text was empty"
     SmsDebugLog.Outcome.CAPTURE_OFF -> "Ignored — the \"Detect from bank SMS\" switch is off"
+    SmsDebugLog.Outcome.APP_NOT_READY -> "⚠️ Arrived, but Spends couldn't start up to handle it"
     SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "The sender isn't a bank Spends knows"
     SmsDebugLog.Outcome.NOT_A_TRANSACTION -> "From a known bank, but not a transaction (OTP / promo / statement)"
     // Not "✅ Queued": when the row was already held nothing was inserted this time, and the suppression

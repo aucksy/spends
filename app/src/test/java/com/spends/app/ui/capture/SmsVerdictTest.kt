@@ -97,18 +97,41 @@ class SmsVerdictTest {
     }
 
     /**
-     * ⭐ The counter never decays, so an unscoped branch LATCHED: one transient failure during cold
-     * start permanently suppressed the two actionable diagnoses below it — the unrecognised-sender case
-     * and the blocked-prompt case — for the rest of the app run, while messages flowed in normally.
-     * Same defect class as the un-split `lastReceivedAt`: a latching condition asserting a stale cause.
+     * The counter never decays, so an unscoped branch LATCHED: one transient failure during cold start
+     * permanently suppressed every diagnosis below it for the rest of the app run. The blocked-prompt
+     * case is actionable and independent of the fault, so it must still win.
      */
     @Test
-    fun `a past start-up failure does not hijack the verdict once messages are arriving`() {
-        val senders = verdict(graphFailures = 1, received = 40, fromBanks = 0)
+    fun `a past start-up failure does not hijack an actionable diagnosis`() {
         val blocked = verdict(graphFailures = 1, prompts = false, received = 40, fromBanks = 6)
 
-        assertTrue("the sender diagnosis must survive", senders.contains("recognises"))
         assertTrue("the blocked-prompt diagnosis must survive", blocked.contains("Transaction detection"))
+    }
+
+    /**
+     * ⭐ The other half of that trade, and an earlier version of this file asserted the OPPOSITE.
+     *
+     * `recordReceived()` runs before the dependency-provisioning guard, so a failure to open the Room
+     * database leaves `totalReceived > 0` with `fromKnownBanks == 0` — and the verdict told the owner
+     * their bank's sender name had changed and needed "a one-line fix", above an empty list, while their
+     * database was corrupt. That advice is only safe when every message was actually inspected, and a
+     * recorded fault says they were not. The test that pinned the wrong answer is now inverted.
+     */
+    @Test
+    fun `the sender advice is withheld while a start-up fault is recorded`() {
+        val msg = verdict(graphFailures = 1, received = 40, fromBanks = 0)
+
+        assertTrue("must not send the owner to edit the allowlist", !msg.contains("one-line fix"))
+        assertTrue(msg.contains("failing to start up"))
+    }
+
+    /** An all-clear must never be given over a recorded fault. */
+    @Test
+    fun `a recorded start-up fault suppresses the all-clear`() {
+        val msg = verdict(graphFailures = 3, received = 40, fromBanks = 6)
+
+        assertTrue("must not read as healthy", !msg.contains("Each message below"))
+        assertTrue(msg.contains("3"))
     }
 
     @Test
@@ -185,6 +208,7 @@ class SmsVerdictTest {
             verdict(received = 0, fromBanks = 0, lastReceivedAt = 3_000L),
             verdict(received = 40, fromBanks = 0),
             verdict(prompts = false, received = 40, fromBanks = 6),
+            verdict(graphFailures = 2, received = 40, fromBanks = 6),
             verdict(),
         )
 

@@ -80,12 +80,13 @@ gone stale within a single commit.
 | # | Link | Gate | Outcome recorded |
 |---|------|------|------------------|
 | 0 | Android delivers `SMS_RECEIVED` | force-stop, OEM background kill, revoked grant, hibernation | **nothing at all — `totalReceived` stays 0** |
-| 0b | The app can build its dependency graph | `EntryPointAccessors` / any provision call throws | **`ReceiverFailures.graphFailures`** |
+| 0b | The log itself is obtainable | `EntryPointAccessors` / `smsDebugLog()` throws | **`graphFailures` only — nothing can be recorded** |
 | 1 | Demo mode off | `DemoMode.isEnabled` | `DEMO_MODE` |
 | 2 | Broadcast carries a message | `getMessagesFromIntent` | `NO_MESSAGE_DATA` |
 | 3 | The message has text | `body.isBlank()` | `BLANK_BODY` |
+| 3b | The rest of the graph builds | `captureRepository()` etc. throws — a corrupt DB opens here | `APP_NOT_READY` **+ `graphFailures`** |
 | 4 | Capture switch on | `smsCaptureEnabled` | `CAPTURE_OFF` |
-| 5 | Sender in `SenderAllowlist` | `SmsCaptureRepository.preview` → `SmsParser.parse` | `SENDER_NOT_RECOGNISED` |
+| 5 | Sender in `SenderAllowlist` | `SenderAllowlist.lookup`, in the receiver | `SENDER_NOT_RECOGNISED` |
 | 6 | Parses as a money movement | same | `NOT_A_TRANSACTION` |
 | 7 | Pattern not suppressed (#7) | `isPatternSuppressed` | `PATTERN_SUPPRESSED` (queued, not lost) |
 | 8 | Not already held | `isKnownHash` | `ALREADY_KNOWN` |
@@ -97,11 +98,17 @@ gone stale within a single commit.
 before any other check. If it stays at zero while texts are visibly arriving on the phone, Android is not
 delivering to the app and nothing inside Spends can be the cause.
 
-**Link 0b exists so that claim stays true.** A broadcast that arrives but dies before the log can be
-obtained would otherwise leave the counter at zero and let the verdict blame Android in the one case
-where the app is at fault. It is counted in a plain object — the injected log is the thing that failed —
-and is never reset, including by "Clear what's recorded": a confirmed fault outranks tidiness, and the
-failing broadcasts cannot be replayed.
+**Links 0b and 3b exist so that claim stays true**, and the split between them matters. At 0b nothing
+can be recorded, so only the counter moves and the verdict keys on `totalReceived == 0`. At 3b the log
+IS in hand, so the message is recorded as `APP_NOT_READY` — because `recordReceived()` has already run
+by then, and keying the verdict on a zero count would have missed the likelier failure entirely. That
+gap shipped for one round: a database that would not open produced "its sender name has changed, that's
+a one-line fix", printed above an empty list. The sender advice is now withheld whenever a fault is
+recorded, since it is only safe when every message was actually inspected.
+
+The counter is a plain object — the injected log is the thing that failed — and is never reset,
+including by "Clear what's recorded": a confirmed fault outranks tidiness, and the failing broadcasts
+cannot be replayed.
 
 ## Two real defects found while building the diagnostic
 
@@ -134,14 +141,17 @@ a caller cannot assert "this came from a bank" and be believed:
    `SenderAllowlist`. Everything else keeps `body = null` regardless of what was passed in.
 2. **…and only for an outcome reached with the capture switch ON** (`BODY_BEARING`). An owner who never
    enabled capture never has a bank alert transcribed.
-3. **Every stored body has every number masked and every link removed** — unconditionally. Indian bank
-   alerts carry per-customer short links whose path identifies the recipient, and digit-masking alone
-   left the token mostly intact. The honest claim is "every number", not "every secret": a code written
-   in letters would survive, which no Indian bank uses.
-4. **A sender that isn't an A2P header is masked**: no letters at all means a phone number; one matching
-   a real email shape is an email-to-SMS address, a stronger identifier than the number. Deliberately not
-   a bare `contains('@')` — GSM 03.38 encodes `@` as septet 0x00, so trailing `@` padding appears on
-   genuine sender IDs, and masking `AD-HDFCBK@` would hide the exact string the verdict asks for.
+3. **Every stored body has every number masked, every link removed and every address removed** —
+   unconditionally. Links matter because Indian bank alerts carry per-customer short paths that identify
+   the recipient; addresses matter because statement and UPI alerts quote the registered email or the
+   payee's VPA. The honest claim is "every number", not "every secret": a code written in letters would
+   survive, which no Indian bank uses.
+4. **Only header-shaped senders are kept.** This is an ALLOW-LIST, not an address detector, and that
+   distinction is the whole lesson: `contains('@')` masked genuine GSM 03.38 padding (`AD-HDFCBK@`,
+   where septet 0x00 *is* `@`), hiding the string the verdict asks the owner to report; the anchored
+   email pattern that replaced it was then strictly weaker than what it replaced, letting
+   `john.smith@gmail.com@` through verbatim. A shape the allow-list doesn't recognise defaults to
+   withheld, so a new address form cannot leak by not having been thought of.
 
 The masking is written **in `SmsDebugLog`**, not borrowed from `SmsParser.aiContextFor` as one revision
 did. That function builds AI context and strips the "not you? / SMS BLOCK…" trailer first, so a body
@@ -151,10 +161,12 @@ leaving the local cap unreachable and untestable. **A privacy control must not b
 whose purpose, and therefore whose future edits, belong to something else.**
 
 `detail` is gated by rules 1 and 2 as well. For a parsed outcome it carries the amount, kind and merchant
-Spends actually read, which is what makes rule 3 cost nothing. For `NOT_A_TRANSACTION` — where masking
-genuinely does remove diagnostic power, since a parse failure is usually an amount *format* the regex
-missed — the receiver supplies a digit-free substitute instead (`read as ignored, no amount matched, no
-direction word`), so the diagnosis survives without reopening the hole.
+Spends actually read, which is what makes rule 3 cost nothing. For `NOT_A_TRANSACTION` the receiver adds the
+parser's own verdict (`read as ignored` / `read as statement`) — and *only* that. An earlier version
+also reported "amount found / no amount matched" and the direction; both were dead code (reaching that
+branch means a null amount and kind), and "no amount matched" was usually false, because the OTP, promo,
+declined and mandate rejects fire before the amount regex ever runs. Masking does cost real diagnostic
+power here, and this narrows the loss rather than papering over it with a claim.
 
 Consequently `buildReport` needs no redaction pass: what reaches it is already safe to paste. That is a
 stronger guarantee than the notification screen's redact-on-the-way-out, which depends on getting an
@@ -204,7 +216,8 @@ The diagnostic is temporary. The **fixes are not** — keep them.
   `debug.recordReceived()` call plus the local `note(...)` helper in `SmsReceiver`
 - `SmsDebugLog.ReceiverFailures` and the `recordGraphFailure()` calls — **but NOT the `runCatching`
   guards around them**, which prevent a crash on the main looper and are a permanent fix (see KEEP)
-- the `graphFailures` parameter threaded through `smsVerdictOf`, `SmsDebugUiState` and `buildReport`
+- the `graphFailures` parameter threaded through `smsVerdictOf` and `SmsDebugUiState`, and the
+  `APP_NOT_READY` outcome
 - `app/src/test/.../SmsDebugLogTest.kt`, `app/src/test/.../ui/capture/SmsVerdictTest.kt`
 
 **KEEP — these are permanent fixes, not diagnostics:**

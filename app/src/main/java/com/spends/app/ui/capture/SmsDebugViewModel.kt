@@ -140,11 +140,10 @@ fun smsVerdictOf(
             "Settings → Apps → Spends → Permissions → SMS."
     !captureEnabled ->
         "The SMS permission is granted, but the \"Detect from bank SMS\" switch is off."
-    // Scoped to totalReceived == 0, and that scoping is load-bearing. Unscoped, this branch LATCHED: the
-    // counter never decays, so a single transient failure during cold start permanently suppressed the
-    // two actionable diagnoses below it — the unrecognised-sender case and the blocked-prompt case — for
-    // the rest of the app run. Placed above the zero-delivery branch, which would otherwise assert
-    // "nothing inside Spends can be the cause" in the one case where Spends IS the cause.
+    // Covers the failures so early that NOTHING could be recorded — the log itself was unobtainable, so
+    // `recordReceived()` never ran either. Must sit above the branch below, which would otherwise assert
+    // "Android is not delivering… nothing inside Spends can be the cause" in the one case where Spends
+    // IS the cause. The LATER provisioning failure is handled differently: it can record, so it does.
     graphFailures > 0 && log.totalReceived == 0 ->
         "$graphFailures text${if (graphFailures == 1) "" else "s"} reached Spends but the app failed " +
             "to start up properly and couldn't handle ${if (graphFailures == 1) "it" else "them"}. " +
@@ -159,7 +158,13 @@ fun smsVerdictOf(
     log.totalReceived == 0 ->
         "Nothing has arrived since you cleared this screen. The last SMS before that did reach " +
             "Spends, so delivery was working — send yourself a text to confirm it still is."
-    log.fromKnownBanks == 0 ->
+    // Guarded on graphFailures, and that guard is the fix for the round-4 blocker. `recordReceived()`
+    // runs BEFORE the dependency-provisioning guard, so the likeliest in-app failure — the one that
+    // opens the Room database — leaves totalReceived > 0 and fromKnownBanks at 0, and this branch fired:
+    // "its sender name has changed, that's a one-line fix", printed above an empty list, sending the
+    // owner to edit the allowlist while their database was corrupt. The advice is only safe when every
+    // message was actually inspected, which a recorded fault says they were not.
+    log.fromKnownBanks == 0 && graphFailures == 0 ->
         "Spends is receiving your SMS (${log.totalReceived} so far), but none came from a sender it " +
             "recognises as a bank. If a bank alert IS in the list below, its sender name has changed " +
             "and needs adding — that's a one-line fix."
@@ -167,6 +172,13 @@ fun smsVerdictOf(
         "Bank alerts are arriving and being read, but your phone won't show the \"Review & Add\" " +
             "prompt — either Spends' notifications are off, or just the \"Transaction detection\" " +
             "category is. They're being put in the review queue instead, so nothing is lost."
+    // Below the actionable diagnoses, so a stale count cannot suppress them — but above the all-clear,
+    // which must never be given over a recorded fault.
+    graphFailures > 0 ->
+        "Messages are being handled now, but $graphFailures earlier " +
+            "text${if (graphFailures == 1) "" else "s"} reached Spends while the app was failing to " +
+            "start up properly, and ${if (graphFailures == 1) "it was" else "they were"} missed. " +
+            "Tell me this number."
     else ->
         "SMS is reaching Spends and bank senders are being recognised. Each message below says " +
             "exactly where it stopped."
