@@ -170,6 +170,9 @@ class SmsDebugLogTest {
         log.record(1L, BANK, ALERT, SmsDebugLog.Outcome.PROMPTED, amountMinor = 50_000L, kind = TxnKind.EXPENSE, note = "SHOP")
 
         val e = log.state.value.entries.single()
+        // The KIND must appear too. Nothing asserted it, so `record` could have dropped the rendered
+        // kind entirely — this round's headline change — with the suite green.
+        assertTrue("the kind is part of the figures", e.detail!!.startsWith("expense "))
         assertTrue("the body carries no digits", e.body!!.none { it.isDigit() })
         assertTrue("the parsed amount is still reportable", e.detail!!.contains("50000"))
     }
@@ -230,6 +233,39 @@ class SmsDebugLogTest {
         assertEquals(SmsDebugLog.MASKED_SENDER, SmsDebugLog.maskSender("+919876543210"))
         assertEquals(SmsDebugLog.MASKED_SENDER, SmsDebugLog.maskSender("9876543210"))
         assertEquals(SmsDebugLog.MASKED_SENDER, SmsDebugLog.maskSender("+91 98765 43210"))
+    }
+
+    /**
+     * ⭐ The `(?U)` flag on the body mask was unkillable: deleting it left the whole suite green while
+     * `Rs.५०० debited` and `OTP ٤٨١٩٢٠` passed through UNMASKED. The only non-Latin-digit test exercised
+     * `maskSender`, which answers a different question — a sender is masked for having no LETTERS, so it
+     * never touches `\d` at all. Kotlin's default `\d` is ASCII `[0-9]`; without `(?U)` an Indic or
+     * Arabic-Indic passcode reaches the clipboard intact.
+     */
+    @Test
+    fun `non-latin digits in a body are masked too`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.५०० debited. OTP ٤٨١٩٢٠ to confirm", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("Devanagari digits must not survive", !body.contains("५००"))
+        assertTrue("Arabic-Indic digits must not survive", !body.contains("٤٨١٩٢٠"))
+        assertTrue("the wording still survives", body.contains("debited"))
+    }
+
+    /**
+     * ⭐ The `https?://` half of LINK was unkillable — the only link test pinned the `www.` half. A
+     * DOTLESS host is the case that separates them: `LINK_PATH` needs a literal dot, so deleting the
+     * scheme alternative leaks the per-customer path as `https://sbi/pay/aB#cD#e`.
+     */
+    @Test
+    fun `a scheme link with a dotless host is removed`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.5 debited. See https://sbi/pay/aB9cD2e", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("only the scheme rule can catch this", !body.contains("aB"))
+        assertTrue(body.contains("(link)"))
     }
 
     /** `Char.isLetter()` is false for every Unicode digit category, so no script bypasses the mask. */

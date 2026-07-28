@@ -156,9 +156,16 @@ a caller cannot assert "this came from a bank" and be believed:
    all three had just been masked. Address-masking `detail` (round 7) closed the `@` half and left the
    digits, because the comment justifying it reasoned only about `@`. Links matter because Indian bank alerts
    carry per-customer short paths that identify the recipient; the HOST is kept, because it is usually
-   the merchant (`AMAZON.IN/(link)`, `HDFCBK.IO/(link)`). **Known gap:** a per-customer SUBDOMAIN
-   (`u-aakash.hdfcbk.io/pay`) is an identifier and survives, as do dotless, IDN and single-letter-TLD
-   hosts. The path rule covers `/`, `?` and `#`; a port (`host:8080/x`) is not matched. Addresses matter because
+   the merchant (`AMAZON.IN/(link)`, `HDFCBK.IO/(link)`). **Known gaps, stated exactly** — an earlier
+   version of this paragraph described them as host-only, which understated them:
+   - a per-customer SUBDOMAIN is itself an identifier and survives: `u-aakash.hdfcbk.io/pay` →
+     `u-aakash.hdfcbk.io/(link)`;
+   - for a **dotless, IDN or single-letter-TLD host the PATH survives too**, because the bare-host rule
+     needs a literal ASCII dot and 2+ ASCII letters: `sbi/pay/aB9cD2e` → `sbi/pay/aB#cD#e`,
+     `hdfcbk.i/aB9cD2e` → `hdfcbk.i/aB#cD#e`. That is the identifier the rule exists to remove. Such a
+     link with a SCHEME (`https://sbi/pay/…`) is caught by the scheme rule; without one it is not;
+   - a port (`host:8080/x`) is not matched.
+   Addresses matter because
    statement and UPI alerts quote the registered email or the payee's VPA — and because `detail` carries
    the PARSED merchant, which is a verbatim substring of the bank's text, so for
    `INR 250 spent at coffeeday@ybl` the body rule stripped the VPA and `detail` reprinted it one line

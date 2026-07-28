@@ -349,11 +349,14 @@ class SmsDebugLog @Inject constructor() {
          * path is a token identifying the recipient. Digit-masking alone leaves the letters, so
          * `hdfcbk.io/x/aB9cD2e` survives as `hdfcbk.io/x/aB#cD#e` — still enough to identify someone.
          *
-         * **Case-insensitivity is scoped to the scheme alternative only.** Applying it to the whole
-         * pattern made `[a-z]{2,}` match uppercase, so the bare-host alternative swallowed Indian POS
-         * descriptors whole — `AMAZON.IN/PAY`, `D.MART/ANDHERI`, `IRCTC.CO.IN/EPAY` all became `(link)`,
-         * destroying the merchant token in the one outcome where it IS the diagnosis. Real links in bank
-         * SMS carry a lowercase host; uppercase descriptors are now left alone.
+         * **The `(?i:)` scoping is historical and no longer load-bearing here.** It was added because a
+         * whole-pattern flag made a `[a-z]{2,}` bare-host alternative match uppercase, which swallowed
+         * Indian POS descriptors whole — `AMAZON.IN/PAY`, `D.MART/ANDHERI`, `IRCTC.CO.IN/EPAY` all
+         * became `(link)`, destroying the merchant token in the one outcome where it IS the diagnosis.
+         * That alternative has since moved to [LINK_PATH], which spells `[A-Za-z]` explicitly, so a
+         * global `(?i)` here would now be equivalent (0 divergences in 200 000 inputs). The FLAG still
+         * matters — without it `WWW.…` leaks — and is pinned by a test; only the scoping is decoration,
+         * kept with this note because it is the reason [LINK_PATH] is spelled the way it is.
          */
         private val LINK = Regex("""\S*(?i:https?://|www\.)\S*""")
 

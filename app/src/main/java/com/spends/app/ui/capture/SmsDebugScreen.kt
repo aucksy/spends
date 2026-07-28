@@ -190,12 +190,12 @@ fun SmsDebugScreen(
             // Every stored body is now masked unconditionally, so this paragraph is finally true — and
             // the fix was to widen the code, not to narrow the promise.
             Text(
-                "The report lists the sender name of every text Spends received — that is how a bank " +
-                    "whose name has changed gets spotted — but the WORDS only from senders it " +
-                    "recognised as banks, with every number replaced by \"#\", addresses removed and " +
-                    "links cut back to their site. The amount Spends read is shown separately. Phone " +
-                    "numbers and email addresses never appear; a person's name written inside an alert " +
-                    "can. Have a quick look before you send it.",
+                "The report lists the sender name of each text below — that is how a bank whose name " +
+                    "has changed gets spotted — but the WORDS only from senders it recognised as " +
+                    "banks, with every number replaced by \"#\", addresses removed and links stripped " +
+                    "out (keeping the shop's site name where there is one). The amount Spends read is " +
+                    "shown separately. Phone numbers and email addresses never appear; a person's name " +
+                    "written inside an alert can. Have a quick look before you send it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
@@ -295,7 +295,13 @@ private fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
     SmsDebugLog.Outcome.CAPTURE_OFF -> "Ignored — the \"Detect from bank SMS\" switch is off"
     SmsDebugLog.Outcome.APP_NOT_READY -> "⚠️ Arrived, but Spends couldn't start up to handle it"
     SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "The sender isn't a bank Spends knows"
-    SmsDebugLog.Outcome.NOT_A_TRANSACTION -> "From a known bank, but not a transaction (OTP / promo / statement)"
+    // Deliberately open-ended. The closed list "(OTP / promo / statement)" named a cause it could not
+    // know: it is printed for the commonest real SBI UPI debit ("debited by 450.0 … trf to …", no "Rs."
+    // prefix) and for a real HDFC IMPS transfer — genuine money movements the parser simply could not
+    // read. On a screen built to stop the app asserting false causes, that line was doing exactly that.
+    SmsDebugLog.Outcome.NOT_A_TRANSACTION ->
+        "From a known bank, but Spends didn't read it as a transaction (OTP, promo, declined, statement " +
+            "— or a format it can't parse yet)"
     // Not "✅ Queued": when the row was already held nothing was inserted this time, and the suppression
     // itself — sticky state from ignoring the alert 3+ times — is the thing worth surfacing here.
     SmsDebugLog.Outcome.PATTERN_SUPPRESSED -> "Suppressed — you've ignored this exact alert before, so it goes to the review queue silently"

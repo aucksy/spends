@@ -148,6 +148,34 @@ class SmsVerdictTest {
     }
 
     /**
+     * ⭐ The round-6 sentence, pinned by ORDER alone — and until now nothing pinned the order.
+     *
+     * The test above sets `appNotReady = 40`, so the app-fault branch fires first and HIDES which branch
+     * would otherwise have caught this. Swapping the sender-advice branch below the blocked-prompt one
+     * resurrected "Bank alerts are arriving and being read … so nothing is lost" verbatim, with
+     * `fromKnownBanks == 0`, and the whole suite stayed green. This is the same state with no fault
+     * recorded, so only the ordering can be what answers it.
+     */
+    @Test
+    fun `no bank recognised outranks blocked prompts, on order alone`() {
+        val msg = verdict(prompts = false, received = 40, fromBanks = 0, appNotReady = 0)
+
+        assertTrue("must never claim alerts were read when none resolved", !msg.contains("being read"))
+        assertTrue("nor claim a recovery it did not perform", !msg.contains("nothing is lost"))
+        assertTrue(msg.contains("recognises"))
+    }
+
+    /** The permission branch must outrank the switch branch: its sentence asserts the permission IS
+     *  granted, which is false when it isn't. No test set both false, so the order was unpinned. */
+    @Test
+    fun `a missing permission outranks the switch being off`() {
+        val msg = verdict(receive = false, capture = false)
+
+        assertTrue(msg.contains("permission to receive SMS"))
+        assertTrue("must not assert a grant that isn't there", !msg.contains("permission is granted"))
+    }
+
+    /**
      * The other half: while the failures are VISIBLE the fault outranks the sender advice, and once they
      * are gone — cleared, or aged out of the 60-entry ring — the advice comes back. Keying on the
      * counter could not express this, because the counter never decays.
