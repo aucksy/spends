@@ -280,8 +280,7 @@ class SmsDebugLog @Inject constructor() {
         } else {
             window
         }
-        val collapsed = scanned.replace('
-', ' ').replace(WHITESPACE, " ").trim()
+        val collapsed = scanned.replace('\n', ' ').replace(WHITESPACE, " ").trim()
         val delinked = LINK_PATH.replace(LINK.replace(collapsed, "(link)"), "$1/(link)")
         val deidentified = ADDRESS.replace(delinked, "(address)")
         val masked = NUMERAL.replace(deidentified, "#").replace(WHITESPACE, " ").trim()
