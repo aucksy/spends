@@ -9,6 +9,7 @@ import com.spends.app.data.capture.RecentCaptureGuard
 import com.spends.app.data.capture.SenderAllowlist
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.capture.SmsDebugLog
+import com.spends.app.data.capture.SmsParser
 import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.settings.SettingsRepository
 import dagger.hilt.EntryPoint
@@ -45,6 +46,15 @@ class SmsReceiver : BroadcastReceiver() {
         fun smsDebugLog(): SmsDebugLog
     }
 
+    /** Everything provisioned in one guarded step, so a graph failure is caught once rather than four
+     *  times — and destructured below to keep the call sites unchanged. */
+    private data class Deps(
+        val capture: SmsCaptureRepository,
+        val settings: SettingsRepository,
+        val notifier: CaptureNotifier,
+        val guard: RecentCaptureGuard,
+    )
+
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
@@ -61,7 +71,10 @@ class SmsReceiver : BroadcastReceiver() {
             SmsDebugLog.ReceiverFailures.recordGraphFailure()
             return
         }
-        val debug = entry.smsDebugLog()
+        val debug = runCatching { entry.smsDebugLog() }.getOrNull() ?: run {
+            SmsDebugLog.ReceiverFailures.recordGraphFailure()
+            return
+        }
         // Counted for EVERY message, before ANY other check — including in demo mode and with capture
         // switched off. If this stays at zero while texts are visibly arriving, Android is not delivering
         // the broadcast to Spends at all and nothing inside the app can be the cause. No other surface on
@@ -89,10 +102,17 @@ class SmsReceiver : BroadcastReceiver() {
             return
         }
 
-        val capture = entry.captureRepository()
-        val settings = entry.settingsRepository()
-        val notifier = entry.captureNotifier()
-        val guard = entry.recentCaptureGuard()
+        // Guarded for the same reason as the lookup above, and this is where the risk actually lives: in
+        // Hilt the accessor is cheap and the graph is CONSTRUCTED inside the provision methods, so
+        // captureRepository() is what opens the Room database and what throws on a corrupt file or a
+        // failed migration. Wrapping only the lookup left the real hazard bare, on the main looper.
+        val deps = runCatching {
+            Deps(entry.captureRepository(), entry.settingsRepository(), entry.captureNotifier(), entry.recentCaptureGuard())
+        }.getOrNull() ?: run {
+            SmsDebugLog.ReceiverFailures.recordGraphFailure()
+            return
+        }
+        val (capture, settings, notifier, guard) = deps
 
         // Separates "we don't know this bank's header" from "we know it but the text wasn't a
         // transaction" — the two are indistinguishable from `preview == null` alone. It is NOT the
@@ -112,13 +132,21 @@ class SmsReceiver : BroadcastReceiver() {
                 }
                 val preview = capture.preview(sender, body, receivedAt)
                 if (preview == null) {
-                    note(
-                        if (recognised) {
-                            SmsDebugLog.Outcome.NOT_A_TRANSACTION
-                        } else {
-                            SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED
-                        },
-                    )
+                    if (recognised) {
+                        // Masking every body cost this outcome its diagnosis: a bank alert usually fails
+                        // to parse on an amount FORMAT the regex missed, and "Rs.#" cannot show which.
+                        // The parser's own verdict is reported instead — words only, no digits, so it
+                        // says what broke without reopening the hole the masking closed.
+                        val p = SmsParser.parse(sender, body, receivedAt)
+                        note(
+                            SmsDebugLog.Outcome.NOT_A_TRANSACTION,
+                            "read as ${p.result.name.lowercase()}" +
+                                (if (p.amountMinor != null) ", amount found" else ", no amount matched") +
+                                (p.kind?.let { ", ${it.name.lowercase()}" } ?: ", no direction word"),
+                        )
+                    } else {
+                        note(SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED)
+                    }
                     return@launch
                 }
                 val money = "${preview.kind.name.lowercase()} ${preview.amountMinor} paise · ${preview.title}"

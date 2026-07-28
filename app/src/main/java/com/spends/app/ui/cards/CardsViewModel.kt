@@ -211,17 +211,17 @@ class CardsViewModel @Inject constructor(
         banner.update { it.copy(scanning = true, message = null) }
         val end = DateUtils.nowMillis()
         val start = DateUtils.startOfDayMillis(LocalDate.now(DateUtils.ZONE).minusMonths(monthsBack.toLong()))
-        // null = the inbox was never read (demo mode, or the scan threw). Reporting that as "No new cards
-        // found in SMS" would be a claim about messages nobody looked at.
-        val added = runCatching { smsCaptureRepository.scanInboxForCards(start, end) }.getOrNull()
+        // Three outcomes, three sentences. A throw and a null are DIFFERENT causes — folding both through
+        // getOrNull() and naming only demo mode blamed a mode that wasn't on for a permission that was
+        // missing. The wording lives in a pure, tested function rather than inline here.
+        val result = runCatching { smsCaptureRepository.scanInboxForCards(start, end) }
         banner.update {
             it.copy(
                 scanning = false,
-                message = when {
-                    added == null -> "Couldn't read your messages — not while demo mode is on."
-                    added > 0 -> "Found $added new card${if (added == 1) "" else "s"} to review"
-                    else -> "No new cards found in SMS"
-                },
+                message = SmsCaptureRepository.cardScanMessage(
+                    added = result.getOrNull(),
+                    threw = result.isFailure,
+                ),
             )
         }
     }

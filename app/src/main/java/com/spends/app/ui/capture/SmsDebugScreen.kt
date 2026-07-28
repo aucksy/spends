@@ -92,16 +92,12 @@ fun SmsDebugScreen(
     var receiveGranted by remember { mutableStateOf(readGranted(Manifest.permission.RECEIVE_SMS)) }
     var readSmsGranted by remember { mutableStateOf(readGranted(Manifest.permission.READ_SMS)) }
     var promptsVisible by remember { mutableStateOf(CaptureNotifier.promptsCanBeSeen(context)) }
-    // Read live, not from the log's snapshot: a graph failure is the one moment the log cannot publish,
-    // so a copy held inside the snapshot would be stale exactly when it mattered.
-    var graphFailures by remember { mutableStateOf(SmsDebugLog.ReceiverFailures.graphFailures) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 receiveGranted = readGranted(Manifest.permission.RECEIVE_SMS)
                 readSmsGranted = readGranted(Manifest.permission.READ_SMS)
                 promptsVisible = CaptureNotifier.promptsCanBeSeen(context)
-                graphFailures = SmsDebugLog.ReceiverFailures.graphFailures
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -148,7 +144,7 @@ fun SmsDebugScreen(
                             demoMode = state.demoMode,
                             captureEnabled = state.captureEnabled,
                             promptsCanBeSeen = promptsVisible,
-                            graphFailures = graphFailures,
+                            graphFailures = state.graphFailures,
                             log = log,
                         ),
                         style = MaterialTheme.typography.bodyLarge,
@@ -161,7 +157,7 @@ fun SmsDebugScreen(
                     SmsStatusRow("Read SMS (Scan past SMS only)", smsYesNo(readSmsGranted))
                     SmsStatusRow("\"Detect from bank SMS\" on", smsYesNo(state.captureEnabled))
                     SmsStatusRow("Prompt can be shown", smsYesNo(promptsVisible))
-                    if (graphFailures > 0) SmsStatusRow("App start-up failures", graphFailures.toString())
+                    if (state.graphFailures > 0) SmsStatusRow("App start-up failures", state.graphFailures.toString())
                     // Scoped to "this app run", not "this session": the log dies with the process, so a
                     // freshly-started app legitimately shows 0. Saying "session" invited reading a cold
                     // start as evidence of a delivery failure.
@@ -179,7 +175,7 @@ fun SmsDebugScreen(
                 onClick = {
                     clipboard.setText(
                         AnnotatedString(
-                            viewModel.buildReport(receiveGranted, readSmsGranted, promptsVisible, graphFailures),
+                            viewModel.buildReport(receiveGranted, readSmsGranted, promptsVisible),
                         ),
                     )
                     scope.launch { snackbarHost.showSnackbar("Report copied") }
@@ -196,9 +192,9 @@ fun SmsDebugScreen(
             Text(
                 "The report includes the sender names of texts Spends received, and — only for senders " +
                     "it recognised as banks — the wording of the alert with every number replaced by " +
-                    "\"#\", one-time passcodes included. The amount Spends actually read is shown " +
-                    "separately. Nothing at all from anything that isn't a recognised bank, and never " +
-                    "a phone number or email address.",
+                    "\"#\" and any link removed. The amount Spends actually read is shown separately. " +
+                    "Nothing at all from anything that isn't a recognised bank, and never a phone " +
+                    "number or an email address. Have a quick look before you send it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
@@ -298,7 +294,9 @@ private fun plainSmsOutcome(o: SmsDebugLog.Outcome): String = when (o) {
     SmsDebugLog.Outcome.CAPTURE_OFF -> "Ignored — the \"Detect from bank SMS\" switch is off"
     SmsDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "The sender isn't a bank Spends knows"
     SmsDebugLog.Outcome.NOT_A_TRANSACTION -> "From a known bank, but not a transaction (OTP / promo / statement)"
-    SmsDebugLog.Outcome.PATTERN_SUPPRESSED -> "✅ Queued quietly — you've ignored this exact alert before"
+    // Not "✅ Queued": when the row was already held nothing was inserted this time, and the suppression
+    // itself — sticky state from ignoring the alert 3+ times — is the thing worth surfacing here.
+    SmsDebugLog.Outcome.PATTERN_SUPPRESSED -> "Suppressed — you've ignored this exact alert before, so it goes to the review queue silently"
     SmsDebugLog.Outcome.ALREADY_KNOWN -> "A transaction Spends already has"
     // Deliberately "claimed", not "prompted": when prompts are blocked at OS level the twin claims the
     // slot and then queues instead of showing anything, so "already prompted" would assert a prompt the

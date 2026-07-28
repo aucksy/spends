@@ -20,6 +20,9 @@ data class SmsDebugUiState(
     val captureEnabled: Boolean = false,
     val demoMode: Boolean = false,
     val log: SmsDebugLog.Snapshot = SmsDebugLog.Snapshot(0, null, 0, emptyList()),
+    /** Live, not resume-scoped: a graph failure happens while the owner is watching this screen, which
+     *  is precisely what the delivery verdict tells them to sit and wait for. */
+    val graphFailures: Int = 0,
 )
 
 /**
@@ -51,8 +54,17 @@ class SmsDebugViewModel @Inject constructor(
     }
 
     val state: StateFlow<SmsDebugUiState> =
-        combine(debugLog.state, settingsRepository.settings) { log, s ->
-            SmsDebugUiState(captureEnabled = s.smsCaptureEnabled, demoMode = demoMode, log = log)
+        combine(
+            debugLog.state,
+            settingsRepository.settings,
+            SmsDebugLog.ReceiverFailures.graphFailures,
+        ) { log, s, failures ->
+            SmsDebugUiState(
+                captureEnabled = s.smsCaptureEnabled,
+                demoMode = demoMode,
+                log = log,
+                graphFailures = failures,
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SmsDebugUiState(demoMode = demoMode))
 
     fun clear() = debugLog.clear()
@@ -66,13 +78,9 @@ class SmsDebugViewModel @Inject constructor(
      * already safe to paste, which is stronger than the notification screen's redact-on-the-way-out —
      * that depends on keeping an outcome allow-list correct forever.
      */
-    fun buildReport(
-        receiveGranted: Boolean,
-        readGranted: Boolean,
-        promptsCanBeSeen: Boolean,
-        graphFailures: Int,
-    ): String {
+    fun buildReport(receiveGranted: Boolean, readGranted: Boolean, promptsCanBeSeen: Boolean): String {
         val s = state.value
+        val graphFailures = s.graphFailures
         val log = s.log
         return buildString {
             appendLine("SPENDS — SMS DEBUG")
@@ -132,9 +140,12 @@ fun smsVerdictOf(
             "Settings → Apps → Spends → Permissions → SMS."
     !captureEnabled ->
         "The SMS permission is granted, but the \"Detect from bank SMS\" switch is off."
-    // Above the "nothing was delivered" branch, which would otherwise assert "nothing inside Spends can
-    // be the cause" in the one case where Spends IS the cause and simply could not record it.
-    graphFailures > 0 ->
+    // Scoped to totalReceived == 0, and that scoping is load-bearing. Unscoped, this branch LATCHED: the
+    // counter never decays, so a single transient failure during cold start permanently suppressed the
+    // two actionable diagnoses below it — the unrecognised-sender case and the blocked-prompt case — for
+    // the rest of the app run. Placed above the zero-delivery branch, which would otherwise assert
+    // "nothing inside Spends can be the cause" in the one case where Spends IS the cause.
+    graphFailures > 0 && log.totalReceived == 0 ->
         "$graphFailures text${if (graphFailures == 1) "" else "s"} reached Spends but the app failed " +
             "to start up properly and couldn't handle ${if (graphFailures == 1) "it" else "them"}. " +
             "That's a fault inside Spends, not your phone — tell me this number."

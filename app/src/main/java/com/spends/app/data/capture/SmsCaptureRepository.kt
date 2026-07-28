@@ -497,7 +497,9 @@ class SmsCaptureRepository @Inject constructor(
                 val uri: Uri = Telephony.Sms.Inbox.CONTENT_URI
                 val selection = "${Telephony.Sms.DATE} >= ? AND ${Telephony.Sms.DATE} < ?"
                 val args = arrayOf(startMillis.toString(), endExclusiveMillis.toString())
-                context.contentResolver.query(uri, cols, selection, args, "${Telephony.Sms.DATE} DESC")?.use { c ->
+                val cursor = context.contentResolver.query(uri, cols, selection, args, "${Telephony.Sms.DATE} DESC")
+                    ?: return@withLock null // could not READ the inbox — never report this as "found none"
+                cursor.use { c ->
                     val iAddr = c.getColumnIndex(Telephony.Sms.ADDRESS)
                     val iBody = c.getColumnIndex(Telephony.Sms.BODY)
                     val iDate = c.getColumnIndex(Telephony.Sms.DATE)
@@ -974,6 +976,22 @@ class SmsCaptureRepository @Inject constructor(
         }
 
         private fun plural(n: Int) = if (n == 1) "" else "s"
+
+        /**
+         * The plain-English result of a card scan. Pure, so it is directly testable — the message it
+         * replaced had none, and was the site of a defect three review rounds in a row.
+         *
+         * [threw] and a null [added] are DIFFERENT causes and must not share a sentence. The first
+         * version of this said "not while demo mode is on" for both, so a `SecurityException` from a
+         * revoked READ_SMS — the exact permission split MIUI and ColorOS expose separately — told the
+         * owner to turn off a mode that wasn't on, and sent them looking in the wrong place entirely.
+         */
+        fun cardScanMessage(added: Int?, threw: Boolean): String = when {
+            threw -> "Couldn't read your messages — check Spends still has SMS permission."
+            added == null -> "Not while demo mode is on — your real messages were left unread."
+            added > 0 -> "Found $added new card${plural(added)} to review"
+            else -> "No new cards found in SMS"
+        }
 
         /** #7: after this many ignores of the SAME alert pattern, stop notifying (queue silently instead). */
         private const val IGNORE_SUPPRESS_THRESHOLD = 3

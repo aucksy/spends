@@ -74,23 +74,34 @@ is now pure, unit-tested, and always reports the read count.
 Every one of these is silent from outside the app, and the phone shows the same thing for all of them:
 nothing happens. That is why the diagnostic exists.
 
-| # | Link | Where it stops | Outcome recorded |
-|---|------|----------------|------------------|
-| 0 | Android delivers `SMS_RECEIVED` | Force-stop, OEM background kill, revoked grant, app hibernation | **nothing at all — `totalReceived` stays 0** |
-| 1 | Demo mode | `SmsReceiver:64` | `DEMO_MODE` |
-| 2 | Readable message in the broadcast | `SmsReceiver:70` | `NO_MESSAGE_DATA` |
-| 3 | Capture switch on | `SmsReceiver:99` | `CAPTURE_OFF` |
-| 4 | Sender in `SenderAllowlist` | `SmsCaptureRepository.preview` → `SmsParser.parse` | `SENDER_NOT_RECOGNISED` |
-| 5 | Parses as a money movement | same | `NOT_A_TRANSACTION` |
-| 6 | Pattern not suppressed (#7) | `isPatternSuppressed` | `PATTERN_SUPPRESSED` (queued, not lost) |
-| 7 | Not already held | `isKnownHash` | `ALREADY_KNOWN` |
-| 8 | Wins the twin race | `guard.claimPrompt` | `TWIN_ALREADY_PROMPTED` |
-| 9 | The phone will show the prompt | `CaptureNotifier.canPost` | `PROMPT_BLOCKED` (queued, not lost) |
+Line numbers are deliberately omitted — an earlier revision of this table cited five and every one had
+gone stale within a single commit.
+
+| # | Link | Gate | Outcome recorded |
+|---|------|------|------------------|
+| 0 | Android delivers `SMS_RECEIVED` | force-stop, OEM background kill, revoked grant, hibernation | **nothing at all — `totalReceived` stays 0** |
+| 0b | The app can build its dependency graph | `EntryPointAccessors` / any provision call throws | **`ReceiverFailures.graphFailures`** |
+| 1 | Demo mode off | `DemoMode.isEnabled` | `DEMO_MODE` |
+| 2 | Broadcast carries a message | `getMessagesFromIntent` | `NO_MESSAGE_DATA` |
+| 3 | The message has text | `body.isBlank()` | `BLANK_BODY` |
+| 4 | Capture switch on | `smsCaptureEnabled` | `CAPTURE_OFF` |
+| 5 | Sender in `SenderAllowlist` | `SmsCaptureRepository.preview` → `SmsParser.parse` | `SENDER_NOT_RECOGNISED` |
+| 6 | Parses as a money movement | same | `NOT_A_TRANSACTION` |
+| 7 | Pattern not suppressed (#7) | `isPatternSuppressed` | `PATTERN_SUPPRESSED` (queued, not lost) |
+| 8 | Not already held | `isKnownHash` | `ALREADY_KNOWN` |
+| 9 | Wins the twin race | `guard.claimPrompt` | `TWIN_ALREADY_PROMPTED` |
+| 10 | The phone will show the prompt | `CaptureNotifier.canPost` | `PROMPT_BLOCKED` (queued, not lost) |
 | — | Prompt shown | — | `PROMPTED` |
 
 **Link 0 is the one that matters.** `totalReceived` is incremented for every SMS the receiver is handed,
 before any other check. If it stays at zero while texts are visibly arriving on the phone, Android is not
 delivering to the app and nothing inside Spends can be the cause.
+
+**Link 0b exists so that claim stays true.** A broadcast that arrives but dies before the log can be
+obtained would otherwise leave the counter at zero and let the verdict blame Android in the one case
+where the app is at fault. It is counted in a plain object — the injected log is the thing that failed —
+and is never reset, including by "Clear what's recorded": a confirmed fault outranks tidiness, and the
+failing broadcasts cannot be replayed.
 
 ## Two real defects found while building the diagnostic
 
@@ -123,13 +134,27 @@ a caller cannot assert "this came from a bank" and be believed:
    `SenderAllowlist`. Everything else keeps `body = null` regardless of what was passed in.
 2. **…and only for an outcome reached with the capture switch ON** (`BODY_BEARING`). An owner who never
    enabled capture never has a bank alert transcribed.
-3. **Every stored body has every digit masked**, via `SmsParser.aiContextFor` — unconditionally.
-4. **A sender that isn't an A2P header is masked**: no letters at all means a phone number; one
-   containing `@` is an email-to-SMS address, a stronger identifier than the number.
+3. **Every stored body has every number masked and every link removed** — unconditionally. Indian bank
+   alerts carry per-customer short links whose path identifies the recipient, and digit-masking alone
+   left the token mostly intact. The honest claim is "every number", not "every secret": a code written
+   in letters would survive, which no Indian bank uses.
+4. **A sender that isn't an A2P header is masked**: no letters at all means a phone number; one matching
+   a real email shape is an email-to-SMS address, a stronger identifier than the number. Deliberately not
+   a bare `contains('@')` — GSM 03.38 encodes `@` as septet 0x00, so trailing `@` padding appears on
+   genuine sender IDs, and masking `AD-HDFCBK@` would hide the exact string the verdict asks for.
 
-`detail` is gated by rule 1 as well, and is what makes rule 3 free: the amount, kind and merchant Spends
-actually parsed are reported there, already interpreted, so the raw digits were only ever contributing
-the balance, the account tail and the reference number.
+The masking is written **in `SmsDebugLog`**, not borrowed from `SmsParser.aiContextFor` as one revision
+did. That function builds AI context and strips the "not you? / SMS BLOCK…" trailer first, so a body
+opening with such a phrase was deleted entirely and stored as null — indistinguishable on screen from
+"the privacy gate withheld it". Its 300-char cap also silently took ownership of this class's own bound,
+leaving the local cap unreachable and untestable. **A privacy control must not be a borrowed function
+whose purpose, and therefore whose future edits, belong to something else.**
+
+`detail` is gated by rules 1 and 2 as well. For a parsed outcome it carries the amount, kind and merchant
+Spends actually read, which is what makes rule 3 cost nothing. For `NOT_A_TRANSACTION` — where masking
+genuinely does remove diagnostic power, since a parse failure is usually an amount *format* the regex
+missed — the receiver supplies a digit-free substitute instead (`read as ignored, no amount matched, no
+direction word`), so the diagnosis survives without reopening the hole.
 
 Consequently `buildReport` needs no redaction pass: what reaches it is already safe to paste. That is a
 stronger guarantee than the notification screen's redact-on-the-way-out, which depends on getting an
@@ -177,14 +202,22 @@ The diagnostic is temporary. The **fixes are not** — keep them.
   "SMS debug" row
 - the `smsDebugLog()` accessor on `SmsReceiver.SmsCaptureEntryPoint`, and every `debug.record(...)` /
   `debug.recordReceived()` call plus the local `note(...)` helper in `SmsReceiver`
+- `SmsDebugLog.ReceiverFailures` and the `recordGraphFailure()` calls — **but NOT the `runCatching`
+  guards around them**, which prevent a crash on the main looper and are a permanent fix (see KEEP)
+- the `graphFailures` parameter threaded through `smsVerdictOf`, `SmsDebugUiState` and `buildReport`
 - `app/src/test/.../SmsDebugLogTest.kt`, `app/src/test/.../ui/capture/SmsVerdictTest.kt`
 
 **KEEP — these are permanent fixes, not diagnostics:**
 - `CaptureNotifier.postCapturePrompt` returning `Boolean`, and `canPost` / `promptsCanBeSeen`
-- the `queueForReview` fallback on **both** live paths
-- `SmsCaptureRepository.scanMessage` and its use in `CaptureViewModel`
+- the `queueForReview` fallback on **both** live paths, and both paths reporting its returned id
+- `SmsCaptureRepository.scanMessage` / `cardScanMessage`, `ScanResult.refusedDemoMode`, and the nullable
+  returns of `scanHistory` / `scanInboxForCards`
+- the `runCatching` around the entry-point lookup **and** around the four provision calls in
+  `SmsReceiver` — the graph is built inside the provision methods, so that is where a corrupt database
+  or a failed migration actually throws, on the main looper inside a system broadcast
 - `app/src/test/.../CapturePromptVisibilityTest.kt`, `app/src/test/.../ScanMessageTest.kt`
-- `SenderAllowlist.lookup(sender)` being resolved in `SmsReceiver` — it is the privacy gate, but deleting
-  it along with the log would also remove the only place the receiver names the institution
+- `SenderAllowlist.lookup(sender)` being resolved in `SmsReceiver` — it only separates
+  `SENDER_NOT_RECOGNISED` from `NOT_A_TRANSACTION` and is safe to delete with the log, but note it is
+  **not** the privacy gate: `SmsDebugLog` resolves the sender itself and ignores what callers claim
 
 Removing the log without removing its callers will not compile, which is the intended safety net.

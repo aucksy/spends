@@ -224,7 +224,22 @@ class SmsDebugLogTest {
     @Test
     fun `an email-to-SMS sender is masked, not treated as a bank header`() {
         assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("john.smith@gmail.com"))
+        assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("john.smith+bank@gmail.com"))
         assertEquals(SmsDebugLog.MASKED_EMAIL_SENDER, SmsDebugLog.maskSender("alerts@somebank.example"))
+    }
+
+    /**
+     * ⭐ A bare `contains('@')` masked these. GSM 03.38 encodes "@" as septet 0x00, so trailing "@"
+     * padding turns up on genuine alphanumeric sender IDs — and `SenderAllowlist` strips non-alphanumerics
+     * before matching, so `AD-HDFCBK@` still resolved to HDFC Bank while the screen called it an email
+     * address. For an UNRECOGNISED header it was worse: the screen hid the exact string the verdict was
+     * telling the owner to report.
+     */
+    @Test
+    fun `an A2P header carrying an at-sign is not mistaken for an email`() {
+        assertEquals("AD-HDFCBK@", SmsDebugLog.maskSender("AD-HDFCBK@"))
+        assertEquals("VM-ICICIB@@", SmsDebugLog.maskSender("VM-ICICIB@@"))
+        assertEquals("HDFCBK@AIRTEL", SmsDebugLog.maskSender("HDFCBK@AIRTEL"))
     }
 
     @Test
@@ -257,13 +272,57 @@ class SmsDebugLogTest {
         assertEquals(140L, entries.last().timeMillis)
     }
 
-    /** Bounded by `aiContextFor`'s own 300-char cap, which now sits inside every stored body. */
+    /**
+     * The cap is this class's own, not a bound borrowed from elsewhere. An earlier version masked via
+     * `SmsParser.aiContextFor`, whose 300-char cap silently took ownership of it — leaving this class's
+     * `clip()` unreachable dead code that no mutation could kill.
+     */
     @Test
-    fun `long text is bounded so one pathological message cannot bloat the log`() {
+    fun `long text is clipped so one pathological message cannot bloat the log`() {
         val log = log()
         log.record(1L, BANK, "Rs 5 debited " + "x".repeat(5_000), SmsDebugLog.Outcome.PROMPTED)
 
-        assertTrue(log.state.value.entries.single().body!!.length <= 300)
+        val body = log.state.value.entries.single().body!!
+        assertTrue(body.length <= 501)
+        assertTrue(body.endsWith("…"))
+    }
+
+    /**
+     * Masking is done HERE, not by borrowing `SmsParser.aiContextFor`. That function strips the
+     * "not you? / SMS BLOCK…" trailer BEFORE masking, so a body that opens with such a phrase was
+     * deleted outright and stored as null — indistinguishable on screen from "the privacy gate withheld
+     * it". A real transaction losing its whole body to a diagnostic tool is the opposite of the point.
+     */
+    @Test
+    fun `a body opening with report boilerplate is still kept, masked`() {
+        val log = log()
+        log.record(1L, BANK, "Not you? Rs.500 was debited at SHOP just now", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("the wording must survive", body.contains("debited"))
+        assertTrue("but not the amount", body.none { it.isDigit() })
+    }
+
+    /**
+     * Indian bank alerts routinely carry a PER-CUSTOMER short link whose path identifies the recipient.
+     * Digit-masking alone leaves the letters, so the token partly survived into the clipboard.
+     */
+    @Test
+    fun `a per-customer link is removed, not merely digit-masked`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.500 debited at SHOP. View: hdfcbk.io/x/aB9cD2e", SmsDebugLog.Outcome.PROMPTED)
+
+        val body = log.state.value.entries.single().body!!
+        assertTrue("no fragment of the token may survive", !body.contains("aB"))
+        assertTrue(body.contains("(link)"))
+    }
+
+    @Test
+    fun `an https link is removed too`() {
+        val log = log()
+        log.record(1L, BANK, "Rs.5 debited. https://sbi.co.in/s/Kq7Lm2Zx9 to view", SmsDebugLog.Outcome.PROMPTED)
+
+        assertTrue(!log.state.value.entries.single().body!!.contains("Kq"))
     }
 
     /** `detail` is not masked — it is Spends' own parse, not the bank's words — but it is still capped. */

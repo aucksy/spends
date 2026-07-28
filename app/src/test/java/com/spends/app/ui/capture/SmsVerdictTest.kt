@@ -3,6 +3,7 @@ package com.spends.app.ui.capture
 import com.spends.app.data.capture.SmsDebugLog
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.reflect.KFunction6
 
 /**
  * The verdict line is the whole point of the SMS debug screen — it is the one sentence the owner reads
@@ -64,14 +65,19 @@ class SmsVerdictTest {
      * managers list the two separately — so a missing READ_SMS must NOT produce "nothing can arrive"
      * beside a counter showing forty messages arriving.
      *
-     * This is pinned by an explicitly-typed function reference rather than an assertion, because there
-     * is nothing to assert: the input does not exist. An earlier version tried, and was green under its
-     * own defect — adding a trailing `readGranted: Boolean = true` parameter with a blame branch left it
-     * passing. A declared function type must match exactly, so the same change breaks compilation here.
+     * There is nothing to assert here, because the input does not exist; the guard is the declared type.
+     * Two earlier attempts were both green under their own defect. A plain assertion could not see the
+     * parameter at all, and then a function TYPE (`(Boolean, …) -> String`) did not help either: since
+     * Kotlin 1.4 a callable reference whose trailing parameters are all defaulted ADAPTS to a shorter
+     * function type, so adding `readGranted: Boolean = true` — precisely the defect — still compiled.
+     *
+     * `KFunction6` is not subject to that adaptation: it can only be satisfied by a declaration of
+     * exactly this arity, so any new parameter, defaulted or not, breaks the build here.
      */
     @Test
     fun `the verdict signature cannot take a READ_SMS input`() {
-        val pinned: (Boolean, Boolean, Boolean, Boolean, Int, SmsDebugLog.Snapshot) -> String = ::smsVerdictOf
+        val pinned: KFunction6<Boolean, Boolean, Boolean, Boolean, Int, SmsDebugLog.Snapshot, String> =
+            ::smsVerdictOf
 
         assertTrue(pinned(true, false, true, true, 0, snapshot(40, 6, 1_000L)).contains("where it stopped"))
     }
@@ -88,6 +94,21 @@ class SmsVerdictTest {
         assertTrue("must not blame delivery", !msg.contains("not delivering"))
         assertTrue(msg.contains("fault inside Spends"))
         assertTrue(msg.contains("2"))
+    }
+
+    /**
+     * ⭐ The counter never decays, so an unscoped branch LATCHED: one transient failure during cold
+     * start permanently suppressed the two actionable diagnoses below it — the unrecognised-sender case
+     * and the blocked-prompt case — for the rest of the app run, while messages flowed in normally.
+     * Same defect class as the un-split `lastReceivedAt`: a latching condition asserting a stale cause.
+     */
+    @Test
+    fun `a past start-up failure does not hijack the verdict once messages are arriving`() {
+        val senders = verdict(graphFailures = 1, received = 40, fromBanks = 0)
+        val blocked = verdict(graphFailures = 1, prompts = false, received = 40, fromBanks = 6)
+
+        assertTrue("the sender diagnosis must survive", senders.contains("recognises"))
+        assertTrue("the blocked-prompt diagnosis must survive", blocked.contains("Transaction detection"))
     }
 
     @Test

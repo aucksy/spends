@@ -3,6 +3,7 @@ package com.spends.app.data.capture
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,10 +41,12 @@ import javax.inject.Singleton
  *     capture off is never having their bank alerts transcribed, which is the stance the notification
  *     log takes by gating its tally. Here the tally stays ungated — a count of zero is the whole point
  *     of the screen — and the CONTENT is gated instead.
- *  3. **Every stored body has every digit masked**, via [SmsParser.aiContextFor] — unconditionally, not
- *     just for the outcomes that look like a passcode. This report is built to be pasted into a chat
- *     window, so a one-time passcode must not be able to reach it by any route. The words that explain
- *     why a message did or did not parse survive; amounts, balances, card tails and codes do not.
+ *  3. **Every stored body has every NUMBER masked and every link removed** — unconditionally, not just
+ *     for the outcomes that look like a passcode. This report is built to be pasted into a chat window,
+ *     so a numeric one-time passcode cannot reach it by any route, and neither can an amount, a balance,
+ *     a card tail or a per-customer short link. The words that explain why a message did or did not
+ *     parse survive. (A code written in LETTERS would survive too — no Indian bank uses that form, and
+ *     the honest claim here is "every number", not "every secret".)
  *  4. **A sender that isn't an A2P header is masked.** Indian bank alerts arrive from alphanumeric
  *     headers ("AD-HDFCBK"), which are exactly what we need to read when the allowlist misses one. A
  *     sender that is only digits is a person's phone number, and one containing "@" is an email-to-SMS
@@ -127,26 +130,26 @@ class SmsDebugLog @Inject constructor() {
      *
      * A plain object with no Hilt involvement, because the thing being counted is Hilt not working —
      * and deliberately NOT a field on [Snapshot], because a graph failure is precisely the moment
-     * `publish()` cannot run, so a snapshot copy would be stale exactly when it mattered. The screen
-     * reads it live on resume, the same way it reads the permission grants.
+     * `publish()` cannot run, so a snapshot copy would be stale exactly when it mattered.
      *
      * Without this, such a broadcast leaves [Snapshot.totalReceived] at zero and the verdict asserts
      * "Android is not delivering… nothing inside Spends can be the cause" — a confident claim that is
      * false in precisely the case it cannot see. Process-scoped; never persisted.
+     *
+     * **A flow, not a plain field, and there is deliberately no `reset()`.** The count was first read
+     * once per `ON_RESUME`, by analogy with the permission grants — a bad analogy: a permission can only
+     * change off-screen, whereas a graph failure happens *while the owner is watching*, in the exact
+     * situation the verdict tells them to sit and wait for ("leave the app open, send yourself a text").
+     * And "Clear what's recorded" used to zero it, which restored the very sentence this object exists
+     * to prevent, against evidence that cannot be replayed. A confirmed fault inside the app outranks
+     * tidiness; it dies with the process like everything else here.
      */
     object ReceiverFailures {
-        @Volatile
-        var graphFailures: Int = 0
-            private set
+        private val _graphFailures = MutableStateFlow(0)
+        val graphFailures: StateFlow<Int> = _graphFailures.asStateFlow()
 
-        @Synchronized
         fun recordGraphFailure() {
-            graphFailures++
-        }
-
-        @Synchronized
-        fun reset() {
-            graphFailures = 0
+            _graphFailures.update { it + 1 }
         }
     }
 
@@ -195,8 +198,10 @@ class SmsDebugLog @Inject constructor() {
                 institution = institution,
                 body = storableBody(institution, body, outcome),
                 outcome = outcome,
-                // Carries the parsed merchant and amount, so it is gated exactly as the body is.
-                detail = if (institution != null) detail?.clip() else null,
+                // Gated by BOTH content rules, exactly as the body is. Gating it on the sender alone was
+                // unreachable-but-wrong: this class's whole stance is that it does not trust its callers,
+                // so a rule it claims to enforce must actually be enforced.
+                detail = if (institution != null && outcome in BODY_BEARING) detail?.clip() else null,
             ),
         )
         while (entries.size > MAX_ENTRIES) entries.removeLast()
@@ -205,23 +210,29 @@ class SmsDebugLog @Inject constructor() {
 
     /**
      * The content rules, applied in one place. Returns null unless the sender resolved to a bank AND the
-     * outcome is one only reachable with capture switched on — and masks EVERY digit of what survives.
+     * outcome is one only reachable with capture switched on — and masks what survives.
      *
      * **Masking is unconditional, and an earlier version got this exactly backwards.** It masked only
      * `NOT_A_TRANSACTION`, on the reasoning that a non-transaction from a bank is overwhelmingly an OTP.
-     * The gate that produces that outcome is [SmsParser]'s `isOtp`, which excludes any text containing
+     * The gate producing that outcome is [SmsParser]'s `isOtp`, which excludes any text containing
      * "spent" or "debited" — so the three commonest Indian one-time-passcode formats
      * ("Rs.5000 debited… OTP 481920 to confirm") parse as genuine TRANSACTIONS, reached `PROMPTED`, and
-     * had their passcode stored and exported verbatim. A parser heuristic is not a privacy control.
+     * had their passcode exported verbatim. **A parser heuristic is not a privacy control.**
      *
-     * Masking everything costs almost nothing: for a parsed outcome the amount, kind and merchant are
-     * already carried in `detail`, so the raw body was contributing the balance, the account tail and
-     * the reference number — sensitive, and not what a diagnosis needs. What survives is the wording,
-     * which is the part that explains why a message did or did not parse.
+     * That lesson is why the mask below is written HERE rather than reusing `SmsParser.aiContextFor`,
+     * which an earlier fix did. That function exists to build AI context, and it strips the "not you? /
+     * SMS BLOCK…" trailer first — which for a message that opens with such a phrase deletes the entire
+     * body and yields null, silently costing the diagnosis. Its 300-char cap also quietly took ownership
+     * of this class's own bound. A privacy control must not be a borrowed function whose purpose, and
+     * therefore whose future edits, belong to something else.
      */
     private fun storableBody(institution: String?, body: String?, outcome: Outcome): String? {
         if (institution == null || outcome !in BODY_BEARING) return null
-        return SmsParser.aiContextFor(body)?.clip()
+        if (body.isNullOrBlank()) return null
+        val collapsed = body.replace('\n', ' ').replace(WHITESPACE, " ").trim()
+        val delinked = LINK.replace(collapsed, "(link)")
+        val masked = NUMERAL.replace(delinked, "#").replace(WHITESPACE, " ").trim()
+        return masked.takeIf { m -> m.any { it.isLetter() } }?.clip()
     }
 
     @Synchronized
@@ -229,7 +240,8 @@ class SmsDebugLog @Inject constructor() {
         entries.clear()
         totalReceived = 0
         fromKnownBanks = 0
-        ReceiverFailures.reset()
+        // ReceiverFailures is deliberately NOT reset — see its KDoc. Zeroing it here re-armed the exact
+        // false claim it was added to prevent, one tap after the owner had already seen the truth.
         // lastReceivedAt is deliberately KEPT: "when did an SMS last reach the app" is the single most
         // useful fact on the screen, and clearing the list must not erase it and imply none ever has.
         // SmsVerdictTest pins the other half of that decision — the verdict must READ the kept
@@ -259,6 +271,34 @@ class SmsDebugLog @Inject constructor() {
         private const val MAX_CHARS = 500
 
         /**
+         * One whole numeral → one `#`. Deliberately a copy of the rule in [SmsParser], not a call into
+         * it: this is a privacy control and must not be able to change because a parser's needs changed.
+         * `(?U)` makes `\d` Unicode-aware — Kotlin's default `\d` is ASCII `[0-9]`, so a Devanagari or
+         * Arabic-Indic digit would otherwise pass straight through. Grouping separators and decimals are
+         * swallowed so `Rs.5,59,393.44` becomes `Rs.#` rather than `Rs.#,#,#.#`, which would leak the
+         * order of magnitude.
+         */
+        private val NUMERAL = Regex("(?U)\\d[\\d,]*(?:\\.\\d+)?")
+
+        /**
+         * URL-ish tokens → `(link)`. Indian bank alerts routinely carry a PER-CUSTOMER short link whose
+         * path is a token identifying the recipient. Digit-masking alone leaves the letters, so
+         * `hdfcbk.io/x/aB9cD2e` survives as `hdfcbk.io/x/aB#cD#e` — still enough to identify someone.
+         */
+        private val LINK = Regex("""\S*(?:https?://|www\.)\S*|\S*\.[a-z]{2,}/\S*""", RegexOption.IGNORE_CASE)
+
+        private val WHITESPACE = Regex("\\s+")
+
+        /**
+         * A real email address, anchored — NOT a bare `contains('@')`, which was the first attempt.
+         * GSM 03.38 encodes `@` as septet 0x00, so trailing `@` padding turns up on genuine alphanumeric
+         * sender IDs in the wild: `AD-HDFCBK@` would have been masked as "an email address" while
+         * [SenderAllowlist] still resolved it to HDFC Bank, contradicting itself on screen — and for an
+         * UNRECOGNISED header it would hide the exact string the verdict tells the owner to report.
+         */
+        private val EMAIL = Regex("""^[^@\s]+@[^@\s]+\.[^@\s]+$""")
+
+        /**
          * The only outcomes whose message text may be stored. Every one is reached AFTER the capture
          * switch has been read and found ON, so an owner who never enabled SMS capture never has a bank
          * alert transcribed. `CAPTURE_OFF` is absent for exactly that reason, and `DEMO_MODE`,
@@ -286,7 +326,7 @@ class SmsDebugLog @Inject constructor() {
          */
         fun maskSender(sender: String?): String = when {
             sender.isNullOrBlank() -> "(no sender)"
-            sender.contains('@') -> MASKED_EMAIL_SENDER
+            EMAIL.matches(sender.trim()) -> MASKED_EMAIL_SENDER
             sender.any { it.isLetter() } -> sender
             else -> MASKED_SENDER
         }
