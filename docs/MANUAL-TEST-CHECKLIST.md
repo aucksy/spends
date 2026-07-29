@@ -11,13 +11,13 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.63.1 — eight releases.**
+**Currently untested: v1.57.0 → v1.63.2 — nine releases.**
 
-> **v1.63.0 shipped a crash:** opening SMS debug closed the app. v1.63.1 does not blindly guess a fix —
-> it makes the crash *readable*. Install v1.63.1, open SMS debug, and if it closes again, reopen Spends
-> and go back to **Settings → Automatic Entries**: a "Spends closed unexpectedly" notice is waiting there
-> with a **Copy crash report** button. That report names the code that failed. It contains no
-> transactions, no amounts and no message text.
+> **The capture bug is found and fixed in v1.63.2.** A Java-only regex flag made the SMS parser throw on
+> any real Android phone the first time it was touched, and the error was being swallowed — so bank texts
+> silently stopped becoming transactions from **v1.58.0** onward, which matches exactly when capture
+> stopped working. The same copied line is what crashed the v1.63.0 debug screen. **The single most
+> valuable thing to check now is whether a real bank text captures again.**
 
 ---
 
@@ -42,6 +42,25 @@ wrong number about real money, rather than something looking untidy.
 - [ ] **A real bank SMS still captures correctly.** Any release touching the parser is a money risk.
       Wait for (or find) a genuine bank alert and confirm the amount, the date and income-vs-expense are
       all right in the review queue.
+
+---
+
+## v1.63.2 — the capture fix
+
+- [ ] ⭐⭐⭐ **A real bank SMS captures again.** This is the whole thing. Wait for (or trigger) a genuine
+      bank alert with Spends **closed or in the background** — the normal way you'd use it. A "Review &
+      Add" prompt should appear, or the entry should land in the **review queue**. Confirm the amount,
+      the date, and income-vs-expense are all correct before saving.
+- [ ] ⭐⭐ **SMS debug now opens without closing the app**, and after a text arrives shows
+      **"SMS delivered (this app run)"** greater than 0 with the message listed below it.
+- [ ] ⭐ **"Scan past SMS" finds your history.** Because the parser has been throwing since v1.58.0, this
+      may now pull in a backlog of older bank texts it previously could not read. Check a handful of
+      amounts before accepting them — this is the one step where a wrong figure could reach real money.
+- [ ] The Automatic Entries screen shows **no** "Spends closed unexpectedly" notice any more (dismiss the
+      old one if it is still there — it refers to the crash that is now fixed).
+- [ ] ⚠️ **If capture still does not work**, that is genuinely useful: it means there is a *second*
+      cause. Open SMS debug, leave the app open, text yourself, and send me the verdict line and the
+      delivered count. The diagnostic finally works, so it can now answer that question properly.
 
 ---
 

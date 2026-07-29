@@ -4,13 +4,53 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.63.1** — versionCode **70**, versionName **"1.63.1"**. Makes the v1.63.0 SMS debug crash
-  diagnosable: an uncaught-exception handler that leaves a readable trace, surfaced on the Automatic
-  Entries screen. No DB/schema/manifest change; no shipped-behaviour change beyond the crash notice.
+- **Shipped: v1.63.2** — versionCode **71**, versionName **"1.63.2"**. **The capture bug is found and
+  fixed.** A Java-only regex flag, `(?U)`, made `SmsParser`'s object initialiser throw on any real
+  Android device; every caller's `runCatching` swallowed it, so live SMS capture had been dead since
+  v1.58.0. The same copied line crashed the v1.63.0 debug screen. No DB/schema/manifest change.
+  APK: https://github.com/aucksy/spends/releases/download/v1.63.2/Spends-v1.63.2.apk
+- Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
+  captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
-- Previous: **v1.63.0** — versionCode 69. The SMS capture diagnostic + two capture fixes.
-  **Known defect: the SMS debug screen closes the app when opened.** Fixed-forward by v1.63.1's trace.
-  APK: https://github.com/aucksy/spends/releases/download/v1.63.0/Spends-v1.63.0.apk
+
+## v1.63.2 — the actual cause, after five releases
+
+**One character class. `(?U)`.**
+
+`(?U)` is a **Java-only** inline regex flag. Android's regex engine is ICU-backed and rejects it, so
+
+```kotlin
+private val NUMERAL = Regex("(?U)\\d[\\d,]*(?:\\.\\d+)?")
+```
+
+throws `PatternSyntaxException` **while `object SmsParser`'s initialiser runs**. The failure is therefore
+an `ExceptionInInitializerError` on the *first touch* of `SmsParser` — not a parse miss — and every call
+site wraps parsing in `runCatching`, which swallowed it. Bank texts simply stopped becoming
+transactions, with nothing logged anywhere and no crash to notice.
+
+**It entered in `c3ff6a3`, "v1.58.0: money-safety review fixes for the merchant/fuel round".** The owner
+independently reported that capture last worked on **v1.57.0**. Those match exactly.
+
+The same line was then copied verbatim into `SmsDebugLog` for v1.63.0 — deliberately, as a privacy
+control that must not drift from the parser's — which is why the screen built to *find* this bug was
+killed by it on open, before drawing a pixel.
+
+**Why five releases and thirteen review rounds never saw it.** Unit tests and Robolectric both run on
+the **JVM**, where `(?U)` is perfectly valid. 195 logic assertions, a full golden-fixture suite, two
+adversarial review agents and a headless render pass all stayed green, because none of them ran on
+Android's regex engine. The logic reviewer specifically *praised* the flag for covering
+Devanagari/Arabic-Indic digits — it validated the semantics of a pattern that cannot compile on the
+target platform. The earlier conclusion that "the cause is outside the app" was wrong; the cause was in
+the app the whole time, in the one layer no JVM test could reach.
+
+**The fix.** `\p{Nd}` — "any Unicode decimal digit" — which both engines understand and which
+`JvmOnlyRegexTest` proves masks *exactly* what `(?U)\d` masked, including Devanagari and Arabic-Indic
+samples asserted non-vacuously.
+
+**The guard.** `JvmOnlyRegexTest` scans main source and fails on any `Regex(`/`Pattern.compile(` carrying
+an inline flag group containing `U`. It validates its own scanner against both real defect lines before
+trusting a clean result, and fails loud if the walk finds no sources. A source scan is the right
+instrument precisely because the runtime under test is the one that cannot see the problem.
 
 ## v1.63.1 — make the crash speak
 

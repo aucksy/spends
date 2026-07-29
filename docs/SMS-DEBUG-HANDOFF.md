@@ -4,6 +4,42 @@ The owner stopped the session: it burned hours and a weekly usage limit on **thi
 review rounds** for a temporary diagnostic screen. That was the wrong call. The work is sound but it
 should have shipped after round two or three and let the phone answer the rest.
 
+---
+
+## RESOLVED (2026-07-29) — the cause was inside the app all along
+
+**`(?U)` — a Java-only inline regex flag that Android's ICU-backed engine rejects.**
+
+```kotlin
+private val NUMERAL = Regex("(?U)\\d[\\d,]*(?:\\.\\d+)?")   // SmsParser.kt:358
+```
+
+It throws `PatternSyntaxException` while `object SmsParser`'s initialiser runs, so the **first touch** of
+`SmsParser` dies with `ExceptionInInitializerError`, and every call site's `runCatching` swallowed it.
+Bank texts stopped becoming transactions with nothing logged and no crash to notice. It entered in
+`c3ff6a3`, *"v1.58.0: money-safety review fixes for the merchant/fuel round"* — matching the owner's
+independent report that capture last worked on **v1.57.0**.
+
+The same line was copied verbatim into `SmsDebugLog` for v1.63.0, so the screen built to *find* this bug
+was killed by it on open. One root cause, both symptoms.
+
+**The conclusion recorded below — "the cause is outside the app" — was wrong.** Every code change in the
+window really was traced, but the search was for logic that behaved wrongly, and this was a pattern that
+never compiled at all on the target platform. Fixed in **v1.63.2** with `\p{Nd}`, which both engines
+understand; guarded by `JvmOnlyRegexTest`.
+
+**The lesson that outranks the other five: every test in this project runs on the JVM, and the JVM
+accepts `(?U)`.** 195 assertions, the golden fixtures, two adversarial review agents and a headless
+Robolectric render all stayed green for five releases. The logic reviewer even praised the flag for
+covering Devanagari digits — validating the semantics of a pattern that cannot compile on Android. No
+amount of reading finds a defect that only exists in a runtime nothing in CI runs on; the on-device
+stack trace from v1.63.1 found it in one shot.
+
+*The original handoff follows, uncorrected, because its reasoning is the record of how the wrong
+conclusion was reached.*
+
+---
+
 **Nothing has been released. The owner's capture is still broken and still undiagnosed.**
 
 ## Where the investigation actually got to

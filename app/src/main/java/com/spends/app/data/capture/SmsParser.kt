@@ -350,12 +350,20 @@ object SmsParser {
 
     /**
      * One whole numeral → one `#`. Two deliberate details:
-     *  - `(?U)` makes `\d` Unicode-aware. Kotlin's default `\d` is ASCII `[0-9]`, so a Devanagari or
-     *    Arabic-Indic digit would slip through the mask untouched and be sent.
+     *  - `\p{Nd}` is "any Unicode decimal digit". Kotlin's plain `\d` is ASCII `[0-9]`, so a Devanagari
+     *    or Arabic-Indic digit would slip through the mask untouched and be sent.
      *  - Grouping separators and decimals are swallowed, so `Rs.5,59,393.44` becomes `Rs.#` rather than
      *    `Rs.#,#,#.#` — otherwise the digit count leaks the order of magnitude of every amount.
+     *
+     * **Never write this as `(?U)\d`.** That inline flag is Java-only syntax. Android's regex engine is
+     * ICU-backed and rejects it outright, so the pattern throws [java.util.regex.PatternSyntaxException]
+     * while this `object`'s initialiser runs — which means the very first call to [parse] dies with an
+     * `ExceptionInInitializerError` and every caller's `runCatching` swallows it. That is exactly what
+     * happened: `(?U)` arrived in v1.58.0 and silently killed live SMS capture on the phone for five
+     * releases, while every JVM unit test kept passing because the JVM *does* accept `(?U)`.
+     * `\p{Nd}` means the same thing and is understood by both engines. Guarded by `JvmOnlyRegexTest`.
      */
-    private val NUMERAL = Regex("(?U)\\d[\\d,]*(?:\\.\\d+)?")
+    private val NUMERAL = Regex("\\p{Nd}[\\p{Nd},]*(?:\\.\\p{Nd}+)?")
 
     /** Bank alerts run ~150 chars; this bounds a pathological one without truncating a real merchant. */
     private const val MAX_AI_CONTEXT_CHARS = 300

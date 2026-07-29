@@ -347,12 +347,18 @@ class SmsDebugLog @Inject constructor() {
         /**
          * One whole numeral → one `#`. Deliberately a copy of the rule in [SmsParser], not a call into
          * it: this is a privacy control and must not be able to change because a parser's needs changed.
-         * `(?U)` makes `\d` Unicode-aware — Kotlin's default `\d` is ASCII `[0-9]`, so a Devanagari or
-         * Arabic-Indic digit would otherwise pass straight through. Grouping separators and decimals are
-         * swallowed so `Rs.5,59,393.44` becomes `Rs.#` rather than `Rs.#,#,#.#`, which would leak the
+         * `\p{Nd}` is "any Unicode decimal digit" — Kotlin's plain `\d` is ASCII `[0-9]`, so a Devanagari
+         * or Arabic-Indic digit would otherwise pass straight through. Grouping separators and decimals
+         * are swallowed so `Rs.5,59,393.44` becomes `Rs.#` rather than `Rs.#,#,#.#`, which would leak the
          * order of magnitude.
+         *
+         * **Never write this as `(?U)\d`** — see the twin in [SmsParser]. That inline flag is Java-only;
+         * Android's ICU-backed engine throws on it while this `object`'s initialiser runs, taking the
+         * whole screen down before it draws. Copying the rule faithfully also copied that defect here,
+         * which is how the diagnostic screen built to find the capture bug shared its root cause.
+         * Guarded by `JvmOnlyRegexTest`.
          */
-        private val NUMERAL = Regex("(?U)\\d[\\d,]*(?:\\.\\d+)?")
+        private val NUMERAL = Regex("\\p{Nd}[\\p{Nd},]*(?:\\.\\p{Nd}+)?")
 
         /**
          * URL-ish tokens → `(link)`. Indian bank alerts routinely carry a PER-CUSTOMER short link whose
