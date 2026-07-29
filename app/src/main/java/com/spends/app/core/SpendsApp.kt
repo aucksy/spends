@@ -37,6 +37,11 @@ class SpendsApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        // FIRST, before anything else can throw. v1.63.0's diagnostic screen closed the app on open and
+        // there was no way to find out what threw: the owner has no developer tools, and every cloud
+        // check passed because the fault does not reproduce off-device. From here on a crash leaves a
+        // readable trace behind (see [CrashLog], which then re-throws into Android's own handler).
+        CrashLog.install(this)
         // Recurring materialisation now fires on an EXACT alarm at the user's chosen time (default 9 AM
         // local) instead of an inexact WorkManager job that Doze could defer by hours (#4). Re-arming at
         // launch is idempotent + self-healing (always computes the next occurrence). Read the persisted

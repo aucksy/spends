@@ -8,6 +8,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.test.core.app.ApplicationProvider
+import com.google.common.truth.Truth.assertThat
 import com.spends.app.data.capture.CaptureNotifier
 import com.spends.app.data.capture.SmsDebugLog
 import com.spends.app.data.settings.SettingsRepository
@@ -93,5 +94,30 @@ class SmsDebugScreenRenderTest {
         val viewModel = viewModelWith(context, log)
         setContent { SmsDebugScreen(onBack = {}, viewModel = viewModel) }
         waitForIdle()
+    }
+
+    /**
+     * Validates the DETECTOR, not the screen.
+     *
+     * A green render test is worth nothing until it has been shown that a crashing screen would
+     * actually turn it red — the same discipline the byte-level newline scanner needed after it missed
+     * a real defect by searching for LF in a CRLF file. This deliberately composes something that
+     * throws and asserts the failure escapes `runComposeUiTest`. If this test ever starts passing
+     * vacuously, the two tests above stop meaning anything.
+     */
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun a_crashing_screen_would_actually_fail_these_tests() {
+        val caught = runCatching {
+            runComposeUiTest {
+                setContent { error("deliberate canary — the harness must see this") }
+                waitForIdle()
+            }
+        }.exceptionOrNull()
+
+        assertThat(caught).isNotNull()
+        val sawCanary = generateSequence(caught) { it.cause }
+            .any { it.message?.contains("deliberate canary") == true }
+        assertThat(sawCanary).isTrue()
     }
 }

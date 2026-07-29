@@ -41,7 +41,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,6 +52,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.spends.app.core.CrashLog
 import com.spends.app.data.capture.NotificationCaptureApps
 import com.spends.app.service.NotificationListenerControl
 
@@ -63,6 +67,7 @@ fun CaptureSection(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var showScan by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
@@ -258,6 +263,44 @@ fun CaptureSection(
         // whole point is to diagnose the case where capture looks on but nothing is happening, and
         // "the switch reads on while the switch is what's wrong" is one of the answers they can give.
         HorizontalDivider(Modifier.padding(vertical = 10.dp))
+        // ---- Last crash ----
+        // Deliberately on THIS screen and not on the SMS debug screen it is diagnosing: the fault being
+        // chased closes the app as that screen opens, so anything shown there would never be read. Only
+        // appears when there is something to report, and the owner can dismiss it for good.
+        var lastCrash by remember { mutableStateOf(CrashLog.read(context)) }
+        lastCrash?.let { crash ->
+            Spacer(Modifier.height(12.dp))
+            Text("Spends closed unexpectedly", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "It left a technical note behind. Tap \"Copy crash report\" and paste it into chat — " +
+                    "it holds no transactions, no amounts and no message text, only the names of the " +
+                    "code that failed, your Android version and your phone model.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                crash.lineSequence().take(7).joinToString("\n"),
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = { clipboard.setText(AnnotatedString(crash)) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Copy crash report") }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = {
+                    CrashLog.clear(context)
+                    lastCrash = null
+                }) { Text("Dismiss") }
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider()
+        }
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier

@@ -11,7 +11,13 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.63.0 — seven releases.**
+**Currently untested: v1.57.0 → v1.63.1 — eight releases.**
+
+> **v1.63.0 shipped a crash:** opening SMS debug closed the app. v1.63.1 does not blindly guess a fix —
+> it makes the crash *readable*. Install v1.63.1, open SMS debug, and if it closes again, reopen Spends
+> and go back to **Settings → Automatic Entries**: a "Spends closed unexpectedly" notice is waiting there
+> with a **Copy crash report** button. That report names the code that failed. It contains no
+> transactions, no amounts and no message text.
 
 ---
 
@@ -36,6 +42,22 @@ wrong number about real money, rather than something looking untidy.
 - [ ] **A real bank SMS still captures correctly.** Any release touching the parser is a money risk.
       Wait for (or find) a genuine bank alert and confirm the amount, the date and income-vs-expense are
       all right in the review queue.
+
+---
+
+## v1.63.1 — make the crash speak
+
+- [ ] ⭐⭐ **Open SMS debug again.** Two outcomes, both useful:
+      - **It opens** — carry straight on to the v1.63.0 test below. That is the real goal.
+      - **It closes the app again** — reopen Spends, go to **Settings → Automatic Entries**, and the
+        "Spends closed unexpectedly" notice will be at the top. Tap **Copy crash report** and paste it
+        to me. That names the exact line that failed, which is what I need to fix it properly rather
+        than guess.
+- [ ] The crash notice is **safe to paste**: code names, your Android version and your phone model. No
+      transactions, no amounts, no message text. Have a look before sending if you like.
+- [ ] **Dismiss** removes the notice for good and it does not come back on its own.
+- [ ] If Spends has *not* crashed, no notice appears at all — an empty Automatic Entries screen top is
+      the correct result, not a missing feature.
 
 ---
 

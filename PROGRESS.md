@@ -4,12 +4,45 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.63.0** — versionCode **69**, versionName **"1.63.0"**. The SMS capture diagnostic, plus
-  two permanent capture fixes. **No DB schema change (still v16)**, no snapshot, no manifest change, no
-  dependency change; `SmsParser` and its golden fixtures untouched, capture still review-only.
+- **Shipped: v1.63.1** — versionCode **70**, versionName **"1.63.1"**. Makes the v1.63.0 SMS debug crash
+  diagnosable: an uncaught-exception handler that leaves a readable trace, surfaced on the Automatic
+  Entries screen. No DB/schema/manifest change; no shipped-behaviour change beyond the crash notice.
+  APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+- Previous: **v1.63.0** — versionCode 69. The SMS capture diagnostic + two capture fixes.
+  **Known defect: the SMS debug screen closes the app when opened.** Fixed-forward by v1.63.1's trace.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.0/Spends-v1.63.0.apk
-- Previous: **v1.62.0** — versionCode 68. Two judgement cards (Phase C).
-  APK: https://github.com/aucksy/spends/releases/download/v1.62.0/Spends-v1.62.0.apk
+
+## v1.63.1 — make the crash speak
+
+**What happened.** v1.63.0 shipped fully green: the signed release APK built, Hilt/KSP codegen ran, 195
+logic assertions passed, and two adversarial review agents returned zero blockers. Opening the SMS debug
+screen closed the app immediately.
+
+**Why nothing caught it.** No check in this repo had ever *opened* a screen. The unit tests are pure
+logic with no Android framework, and Robolectric was not on the classpath at all. Compiling a composable
+proves almost nothing about running one — theme lookups, `remember` initialisers, permission reads,
+ViewModel `init` and the first composition of every branch happen only when something composes it. A
+successful APK build proves the code compiles and the DI graph is *legal*, not that a screen survives
+being opened. Those are different claims, and v1.63.0 was shipped on the first while the second was
+what mattered.
+
+**What is now in place.**
+1. **Robolectric render tests** (`SmsDebugScreenRenderTest`) — compose the real screen on a plain cloud
+   runner, no emulator, in three states: ViewModel alone, empty log, and every `Outcome` recorded. Plus
+   a **canary test that deliberately crashes a composition and asserts the harness sees it**, so a green
+   render result is never trusted before the detector has been shown to work (lesson 4, applied).
+2. **[`CrashLog`](app/src/main/java/com/spends/app/core/CrashLog.kt)** — an uncaught-exception handler
+   installed first thing in `SpendsApp.onCreate`. It writes the trace to `filesDir` and then hands the
+   crash straight on to the previous handler, so nothing is swallowed and the app still dies as Android
+   intends. Surfaced on the **Automatic Entries** screen — deliberately the parent, because the screen
+   being diagnosed closes the app as it opens.
+
+**The honest part.** The render tests did *not* reproduce the crash: the screen composes cleanly
+headlessly, so the fault needs the real app on a real device. That is precisely why the on-device trace
+exists rather than another round of reading code. The rule that shipped v1.63.0 — *ship when no finding
+touches behaviour, money or a privacy leak* — was the right rule and is unchanged; the gap was that
+neither reviewer could see a whole class of defect, and "both agents clean" was reported with more
+confidence than the evidence supported.
 
 ## v1.63.0 — the SMS capture diagnostic, and two fixes that were losing money
 
