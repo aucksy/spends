@@ -11,6 +11,7 @@ import android.widget.RemoteViews
 import com.spends.app.R
 import com.spends.app.core.MainActivity
 import com.spends.app.core.QuickAddActivity
+import com.spends.app.core.calc.CarryForward
 import com.spends.app.core.money.Money
 import com.spends.app.core.period.CardCycleInfo
 import com.spends.app.core.period.CompositeCycleResolver
@@ -103,6 +104,11 @@ class SummaryWidget : AppWidgetProvider() {
                 var expense = 0L
                 var cycleName = ""
                 var cycleLabel = ""
+                // Start of the window the figures above cover — the point carry-forward is measured up to.
+                var periodStartMillis = 0L
+                // Carry-forward is a whole-account running balance, so it means nothing over ONE card's
+                // statement. The app's single-card view sets it to null for exactly this reason.
+                var carryApplies = true
                 val singleCard = settings.smartCycleEnabled && selection.type == PeriodType.SMART_CYCLE &&
                     selection.selectedCardId != null
                 var handledAsCard = false
@@ -121,6 +127,7 @@ class SummaryWidget : AppWidgetProvider() {
                         // Just the cycle name (a single card's label already carries its dates) (#1).
                         cycleName = composite.label
                         cycleLabel = ""
+                        carryApplies = false
                         handledAsCard = true
                     }
                 }
@@ -144,6 +151,7 @@ class SummaryWidget : AppWidgetProvider() {
                     val dayFmt = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
                     cycleName = selection.describe()
                     cycleLabel = "${dayFmt.format(cycleWin.start)} – ${dayFmt.format(cycleWin.endInclusive)}"
+                    periodStartMillis = cycleWin.startMillis()
                     handledAsCard = true
                 }
                 if (!handledAsCard) {
@@ -169,13 +177,39 @@ class SummaryWidget : AppWidgetProvider() {
                     val sums = ep.expenseRepository().kindSumsOnce(resolved.startMillis, resolved.endExclusiveMillis)
                     income = sums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0L
                     expense = sums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0L
+                    periodStartMillis = resolved.startMillis
                     // Cycle NAME + dates (#11), reflecting the user's actual selection (#6). A vanished
                     // single card falls through to here — its describe() would say "Single Card" over
                     // whole-cycle numbers, so show the window's dates instead.
                     cycleName = if (singleCard) resolved.label else selection.describe()
                     cycleLabel = if (singleCard) "" else resolved.label
                 }
-                val balance = income - expense
+                // Carry-forward, applied with the SAME rule the app uses (TransactionsViewModel.buildState):
+                // the opening balance as of the anchor, plus the net of everything from the anchor up to
+                // this window's start. Until now the widget showed income − expense only, so anyone with
+                // carry-forward switched on saw one balance on the home screen and a different one inside
+                // the app — and the home screen is exactly where a balance gets read without opening
+                // anything. Every guard below mirrors the app's, including "no anchor → no carry-in",
+                // which is what stops an incomplete history producing a hugely-negative figure.
+                val anchorMillis = if (settings.carryForwardAnchorEpochDay > 0) {
+                    DateUtils.startOfDayMillis(LocalDate.ofEpochDay(settings.carryForwardAnchorEpochDay))
+                } else {
+                    0L
+                }
+                val carryForward: Long? = CarryForward.resolve(
+                    enabled = settings.carryForwardEnabled,
+                    anchorMillis = anchorMillis,
+                    openingMinor = settings.carryForwardOpeningMinor,
+                    periodStartMillis = periodStartMillis,
+                    applies = carryApplies,
+                ) {
+                    // Only reached when carry-forward genuinely applies, so the widget pays for these two
+                    // reads on no other path.
+                    val expenses = ep.expenseRepository()
+                    expenses.observeBalanceBefore(periodStartMillis).first() -
+                        expenses.observeBalanceBefore(anchorMillis).first()
+                }
+                val balance = income - expense + (carryForward ?: 0L)
                 val store = ep.widgetMaskStore()
                 val eyeHidden = settings.widgetEyeHidden
                 // The widget lives OUTSIDE the app, so DemoModeWrapper's "sample data" strip can't reach it —

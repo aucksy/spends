@@ -2,6 +2,7 @@ package com.spends.app.ui.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.calc.CarryForward
 import com.spends.app.core.period.CardCycleInfo
 import com.spends.app.core.period.CompositeCycleResolver
 import com.spends.app.core.period.CompositePeriod
@@ -400,14 +401,17 @@ class TransactionsViewModel @Inject constructor(
         } else {
             0L
         }
-        val carryForward = when {
-            !settings.carryForwardEnabled -> null
-            anchorMillis <= 0 -> null
-            // This cycle starts before the anchor → no carry-in (opening applies from the anchor onward only).
-            info.windowStartMillis < anchorMillis -> null
-            // Opening + the net of every cycle from the anchor up to (not including) this one, bucketed by the
-            // SAME rule as the list — so carry-forward and this cycle's totals never disagree.
-            else -> settings.carryForwardOpeningMinor + fetched
+        val carryForward = CarryForward.resolve(
+            enabled = settings.carryForwardEnabled,
+            anchorMillis = anchorMillis,
+            openingMinor = settings.carryForwardOpeningMinor,
+            periodStartMillis = info.windowStartMillis,
+        ) {
+            // The net of every cycle from the anchor up to (not including) this one, bucketed by the SAME
+            // rule as the list — so carry-forward and this cycle's totals never disagree. This is why the
+            // net is a lambda rather than a parameter: each caller's notion of "before this window"
+            // differs, while the guards around it must not.
+            fetched
                 .filter { val s = cycleStartOf(it); s in anchorMillis until info.windowStartMillis }
                 .sumOf { it.signedBalanceContribution() }
         }
@@ -495,18 +499,16 @@ class TransactionsViewModel @Inject constructor(
             canStepForward = false,
             search = query,
             totals = totals,
-            carryForward = when {
-                !settings.carryForwardEnabled -> null
-                // Carry-forward REQUIRES an anchor. Without one, never fold in all incomplete old
-                // history (that produced the hugely-negative balance the user hit).
-                anchorMillis <= 0 -> null
-                // Periods that start strictly before the anchor get no carry-in (the opening balance
-                // applies from the anchor onward only).
-                resolved.startMillis < anchorMillis -> null
-                // Opening balance as of the anchor + the net of everything from the anchor up to this
-                // period's start (pre-anchor data excluded by the subtraction).
-                else -> settings.carryForwardOpeningMinor + carryBeforePeriod - carryBeforeAnchor
-            },
+            // One shared rule with the home-screen widget (see [CarryForward]) — they used to be written
+            // out separately, and the widget's copy was missing entirely.
+            carryForward = CarryForward.resolve(
+                enabled = settings.carryForwardEnabled,
+                anchorMillis = anchorMillis,
+                openingMinor = settings.carryForwardOpeningMinor,
+                periodStartMillis = resolved.startMillis,
+                // The net from the anchor up to this period's start; pre-anchor data excluded by the
+                // subtraction.
+            ) { carryBeforePeriod - carryBeforeAnchor },
             groups = groups,
             isComposite = false,
         )

@@ -4,7 +4,10 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.63.2** — versionCode **71**, versionName **"1.63.2"**. **The capture bug is found and
+- **Shipped: v1.63.3** — versionCode **72**, versionName **"1.63.3"**. The home-screen widget's balance
+  now applies carry-forward, via one rule shared with the app instead of a second copy.
+  APK: https://github.com/aucksy/spends/releases/download/v1.63.3/Spends-v1.63.3.apk
+- Previous: **v1.63.2** — versionCode 71. **The capture bug was found and
   fixed.** A Java-only regex flag, `(?U)`, made `SmsParser`'s object initialiser throw on any real
   Android device; every caller's `runCatching` swallowed it, so live SMS capture had been dead since
   v1.58.0. The same copied line crashed the v1.63.0 debug screen. No DB/schema/manifest change.
@@ -12,6 +15,29 @@ for how the project works.
 - Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+
+## v1.63.3 — the widget's balance ignored carry-forward
+
+The home-screen widget computed `income − expense` and never applied carry-forward, so anyone with the
+setting on read **one balance on their home screen and a different one inside the app**, with nothing to
+say which was right. The home screen is exactly where a balance gets glanced at without opening anything.
+
+**The fix is one shared rule, not a second copy.** The rule had been written out separately at each place
+that needed it — twice in `TransactionsViewModel`, and *not at all* in the widget. That is how the copies
+drifted. [`CarryForward.resolve`](app/src/main/java/com/spends/app/core/calc/CarryForward.kt) is now the
+single definition and all three call sites use it.
+
+The guards are the load-bearing part, not the arithmetic: carry-forward requires an anchor (without one,
+folding in an incomplete history produced the hugely-negative balance this app already hit once); a
+window starting before the anchor gets no carry-in; and a caller can opt out entirely, which the
+single-card view does because a running whole-account balance is meaningless over one card's statement.
+The net is a lambda so each caller keeps its own notion of "before this window" — the plain window uses a
+balance-before difference, the salary cycle uses its card-billing-aware bucketing — while the guards
+around them cannot diverge.
+
+`CarryForwardTest` pins every guard, that zero and null stay different answers (the UI shows a tile for
+one and not the other), that the net is not computed when a guard rejects, and that the widget and app
+figures agree *and* differ from the old `income − expense` — so the regression test cannot pass vacuously.
 
 ## v1.63.2 — the actual cause, after five releases
 

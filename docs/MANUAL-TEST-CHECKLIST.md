@@ -45,6 +45,20 @@ wrong number about real money, rather than something looking untidy.
 
 ---
 
+## v1.63.3 — the widget's balance
+
+- [ ] ⭐⭐ **The widget balance now matches the app.** With carry-forward on, put the two side by side:
+      the home-screen widget's Balance should equal the Balance shown at the top of the app for the same
+      cycle. They disagreed before this release.
+- [ ] The widget may need a moment or a tap to refresh after installing.
+- [ ] ⭐ **Single Card view is deliberately different** — a single card's statement shows **no**
+      carry-forward, on the widget and in the app alike, because a running whole-account balance means
+      nothing over one card. Confirm it isn't quietly adding one.
+- [ ] With carry-forward **off** in Settings → Money, the widget balance is plain income − expense, as
+      before. Nothing should change for you if you don't use the feature.
+
+---
+
 ## v1.63.2 — the capture fix
 
 - [ ] ⭐⭐⭐ **A real bank SMS captures again.** This is the whole thing. Wait for (or trigger) a genuine
