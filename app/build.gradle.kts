@@ -187,6 +187,15 @@ dependencies {
     // isReturnDefaultValues), so the AI layer's JSON parse/build helpers can be tested for real.
     testImplementation("org.json:json:20231013")
 
+    // JVM render tests (Robolectric). Until v1.63.0 the build could COMPILE every screen and run 195
+    // logic assertions without ever OPENING one — which is exactly how a screen that crashes the moment
+    // it is opened shipped past a fully green CI run. These tests compose a real screen on a plain cloud
+    // runner (no emulator) and fail with the actual stack trace.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+
     // Instrumentation testing
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
