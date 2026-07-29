@@ -11,12 +11,19 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.62.0 — six releases.**
+**Currently untested: v1.57.0 → v1.63.0 — seven releases.**
 
 ---
 
 ## ⭐ Highest value right now
 
+- [ ] ⭐⭐ **THE ONE THING — the SMS diagnostic** *(v1.63.0, new; this is the whole reason the release
+      exists)*. Settings → Automatic Entries → Detect from SMS & notifications → **SMS debug**. **Leave
+      Spends open on that screen**, send yourself any text from anywhere, and watch **"SMS delivered
+      (this app run)"**. If it stays **0**, Android never handed the text to Spends and nothing inside
+      the app is the cause. If it goes to **1**, the fault *is* inside the app and the rows under the
+      verdict say which one. Send me that number and the verdict line, word for word. Full instructions
+      in the v1.63.0 section below.
 - [ ] **The summary card's "vs last cycle" on your REAL data** *(v1.61.0 fixed a bug that was already on
       your phone)*. Open Analytics, read page 1 of the insights carousel. Does the comparison against last
       cycle sound right? Until v1.61.0 it compared against a window that started days off your actual
@@ -29,6 +36,63 @@ wrong number about real money, rather than something looking untidy.
 - [ ] **A real bank SMS still captures correctly.** Any release touching the parser is a money risk.
       Wait for (or find) a genuine bank alert and confirm the amount, the date and income-vs-expense are
       all right in the review queue.
+
+---
+
+## v1.63.0 — the SMS diagnostic, and two fixes that were quietly eating money
+
+This release exists to answer **one question**: when a bank text arrives, does Android hand it to Spends
+at all? Everything else below is secondary. The diagnostic screen is **temporary** and comes out once we
+have the answer.
+
+**The one test that matters.** Settings → Automatic Entries → Detect from SMS & notifications → **SMS debug**.
+
+- [ ] ⭐⭐ **Leave Spends OPEN on the SMS debug screen.** Send yourself any text — from another phone, a
+      friend, anything. It does **not** need to be a bank alert. Watch the counter **"SMS delivered
+      (this app run)"**:
+      - **0 → 1** means Android *is* delivering texts to Spends, so the fault is inside the app, and the
+        rows under the verdict line say which part.
+      - **Stays 0** means Android is *not* handing texts to Spends at all. Nothing in Spends is the cause
+        — it is something on the phone (Truecaller holding the default-SMS role, battery optimisation,
+        restricted background activity, or the permission being revoked without saying so).
+      - Either way: **send me the number and the verdict line, word for word.**
+- [ ] **Why "leave it open" matters:** the counter says *this app run*, and it resets whenever Android
+      kills the app. If you send the text with Spends closed and open it afterwards, you will see 0 and
+      it will mean nothing at all. Don't trust a 0 you didn't watch happen.
+- [ ] Read the rows under the verdict and note any ⚠️: Receive SMS permission, Read SMS, Detect from bank
+      SMS, Prompt can be shown, App start-up failures.
+- [ ] The **"Messages kept"** list at the bottom — after your test text, an entry should appear naming the
+      sender and the reason it was ignored (for a non-bank text, "The sender isn't a bank Spends knows"
+      is the correct answer, not a failure).
+
+**Two real fixes.** Both are permanent capture fixes, not diagnostics. Neither is likely to be *your*
+cause, but both were silently losing money for someone.
+
+- [ ] ⭐ **A parsed bank text is no longer thrown away when the pop-up can't be shown.** Before this, if
+      the "Review & Add" prompt was blocked, the transaction simply vanished. It now goes to the **review
+      queue** instead. Worth checking the queue for entries you never saw a pop-up for.
+- [ ] ⭐ **The "Transaction detection" notification category being switched off on its own** is now
+      detected and reported. Previously both live capture paths were blind to it and just did nothing.
+
+**Honest scan messages.** "Scan past SMS" and "Scan for cards" used to print the same sentence no matter
+what actually happened — that alone cost a full round of this investigation.
+
+- [ ] Tap **Scan past SMS** and read the result. It should now tell the four cases apart: read nothing /
+      read plenty but all already known / couldn't read / refused because demo mode is on.
+- [ ] With **demo mode on**, both scans should refuse and *say* they refused, rather than reporting zero.
+
+**Privacy — please actually check this one.** The screen has a copy-report button, and the report is
+meant to be safe to send me.
+
+- [ ] ⭐ Copy the report and **read it before sending it anywhere**. It should list sender **names** (that
+      is deliberate — it's how a bank Spends doesn't recognise gets identified) but **no message text, no
+      amounts, no OTP codes, no UPI IDs, no account or card numbers**. If you see any of those, stop and
+      tell me instead of sending it.
+- [ ] ⭐ **The NOTIFICATION debug report is a different thing, and it is not as clean.** That older
+      screen's report lists conversation titles and sender names for *every* notification it saw,
+      **including personal chats** — so a friend's name, or an unknown caller's raw phone number, can
+      appear in it. That is pre-existing, not new this release, and the screen now says so. Read that one
+      before pasting it anywhere. **The SMS debug report is the safe one to send me.**
 
 ---
 

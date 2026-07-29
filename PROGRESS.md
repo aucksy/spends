@@ -4,12 +4,43 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.62.0** — versionCode **68**, versionName **"1.62.0"**. Two judgement cards — commitments,
-  and what you kept (Phase C of [`docs/AI-INSIGHTS-PLAN.md`](docs/AI-INSIGHTS-PLAN.md)). **No DB schema
-  change (still v16)**, no snapshot, no dependency change; one additive read-only DAO query.
+- **Shipped: v1.63.0** — versionCode **69**, versionName **"1.63.0"**. The SMS capture diagnostic, plus
+  two permanent capture fixes. **No DB schema change (still v16)**, no snapshot, no manifest change, no
+  dependency change; `SmsParser` and its golden fixtures untouched, capture still review-only.
+  APK: https://github.com/aucksy/spends/releases/download/v1.63.0/Spends-v1.63.0.apk
+- Previous: **v1.62.0** — versionCode 68. Two judgement cards (Phase C).
   APK: https://github.com/aucksy/spends/releases/download/v1.62.0/Spends-v1.62.0.apk
-- Previous: **v1.61.0** — versionCode 67. Insights that compare over time (Phase B).
-  APK: https://github.com/aucksy/spends/releases/download/v1.61.0/Spends-v1.61.0.apk
+
+## v1.63.0 — the SMS capture diagnostic, and two fixes that were losing money
+
+**Why this release exists.** Live SMS capture last worked ~21:00, Sun 26 Jul 2026, on v1.57.0, and died
+by v1.62.0. Every code change in that window was traced and eliminated on evidence, so the cause is
+outside the app — something on the phone stopped feeding the receiver — and the app had no way to say
+which part. This release gives it one. Full reasoning: [`docs/SMS-CAPTURE-DEBUG.md`](docs/SMS-CAPTURE-DEBUG.md);
+state and deferred items: [`docs/SMS-DEBUG-HANDOFF.md`](docs/SMS-DEBUG-HANDOFF.md).
+
+**1. SMS debug screen** — Settings → Automatic Entries → Detect from SMS & notifications → SMS debug.
+A verdict line, a row per precondition, a capped in-memory log, and a redacted copyable report. The
+load-bearing number is **"SMS delivered (this app run)"**: if it stays 0 while texts arrive, Android is
+not handing them to the app and nothing in Spends is the cause. Temporary — it is removed once answered.
+
+**2. Two permanent capture fixes.** Neither is the owner's cause; both silently ate money.
+- A parsed bank SMS was **discarded** when the review prompt could not be shown. It is now **queued for
+  review** instead.
+- Both live capture paths were **blind to the "Transaction detection" notification category being off
+  on its own**. Now detected and reported.
+
+**3. Honest scan messages.** `scanMessage` / `cardScanMessage` now distinguish "read nothing", "read
+plenty, all already known", "couldn't read", and "refused in demo mode". The single old sentence for all
+four cost a full round of this investigation.
+
+**Process note — the thing worth remembering.** The previous session ran **thirteen** adversarial review
+rounds on a temporary diagnostic and shipped nothing. The review process itself was working (it caught an
+OTP leak, a UPI-ID leak and a build-breaking character literal); the **stopping rule** was wrong, because
+each fix round can introduce a fresh wording defect, so "clean on both agents" has no bound. The rule
+now: **ship when no finding touches behaviour, money, or a privacy leak.** That was true by round 8.
+This release ran **one** round against that rule. Wording and test-coverage findings are recorded under
+"Known, not fixed" in the handoff doc rather than fixed.
 
 ## v1.62.0 — Phase C: two judgement cards (commitments, and what you kept)
 
