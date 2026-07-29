@@ -106,6 +106,11 @@ class SummaryWidget : AppWidgetProvider() {
                 var cycleLabel = ""
                 // Start of the window the figures above cover — the point carry-forward is measured up to.
                 var periodStartMillis = 0L
+                // Set ONLY on the card-billing-aware Smart Cycle path. Its presence means carry-forward must
+                // bucket each spend by its card's billing day, exactly as the totals above already do —
+                // counting by date instead is what made this widget disagree with the app.
+                var smartResetDay: Int? = null
+                var smartBillingDays: Map<Long, Int?> = emptyMap()
                 // Carry-forward is a whole-account running balance, so it means nothing over ONE card's
                 // statement. The app's single-card view sets it to null for exactly this reason.
                 var carryApplies = true
@@ -152,6 +157,8 @@ class SummaryWidget : AppWidgetProvider() {
                     cycleName = selection.describe()
                     cycleLabel = "${dayFmt.format(cycleWin.start)} – ${dayFmt.format(cycleWin.endInclusive)}"
                     periodStartMillis = cycleWin.startMillis()
+                    smartResetDay = reset
+                    smartBillingDays = billingDays
                     handledAsCard = true
                 }
                 if (!handledAsCard) {
@@ -203,11 +210,36 @@ class SummaryWidget : AppWidgetProvider() {
                     periodStartMillis = periodStartMillis,
                     applies = carryApplies,
                 ) {
-                    // Only reached when carry-forward genuinely applies, so the widget pays for these two
-                    // reads on no other path.
+                    // Only reached when carry-forward genuinely applies, so the widget pays for these reads
+                    // on no other path.
                     val expenses = ep.expenseRepository()
-                    expenses.observeBalanceBefore(periodStartMillis).first() -
-                        expenses.observeBalanceBefore(anchorMillis).first()
+                    val reset = smartResetDay
+                    if (reset == null) {
+                        // Plain window: the net before it, by date. Matches TransactionsViewModel.buildState.
+                        expenses.observeBalanceBefore(periodStartMillis).first() -
+                            expenses.observeBalanceBefore(anchorMillis).first()
+                    } else {
+                        // Card-billing-aware Smart Cycle: bucket by the SAME rule as the totals, so a card
+                        // purchase counts in the cycle its statement bills it to. Matches
+                        // TransactionsViewModel.buildStateSmartCard, which sums every cycle from the anchor
+                        // up to (not including) this one.
+                        //
+                        // The fetch starts one window BEFORE the anchor on purpose: the billing shift only
+                        // ever moves a spend FORWARD, and by at most one window, so a purchase dated just
+                        // before the anchor can still bill into a cycle at or after it. Starting at the
+                        // anchor itself would silently drop those.
+                        val anchorDate = LocalDate.ofEpochDay(settings.carryForwardAnchorEpochDay)
+                        val lowerBound = CycleUtils.previousWindow(CycleUtils.windowFor(anchorDate, reset), reset).startMillis()
+                        expenses.expensesBetweenOnce(lowerBound, periodStartMillis)
+                            .filter {
+                                SmartCardCycle.effectiveWindowStartMillis(
+                                    it.occurredAt,
+                                    smartBillingDays[it.paymentMethodId],
+                                    reset,
+                                ) in anchorMillis until periodStartMillis
+                            }
+                            .sumOf { if (it.kind == TxnKind.INCOME) it.amountMinor else -it.amountMinor }
+                    }
                 }
                 val balance = income - expense + (carryForward ?: 0L)
                 val store = ep.widgetMaskStore()

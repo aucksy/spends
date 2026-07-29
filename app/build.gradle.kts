@@ -38,8 +38,8 @@ android {
         applicationId = "com.spends.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 72
-        versionName = "1.63.3"
+        versionCode = 73
+        versionName = "1.63.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

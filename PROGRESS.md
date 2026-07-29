@@ -16,6 +16,25 @@ for how the project works.
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
 
+## v1.63.4 — the widget's carry-forward now buckets by billing day
+
+v1.63.3 made the widget apply carry-forward, but computed it **by date** while the app's Smart Cycle
+buckets each spend by its card's **billing day**. So on Smart Cycle the two still disagreed — by however
+much a single boundary-straddling card charge came to.
+
+The fix is not a new abstraction. `SmartCardCycle.effectiveWindowStartMillis` was already the shared
+rule, already used by Analytics, the timeline and the widget's own income/expense totals. Carry-forward
+was the one number that wasn't calling it. Now it does, so it agrees with
+`TransactionsViewModel.buildStateSmartCard` by construction.
+
+One detail worth keeping: the carry fetch starts **one window before the anchor**. The billing shift only
+moves a spend forward, and by at most one window, so a purchase dated just before the anchor can still
+bill into a cycle at or after it. Starting the fetch at the anchor itself would silently drop those.
+
+Deliberately NOT done: unifying the app's three summary paths behind one calculator. That would rewrite
+working money code in the app to match the side that was wrong — the wrong direction of risk. The
+sharing that mattered already existed; only one call site was missing.
+
 ## v1.63.3 — the widget's balance ignored carry-forward
 
 The home-screen widget computed `income − expense` and never applied carry-forward, so anyone with the
