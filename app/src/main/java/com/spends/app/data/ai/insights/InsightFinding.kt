@@ -95,7 +95,25 @@ data class InsightFinding(
     val baselineSharePercent: Int = 0,
     /** The calendar month both sides of a [InsightKind.YEAR_ON_YEAR] comparison fall in, e.g. "July". */
     val periodLabel: String? = null,
+    /**
+     * The categories a [InsightKind.CONCENTRATION] finding is about, biggest first. Empty for every other
+     * kind, which use the single [category] instead.
+     *
+     * A list rather than a reuse of [category]: this card is about several categories at once, and the
+     * engine used to discard the names entirely (it sorted the amounts and threw the keys away), which is
+     * why the card could only ever say "your top 3 categories" and never which three.
+     */
+    val topCategories: List<String> = emptyList(),
 ) {
+
+    /**
+     * The names this finding is ABOUT, which its wording must therefore contain — the single category for
+     * most kinds, the top few for a concentration, nothing for the kinds that are about the whole cycle.
+     *
+     * Used both by the templates and by [InsightNarrator]'s guard, so "the card must say what it is about"
+     * is one rule rather than a convention each surface remembers separately.
+     */
+    fun subjectNames(): List<String> = topCategories.ifEmpty { listOfNotNull(category) }
 
     /**
      * The wording used when the AI is unavailable — no key, offline, a failed call, or a short reply.
@@ -149,8 +167,16 @@ data class InsightFinding(
                 "${category.orEmpty()} is ${rs(abs(amountMinor - baselineMinor))} ahead of where last cycle stood at this point."
             InsightKind.MOVER_DOWN ->
                 "${category.orEmpty()} is ${rs(abs(baselineMinor - amountMinor))} behind where last cycle stood at this point."
-            InsightKind.CONCENTRATION ->
-                "$count categories account for $sharePercent% of everything you spent this cycle — ${rs(amountMinor)} of it."
+            // Names them where it can. "Your top 3 categories" told the user nothing they could act on or
+            // even verify against the donut directly beneath it.
+            InsightKind.CONCENTRATION -> {
+                val named = topCategories.joinToString(", ").takeIf { it.isNotBlank() }
+                if (named != null) {
+                    "$named account for $sharePercent% of everything you spent this cycle — ${rs(amountMinor)} of it."
+                } else {
+                    "$count categories account for $sharePercent% of everything you spent this cycle — ${rs(amountMinor)} of it."
+                }
+            }
             // "by this point" again: the baseline is measured to the same day of earlier cycles, so calling
             // it a whole-cycle figure would overstate it for the whole of every cycle.
             InsightKind.PACE -> if (amountMinor >= baselineMinor) {

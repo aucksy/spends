@@ -4,7 +4,12 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.63.3** — versionCode **72**, versionName **"1.63.3"**. The home-screen widget's balance
+- **Shipped: v1.64.0** — versionCode **74**, versionName **"1.64.0"**. Insight cards now name the category
+  they are about, enforced by a guard rather than by asking the model nicely.
+  APK: https://github.com/aucksy/spends/releases/download/v1.64.0/Spends-v1.64.0.apk
+- Previous: **v1.63.4** — versionCode 73. Widget carry-forward buckets by card billing day.
+  APK: https://github.com/aucksy/spends/releases/download/v1.63.4/Spends-v1.63.4.apk
+- **v1.63.3** — versionCode 72. The home-screen widget's balance
   now applies carry-forward, via one rule shared with the app instead of a second copy.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.3/Spends-v1.63.3.apk
 - Previous: **v1.63.2** — versionCode 71. **The capture bug was found and
@@ -15,6 +20,40 @@ for how the project works.
 - Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+
+## v1.64.0 — insight cards now say what they are about
+
+The cards were arithmetically perfect and useless: *"You had a ₹10000 charge, which is 15.4 times the
+typical ₹650 charge."* Which charge? Worse, three cards about three different categories read as three
+contradictory claims about the same money — ₹6,070, ₹2,017 and ₹0 "so far this cycle", all true, none of
+them saying of what.
+
+**The numbers were never wrong.** Every figure is computed on-device by [`InsightEngine`]; the model does
+no arithmetic. This was purely a wording defect.
+
+**The category name was in the payload the whole time.** The prompt told the model to echo it back as a
+*field* so the pairing could be checked, and never told it to *say* it. The offline templates always
+named it — so the model's prose was strictly worse than having no model at all, which is the detail that
+makes failing closed the obviously right call here.
+
+**Three changes.**
+1. **The prompt** now requires the body to name the finding's category, spelled exactly as given.
+2. **`InsightEngine.concentration`** kept only the amounts — it sorted `values` and discarded the keys —
+   so "Top Categories" *could not* name them however the prompt was worded. It now carries
+   `topCategories`, the one genuinely new field in the payload.
+3. **The guard is the part that matters.** `InsightNarrator.pair` now rejects a card whose title and body
+   between them fail to name its subject, and falls back to that finding's template. An instruction is a
+   request; this makes it a property of the output. A paraphrased name ("Food and Drink" for "Food &
+   Drink") is rejected too — deliberately, because a renamed category cannot be checked against the donut
+   on the same screen.
+
+**Cost: about 4% more per call** (~1,570 → ~1,635 tokens), one call for the whole carousel, cached per
+cycle. The only new data leaving the device is three category names on one card — the same class of value
+every other card's `category` already carried.
+
+`InsightNarratorTest`'s standing key-set guard was updated too: its "fully populated" finding did not set
+`topCategories`, so the new key would have escaped the exact-key-set assertion entirely while the test
+still claimed the set was maximal.
 
 ## v1.63.4 — the widget's carry-forward now buckets by billing day
 

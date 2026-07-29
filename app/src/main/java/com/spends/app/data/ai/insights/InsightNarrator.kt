@@ -117,6 +117,17 @@ class InsightNarrator @Inject constructor(
             "user's situation TODAY — never write it in the past tense or tie it to the cycle named in " +
             "cycleLabel. \"usualIncomePerCycleAmount\" must always be written as what a cycle USUALLY " +
             "brings in, never as what the user earns now or earned then. " +
+            // ⭐The cards shipped for months saying "You had a ₹10,000 charge, which is 15.4 times the
+            // typical ₹650 charge" — true, and useless, because it never said WHICH category. The name was
+            // in the payload all along; the model was only ever told to echo it back as a FIELD so the
+            // pairing could be checked, never to say it. Three cards about three different categories then
+            // read as three contradictory claims about the same money. The templates always named it, so
+            // the model's prose was strictly worse than having no model at all.
+            "NAME WHAT THE CARD IS ABOUT. When a finding has a \"category\", the body must contain that " +
+            "category's name, spelled exactly as given. When a finding has \"topCategories\", the body must " +
+            "name every category in that list, spelled exactly as given. Do not translate, shorten, " +
+            "re-capitalise or paraphrase a category name. A card whose body does not name its category is " +
+            "discarded. " +
             "Echo each finding's \"kind\" and its \"category\" (when it has one) back on its card so the " +
             "order can be checked. Respond with ONLY a JSON object of the form " +
             "{\"cards\":[{\"kind\":\"...\",\"category\":\"...\",\"title\":\"...\",\"body\":\"...\"}]}."
@@ -143,6 +154,7 @@ class InsightNarrator @Inject constructor(
                 val usable = narrated.getOrNull(index)
                     ?.takeIf { it.matches(finding) }
                     ?.takeIf { it.title.isNotBlank() && it.body.isNotBlank() }
+                    ?.takeIf { it.namesSubjectOf(finding) }
                 InsightCard(
                     kind = finding.kind,
                     title = usable?.title ?: finding.fallbackTitle(),
@@ -171,6 +183,27 @@ class InsightNarrator @Inject constructor(
             // Travel's heading on Fuel's numbers. Once a card echoes anything, a finding that HAS a category
             // demands the category too.
             return expected.equals(category, ignoreCase = true)
+        }
+
+        /**
+         * Whether the card actually SAYS what it is about.
+         *
+         * ⭐The instruction is not enough on its own. A card reading "You had a ₹10,000 charge, which is
+         * 15.4 times the typical ₹650 charge" is arithmetically perfect and tells the user nothing they can
+         * act on or check — and with several category cards in one carousel, three such cards read as three
+         * contradictory claims about the same money. Every finding's own template already names its
+         * subject, so rejecting an unnamed card costs nothing: the fallback is strictly more informative
+         * than what it replaces. That is what makes this safe to fail closed on.
+         *
+         * Matching is on the name as the app spelled it. A model that paraphrases "Food & Drink" into "Food
+         * and Drink" loses its card to the template — deliberately, because a renamed category is no longer
+         * checkable against the donut on the same screen.
+         */
+        private fun NarratedCard.namesSubjectOf(finding: InsightFinding): Boolean {
+            val needed = finding.subjectNames()
+            if (needed.isEmpty()) return true
+            val text = "$title $body"
+            return needed.all { text.contains(it, ignoreCase = true) }
         }
 
         /**
@@ -236,6 +269,12 @@ class InsightNarrator @Inject constructor(
                     amount("topCategoriesSubtotal")
                     count("categoriesCounted")
                     share("topCategoriesSharePercent")
+                    // The only genuinely new data this card sends. Without it the model could not name the
+                    // categories even when told to, and the card was reduced to "your top 3 categories".
+                    // Same class of value the other cards' `category` already carries.
+                    if (f.topCategories.isNotEmpty()) {
+                        o.put("topCategories", JSONArray(f.topCategories))
+                    }
                 }
                 InsightKind.YEAR_ON_YEAR -> {
                     amount("amountThisStretch")

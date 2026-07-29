@@ -304,6 +304,13 @@ class InsightEngineTest {
         val finding = InsightEngine.detect(input(topHeavy)).single { it.kind == InsightKind.CONCENTRATION }
         assertEquals(3, finding.count)
         assertEquals(94, finding.sharePercent)
+        // ⭐The names, biggest first. The detector used to sort the VALUES and throw the keys away, so the
+        // card could only ever say "your top 3 categories" and never which three — a sentence the user
+        // could not check against the donut on the same screen. Asserting the ORDER too: "A, B, C" is the
+        // sentence the template writes, and a set-equality check would let it render smallest-first.
+        assertEquals(listOf("A", "B", "C"), finding.topCategories)
+        // The half that would otherwise rot silently: the three named must be the three counted.
+        assertEquals(finding.count, finding.topCategories.size)
     }
 
     @Test

@@ -45,6 +45,25 @@ wrong number about real money, rather than something looking untidy.
 
 ---
 
+## v1.64.0 — insight cards name what they're about
+
+- [ ] ⭐⭐ **Every card that's about a category now says which one.** Swipe the Analytics carousel. A card
+      like "You had a ₹10,000 charge, which is 15.4 times the typical ₹650 charge" should now read more
+      like "A single **Groceries** charge of ₹10,000 — about 15.4× your usual ₹650."
+- [ ] ⭐ **The cards should stop contradicting each other.** Before, three cards could say ₹6,070, ₹2,017
+      and ₹0 "so far this cycle". They were three *different categories* all along — now each says so.
+- [ ] **"Top Categories" names the three.** It should list them, not just say "your top 3 categories".
+      Check the three names against the donut right below it.
+- [ ] Tap **refresh** (the ↻ on the Insights card) a couple of times. Wording may vary; the **category
+      names and the numbers must not**.
+- [ ] With the AI helper **off**, or with no internet, cards still appear with the plain built-in wording
+      — which also names the category. Nothing should be blank.
+
+**Note on cost:** this adds roughly 4% to each AI call, and one call covers the whole carousel. It stays
+well inside Groq's free tier for normal use; only repeated refreshing would push it.
+
+---
+
 ## v1.63.3 — the widget's balance
 
 - [ ] ⭐⭐ **The widget balance now matches the app.** With carry-forward on, put the two side by side:

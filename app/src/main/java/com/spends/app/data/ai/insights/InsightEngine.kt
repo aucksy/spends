@@ -560,14 +560,18 @@ object InsightEngine {
         if (input.current.size < CONCENTRATION_MIN_CATEGORIES) return null
         val total = input.current.values.sum()
         if (total <= 0L) return null
-        val top = input.current.values.sortedDescending().take(CONCENTRATION_TOP_N).sum()
+        // Sorted as ENTRIES, not values: the old version discarded the category names here, which is why the
+        // card could only ever say "your top 3 categories" and never which three.
+        val topEntries = input.current.entries.sortedByDescending { it.value }.take(CONCENTRATION_TOP_N)
+        val top = topEntries.sumOf { it.value }
         val percent = ((top.toDouble() / total) * 100).roundToLong().toInt()
         if (percent < CONCENTRATION_MIN_PERCENT) return null
         return InsightFinding(
             kind = InsightKind.CONCENTRATION,
             amountMinor = top,
             sharePercent = percent,
-            count = CONCENTRATION_TOP_N,
+            count = topEntries.size,
+            topCategories = topEntries.map { it.key },
             // Ranked last anyway; kept small so it never displaces a real anomaly.
             materialityMinor = 0,
         )

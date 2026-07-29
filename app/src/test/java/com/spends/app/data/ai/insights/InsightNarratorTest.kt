@@ -495,7 +495,12 @@ class InsightNarratorTest {
             InsightKind.MOVER_DOWN to setOf("amountSoFarThisCycle", "lastCycleByThisPointAmount", "timesLastCycleByThisPoint"),
             InsightKind.OUTLIER_CHARGE to setOf("chargeAmount", "typicalChargeAmount", "timesTypicalCharge"),
             InsightKind.DUPLICATE_CHARGE to setOf("amountEachCharge", "chargesCounted"),
-            InsightKind.CONCENTRATION to setOf("topCategoriesSubtotal", "categoriesCounted", "topCategoriesSharePercent"),
+            // `topCategories` is the one card whose subject could not be named from the fields it already
+            // sent: the engine sorted the amounts and discarded the keys, so the card could only ever say
+            // "your top 3 categories" and never which three.
+            InsightKind.CONCENTRATION to setOf(
+                "topCategoriesSubtotal", "categoriesCounted", "topCategoriesSharePercent", "topCategories",
+            ),
             InsightKind.YEAR_ON_YEAR to setOf(
                 "amountThisStretch", "sameStretchLastYearAmount", "timesLastYear", "dayOfCycle",
                 "cycleStillRunning", "month",
@@ -526,6 +531,10 @@ class InsightNarratorTest {
                 kind = kind, category = "Food", amountMinor = 5_000_00L, baselineMinor = 2_000_00L,
                 multiple = 2.5, sharePercent = 47, count = 6, days = 12, spanCycles = 6, dayShare = 29,
                 baselineSharePercent = 40, periodLabel = "July",
+                // Populated for the same reason as every other optional field above: leaving it out would
+                // have let a brand-new payload key escape this guard entirely while the test still claimed
+                // the key set was maximal.
+                topCategories = listOf("Food", "Rent", "Travel"),
             )
             val obj = JSONObject(InsightNarrator.buildUserPayload("Current Salary Cycle", listOf(finding)))
                 .getJSONArray("findings").getJSONObject(0)
