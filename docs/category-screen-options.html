@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spends — Category screen options</title>
+<style>
+  :root{
+    --teal:#0F6B5F; --teal-soft:#E4EFEC; --teal-ink:#0A4A41;
+    --ink:#141210; --ink-2:#6F6A64; --ink-3:#9A948C;
+    --page:#F6F4F1; --card:#FFFFFF; --track:#F1EDE7;
+    --line:#EAE5DE; --tile:#CFE0E5; --tile-ink:#1F5F6B;
+    --warn:#B4541E; --warn-soft:#FBEEE5;
+    --good:#2F7D53;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1400px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--ink-2);font-size:15px;margin:0 0 26px;max-width:760px;line-height:1.55}
+
+  .problems{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:18px 20px;margin-bottom:34px;max-width:900px;
+  }
+  .problems h2{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);margin:0 0 12px}
+  .problems ol{margin:0;padding-left:20px}
+  .problems li{font-size:14.5px;line-height:1.65;margin-bottom:7px;color:var(--ink)}
+  .problems b{color:var(--ink)}
+
+  .row{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .col{flex:1 1 340px;min-width:320px;max-width:400px}
+
+  .badge{
+    display:inline-block;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    padding:4px 10px;border-radius:99px;background:var(--teal);color:#fff;margin-bottom:9px;
+  }
+  .badge.alt{background:#4A4640}
+  .opt-title{font-size:19px;margin:0 0 4px;letter-spacing:-.01em}
+  .opt-desc{font-size:13.5px;color:var(--ink-2);line-height:1.6;margin:0 0 14px}
+
+  /* ---- phone ---- */
+  .phone{
+    background:var(--card);border:1px solid var(--line);border-radius:26px;overflow:hidden;
+    box-shadow:0 6px 24px rgba(20,18,16,.07);
+  }
+  .appbar{display:flex;align-items:center;gap:14px;padding:16px 18px 14px;background:#fff}
+  .appbar .back{font-size:19px;color:var(--ink);line-height:1}
+  .appbar .t{font-size:17.5px;font-weight:650;letter-spacing:-.01em}
+  .screen{background:#FCFBF9;padding:14px 18px 18px}
+
+  .seg{display:flex;background:var(--track);border-radius:99px;padding:4px;margin-bottom:16px}
+  .seg div{
+    flex:1;text-align:center;padding:9px 0;border-radius:99px;font-size:14px;font-weight:600;color:var(--ink-2);
+  }
+  .seg div.on{background:var(--teal);color:#fff}
+
+  .label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+  .big{font-size:34px;font-weight:680;letter-spacing:-.025em;font-variant-numeric:tabular-nums;line-height:1.15}
+  .mid{font-size:23px;font-weight:660;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .meta{font-size:13px;color:var(--ink-2);line-height:1.5}
+
+  .hero{
+    background:var(--teal);color:#fff;border-radius:18px;padding:16px 18px 17px;margin-bottom:12px;
+  }
+  .hero .label{color:#BFE0D9}
+  .hero .big{color:#fff;margin:3px 0 2px}
+  .hero .meta{color:#CDE6E0}
+
+  .compare{
+    background:var(--teal-soft);border-radius:14px;padding:13px 15px;margin-bottom:14px;
+  }
+  .compare .line{font-size:14.5px;line-height:1.5;color:var(--teal-ink);font-weight:560}
+  .compare .line b{font-weight:720}
+  .bars{margin-top:11px}
+  .bar{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+  .bar .k{font-size:11.5px;color:var(--ink-2);width:70px;flex:none}
+  .bar .tr{flex:1;height:9px;background:#fff;border-radius:99px;overflow:hidden}
+  .bar .fl{display:block;height:100%;border-radius:99px;background:var(--teal)}
+  .bar .fl.q{background:#A9C6BF}
+  .bar .v{font-size:11.5px;color:var(--ink-2);width:62px;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+  .card.pri{border-color:#C9DED8;background:linear-gradient(180deg,#F4FAF8,#fff)}
+
+  .mini{display:flex;background:var(--track);border-radius:99px;padding:3px;margin-top:11px}
+  .mini div{flex:1;text-align:center;padding:6px 0;border-radius:99px;font-size:12px;font-weight:600;color:var(--ink-2)}
+  .mini div.on{background:#fff;color:var(--teal);box-shadow:0 1px 3px rgba(0,0,0,.09)}
+
+  .stepper{
+    display:flex;align-items:center;justify-content:space-between;background:var(--track);
+    border-radius:12px;padding:10px 14px;margin-top:11px;font-size:13.5px;font-weight:600;color:var(--ink-2);
+  }
+  .stepper span:first-child,.stepper span:last-child{color:var(--ink-3)}
+
+  .listhead{
+    display:flex;align-items:baseline;justify-content:space-between;
+    padding:16px 0 9px;border-top:1px solid var(--line);margin-top:4px;
+  }
+  .listhead .h{font-size:14px;font-weight:680}
+  .listhead .n{font-size:12.5px;color:var(--ink-2)}
+
+  .txn{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #F2EFEA}
+  .txn:last-child{border-bottom:0}
+  .tile{width:38px;height:38px;border-radius:11px;background:var(--tile);display:grid;place-items:center;flex:none}
+  .tile svg{width:19px;height:19px;fill:var(--tile-ink)}
+  .txn .b{flex:1;min-width:0}
+  .txn .n{display:block;font-size:14.5px;font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .txn .d{display:block;font-size:12px;color:var(--ink-2);margin-top:2px}
+  .txn .a{font-size:14.5px;font-weight:620;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .tag{
+    display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;
+    padding:2px 7px;border-radius:6px;background:var(--warn-soft);color:var(--warn);margin-left:6px;
+    vertical-align:1px;
+  }
+
+  /* chart option — bars in a fixed-height box, average line absolutely placed at its real value */
+  .chartwrap{position:relative;height:106px;margin:16px 0 0}
+  .chart{display:flex;align-items:flex-end;gap:7px;height:100%}
+  .chart .bx{flex:1;display:block;background:#DDE7E4;border-radius:6px 6px 3px 3px}
+  .chart .bx.now{background:var(--teal)}
+  .avgline{position:absolute;left:0;right:0;border-top:2px dashed #B0A69A;pointer-events:none}
+  .avgline i{
+    position:absolute;left:0;top:-8px;background:#FCFBF9;padding:0 6px 0 0;font-size:10.5px;
+    color:var(--ink-2);font-style:normal;font-weight:650;white-space:nowrap;
+  }
+  .xaxis{display:flex;gap:7px;margin:6px 0 12px}
+  .xaxis span{flex:1;text-align:center;font-size:10.5px;color:var(--ink-3);font-weight:600}
+  .xaxis span.now{color:var(--teal);font-weight:750}
+
+  .why{background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-top:14px}
+  .why h4{margin:0 0 7px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+  .why ul{margin:0;padding-left:17px}
+  .why li{font-size:13px;line-height:1.6;margin-bottom:4px;color:var(--ink)}
+  .why .best{color:var(--good);font-weight:650}
+
+  .foot{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);max-width:900px;color:var(--ink-2);font-size:14px;line-height:1.65}
+  .foot b{color:var(--ink)}
+  @media (max-width:760px){ .wrap{padding:20px 14px 60px} .col{min-width:100%} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Category screen — three ways to fix it</h1>
+  <p class="sub">
+    Same screen, same real numbers from your House&nbsp;Maintenance&nbsp;Jpr screenshot. The job of this screen is to
+    answer one question in about two seconds: <b>“is what I spent on this normal for me?”</b> Right now it shows two
+    equally loud numbers and leaves you to do the maths.
+  </p>
+
+  <div class="problems">
+    <h2>What's actually wrong today</h2>
+    <ol>
+      <li><b>Two headline numbers of identical weight.</b> ₹13,814 and ₹15,339 are the same size and boldness, so your eye doesn't know which one is the point.</li>
+      <li><b>They cover different spans</b> — six months vs one cycle — and nothing on screen says how they relate.</li>
+      <li><b>Two separate controls</b> (3M/6M/All, and the cycle arrows) sit near each other but drive different numbers. Easy to assume one drives both.</li>
+      <li><b>“SPENT IN THIS CYCLE <i>ONLY</i>”</b> — the word “only” is doing defensive work. It's compensating for a layout that's ambiguous, instead of the layout being clear.</li>
+      <li><b>The dates over the list aren't obeyed by the list.</b> Your 23 Jul row sits under a “25 Jul – 24 Aug” heading. That's correct — in Smart Cycle, Spends buckets by the card's <i>billing</i> day — but nothing says so, so it reads as a bug.</li>
+    </ol>
+  </div>
+
+  <div class="row">
+
+    <!-- ============ OPTION A ============ -->
+    <div class="col">
+      <span class="badge">Option A · recommended</span>
+      <h3 class="opt-title">Answer first</h3>
+      <p class="opt-desc">One hero number, and the answer written in words underneath. The average stops competing and becomes a reference line.</p>
+
+      <div class="phone">
+        <div class="appbar"><span class="back">←</span><span class="t">House Maintenance Jpr</span></div>
+        <div class="screen">
+          <div class="seg"><div class="on">Monthly</div><div>Yearly</div></div>
+
+          <div class="hero">
+            <div class="label">This cycle</div>
+            <div class="big">₹15,339</div>
+            <div class="meta">25 Jul – 24 Aug · 3 transactions</div>
+          </div>
+
+          <div class="compare">
+            <div class="line">About <b>₹1,500 more</b> than your usual month.</div>
+            <div class="bars">
+              <div class="bar"><span class="k">This cycle</span><span class="tr"><span class="fl" style="width:100%"></span></span><span class="v">₹15,339</span></div>
+              <div class="bar"><span class="k">Usual</span><span class="tr"><span class="fl q" style="width:90%"></span></span><span class="v">₹13,814</span></div>
+            </div>
+            <div class="mini"><div>3M</div><div class="on">6M</div><div>All</div></div>
+          </div>
+
+          <div class="stepper"><span>‹</span><span>Current Smart Cycle</span><span>›</span></div>
+
+          <div class="listhead"><span class="h">What's in this cycle</span><span class="n">3 items</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">1 Aug · sent to mon</span></span><span class="a">−₹5,000</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">25 Jul</span></span><span class="a">−₹10,000</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">23 Jul <span class="tag">billed this cycle</span></span></span><span class="a">−₹339</span></div>
+        </div>
+      </div>
+
+      <div class="why">
+        <h4>Why this works</h4>
+        <ul>
+          <li><span class="best">Fixes all five problems.</span></li>
+          <li>One number is obviously the point; the other is context.</li>
+          <li>The comparison is <b>written out</b>, so no mental arithmetic.</li>
+          <li>The 3M/6M control sits inside the comparison box — it's obvious it only changes “usual”.</li>
+          <li>The 23 Jul row explains itself instead of looking wrong.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ============ OPTION B ============ -->
+    <div class="col">
+      <span class="badge alt">Option B</span>
+      <h3 class="opt-title">Two cards, one job each</h3>
+      <p class="opt-desc">Keeps both numbers, but each lives in its own card with its own control physically inside it. The smallest change from what you have now.</p>
+
+      <div class="phone">
+        <div class="appbar"><span class="back">←</span><span class="t">House Maintenance Jpr</span></div>
+        <div class="screen">
+          <div class="seg"><div class="on">Monthly</div><div>Yearly</div></div>
+
+          <div class="card pri">
+            <div class="label" style="color:var(--teal)">This cycle</div>
+            <div class="big" style="margin:3px 0 3px">₹15,339</div>
+            <div class="meta">3 transactions · 11% above your usual</div>
+            <div class="stepper" style="background:#EAF3F0"><span>‹</span><span>25 Jul – 24 Aug</span><span>›</span></div>
+          </div>
+
+          <div class="card">
+            <div class="label">Usual month</div>
+            <div class="mid" style="margin:3px 0 2px">₹13,814</div>
+            <div class="meta">Averaged over 6 months</div>
+            <div class="mini"><div>3M</div><div class="on">6M</div><div>All</div></div>
+          </div>
+
+          <div class="listhead"><span class="h">What's in this cycle</span><span class="n">3 items</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">1 Aug · sent to mon</span></span><span class="a">−₹5,000</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">25 Jul</span></span><span class="a">−₹10,000</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">23 Jul <span class="tag">billed this cycle</span></span></span><span class="a">−₹339</span></div>
+        </div>
+      </div>
+
+      <div class="why">
+        <h4>Why this works</h4>
+        <ul>
+          <li><span class="best">Least risky to build</span> — same pieces, re-arranged.</li>
+          <li>Each control is <b>inside</b> the number it changes. That alone kills problem 3.</li>
+          <li>“Usual month” is plainer English than “Monthly average”.</li>
+          <li>Still two numbers to read, so slightly slower than A.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ============ OPTION C ============ -->
+    <div class="col">
+      <span class="badge alt">Option C</span>
+      <h3 class="opt-title">Show, don't tell</h3>
+      <p class="opt-desc">A six-month bar chart does the comparing for you. You see the shape of your spending instead of reading two figures.</p>
+
+      <div class="phone">
+        <div class="appbar"><span class="back">←</span><span class="t">House Maintenance Jpr</span></div>
+        <div class="screen">
+          <div class="seg"><div class="on">Monthly</div><div>Yearly</div></div>
+
+          <div class="label">This cycle</div>
+          <div class="big" style="margin:3px 0 2px">₹15,339</div>
+          <div class="meta" style="margin-bottom:2px">A bit above your usual ₹13,814 a month</div>
+
+          <div class="chartwrap">
+            <div class="chart">
+              <span class="bx" style="height:52%"></span>
+              <span class="bx" style="height:78%"></span>
+              <span class="bx" style="height:41%"></span>
+              <span class="bx" style="height:95%"></span>
+              <span class="bx" style="height:63%"></span>
+              <span class="bx now" style="height:88%"></span>
+            </div>
+            <!-- the six bars average 69.5% of the tallest, so the line sits there for real -->
+            <div class="avgline" style="bottom:69.5%"><i>usual ₹13,814</i></div>
+          </div>
+          <div class="xaxis">
+            <span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span class="now">Now</span>
+          </div>
+
+          <div class="mini"><div>3M</div><div class="on">6M</div><div>All</div></div>
+          <div class="stepper"><span>‹</span><span>25 Jul – 24 Aug</span><span>›</span></div>
+
+          <div class="listhead"><span class="h">What's in this cycle</span><span class="n">3 items</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">1 Aug · sent to mon</span></span><span class="a">−₹5,000</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">25 Jul</span></span><span class="a">−₹10,000</span></div>
+          <div class="txn"><span class="tile"><svg viewBox="0 0 24 24"><path d="M22 6l-3 3-4-4 3-3a6 6 0 00-7 8L3 18l3 3 8-8a6 6 0 008-7z"/></svg></span><span class="b"><span class="n">House Maintenance Jpr</span><span class="d">23 Jul <span class="tag">billed this cycle</span></span></span><span class="a">−₹339</span></div>
+        </div>
+      </div>
+
+      <div class="why">
+        <h4>Why this works</h4>
+        <ul>
+          <li><span class="best">Best for spotting a trend</span>, not just this month.</li>
+          <li>The dashed line <i>is</i> the average — no second headline number needed.</li>
+          <li>You'd have seen “Jun was worse” at a glance.</li>
+          <li>Most work to build, and the chart needs enough history to look right.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    <b>My recommendation: Option A.</b> It's the only one that answers the question in words rather than leaving you to
+    compare two numbers, and it fixes every one of the five problems. <b>Option B</b> is the safe pick if you'd rather
+    keep the screen familiar — it's mostly a re-arrangement of what's already there. <b>Option C</b> is the nicest to
+    look at and the most useful over time, but it's the biggest build and it needs six months of history before it
+    looks like anything.<br><br>
+    All three drop <b>“SPENT IN THIS CYCLE ONLY”</b>, rename “Monthly average” to <b>“Usual month”</b>, put each control
+    inside the number it changes, and tag the row that's billed into this cycle from an earlier date.
+  </div>
+
+</div>
+</body>
+</html>
