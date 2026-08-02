@@ -291,6 +291,5 @@ class DemoDataSeeder @Inject constructor(
         settingsRepository.setAutoBackupEnabled(false)
         settingsRepository.setSmsCaptureEnabled(false)
         settingsRepository.setNotificationCaptureEnabled(false)
-
     }
 }
