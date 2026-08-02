@@ -68,6 +68,13 @@ data class CategoryTxnRow(
     val colorHex: String,
     /** The amount actually allocated to *this* category on the transaction (handles splits). */
     val amountMinor: Long,
+    /**
+     * True when this row's own date falls OUTSIDE the cycle's printed dates, but it belongs to the cycle
+     * anyway because Smart Cycle buckets by the paying card's BILLING day. Without saying so on the row,
+     * a 23 Jul transaction under a "25 Jul – 24 Aug" heading reads as a bug in the app rather than as the
+     * statement date it actually is.
+     */
+    val billedIntoCycle: Boolean = false,
 )
 
 data class CategoryTxnsUiState(
@@ -91,6 +98,11 @@ data class CategoryTxnsUiState(
     /** The year being shown in Yearly mode; null when there is no data at all. */
     val selectedYear: Int? = null,
     val rows: List<CategoryTxnRow> = emptyList(),
+    /**
+     * "About ₹1,500 more than your usual month." — the answer the screen exists to give, in words.
+     * Null in Yearly mode (there is no cycle to compare) and whenever there is no usual to compare with.
+     */
+    val comparison: CycleComparison? = null,
 )
 
 @HiltViewModel
@@ -222,7 +234,18 @@ class CategoryTransactionsViewModel @Inject constructor(
                 avgEndExclusive = now
                 listItems = periodItems
             }
-            val rows = listItems.map { it.toRow() }
+            // A row can sit outside the cycle's printed dates and still belong to it: in Smart Cycle the
+            // bucketing is by the paying card's BILLING day (above), not by the calendar. Flag those so the
+            // row can say so, instead of looking like the total counted something it shouldn't have.
+            val yearlyList = mode == AvgMode.YEARLY && year != null
+            val rows = listItems.map { item ->
+                val outsidePrintedDates = isSmartCard && !yearlyList &&
+                    (
+                        item.expense.occurredAt < resolved.startMillis ||
+                            item.expense.occurredAt >= resolved.endExclusiveMillis
+                        )
+                item.toRow(billedIntoCycle = outsidePrintedDates)
+            }
             val total = rows.sumOf { it.amountMinor }
 
             // Spend in the averaging window ÷ the months it actually covers. Both ends are clamped:
@@ -241,13 +264,25 @@ class CategoryTransactionsViewModel @Inject constructor(
                 ((effectiveEnd - effectiveStart).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
             }
 
+            val averageMinor = (windowTotal / months).toLong()
             CategoryTxnsUiState(
                 loading = false,
                 categoryName = categoryName,
                 cycleLabel = resolved.label,
                 totalMinor = total,
                 count = rows.size,
-                monthlyAverageMinor = (windowTotal / months).toLong(),
+                monthlyAverageMinor = averageMinor,
+                // Monthly only: Yearly has no cycle, and its figure and list already cover the same year.
+                // `cycleStillRunning` keeps the wording honest about a month that has not finished.
+                comparison = if (yearlyList) {
+                    null
+                } else {
+                    CycleComparison.of(
+                        totalMinor = total,
+                        usualMonthMinor = averageMinor,
+                        cycleStillRunning = resolved.endExclusiveMillis > now,
+                    )
+                },
                 avgMode = mode,
                 avgWindow = avgSel.window,
                 availableYears = availableYears,
@@ -265,7 +300,7 @@ class CategoryTransactionsViewModel @Inject constructor(
     private fun ExpenseWithAllocations.allocatedToCategory(): Long =
         allocations.filter { it.allocation.categoryId == categoryId }.sumOf { it.allocation.amountMinor }
 
-    private fun ExpenseWithAllocations.toRow(): CategoryTxnRow {
+    private fun ExpenseWithAllocations.toRow(billedIntoCycle: Boolean = false): CategoryTxnRow {
         // The amount belonging to this category specifically (a transaction may split across many).
         val allocated = allocations
             .filter { it.allocation.categoryId == categoryId }
@@ -285,6 +320,7 @@ class CategoryTransactionsViewModel @Inject constructor(
             iconKey = thisCat?.iconKey ?: "tag",
             colorHex = thisCat?.colorHex ?: "#78716C",
             amountMinor = allocated,
+            billedIntoCycle = billedIntoCycle,
         )
     }
 }

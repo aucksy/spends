@@ -11,7 +11,7 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.66.0 — fourteen releases.** Install **v1.66.0**; it contains
+**Currently untested: v1.57.0 → v1.67.0 — fifteen releases.** Install **v1.67.0**; it contains
 every one of them.
 
 > ⚠️ **Four sections below are now DEAD and must not be worked through.** v1.60.0, v1.61.0, v1.62.0 and
@@ -25,6 +25,34 @@ every one of them.
 > silently stopped becoming transactions from **v1.58.0** onward, which matches exactly when capture
 > stopped working. The same copied line is what crashed the v1.63.0 debug screen. **The single most
 > valuable thing to check now is whether a real bank text captures again.**
+
+---
+
+## v1.67.0 — the category screen answers the question instead of posing it
+
+Open any category from Analytics. **Monthly** view only — Yearly is deliberately unchanged.
+
+- [ ] ⭐ **One big number now, not two.** The headline is **THIS CYCLE**, on a coloured panel. The
+      6-month average is no longer a rival headline.
+- [ ] ⭐ **A sentence tells you the answer** — e.g. "About ₹1,500 more than your usual month."
+      Check it against the two bars underneath: this cycle vs usual.
+- [ ] The words "SPENT IN THIS CYCLE ONLY" are gone.
+- [ ] The **3M / 6M / All** buttons now sit *inside* the comparison box, with a line under them saying
+      what "usual" is averaged over. Changing them must move only the **Usual** bar — never the big number.
+- [ ] The cycle **‹ ›** stepper still only changes the big number and the list.
+- [ ] ⭐ A **half-finished** cycle that is under the usual says "**so far**". If it drops the "so far"
+      on a cycle that hasn't ended, tell me — that would be congratulating you too early.
+- [ ] A cycle you've spent nothing in says "Nothing in this cycle yet." and draws an empty first bar.
+- [ ] A brand-new category with no history says "Not enough history yet to say what a usual month
+      looks like" rather than showing a comparison against zero.
+- [ ] ⭐ **The odd-dated row now explains itself.** In your House Maintenance screenshot a **23 Jul**
+      transaction sat under a "25 Jul – 24 Aug" heading. It should now carry a small
+      **"billed this cycle"** tag. That is correct behaviour — Smart Cycle groups by the card's billing
+      day — and the tag is there so it stops looking like a mistake.
+- [ ] The tag appears **only** on rows genuinely outside the printed dates, and only in Smart Cycle.
+- [ ] The list has a heading — "What's in this cycle" with an item count.
+- [ ] **Yearly** view is unchanged: average per month, the year's total underneath, year chips.
+- [ ] ⭐ The totals themselves have not moved. The big number must still equal the sum of the rows.
 
 ---
 

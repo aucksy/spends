@@ -4,7 +4,11 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.66.0** — versionCode **76**, versionName **"1.66.0"**. An accidental "Ignore" can now be
+- **Shipped: v1.67.0** — versionCode **77**, versionName **"1.67.0"**. The category screen leads with ONE
+  number (this cycle) and states the comparison in words — "About ₹1,500 more than your usual month" —
+  instead of showing two equally loud figures over two different spans. No schema change.
+  APK: https://github.com/aucksy/spends/releases/download/v1.67.0/Spends-v1.67.0.apk
+- Previous: **v1.66.0** — versionCode **76**, versionName **"1.66.0"**. An accidental "Ignore" can now be
   undone: Settings → Automatic Entries → **Silenced alerts** lists every alert Spends has stopped asking
   about (and every one part-way there) and switches it back on. No schema change — DB stays at v16.
   APK: https://github.com/aucksy/spends/releases/download/v1.66.0/Spends-v1.66.0.apk
@@ -29,6 +33,40 @@ for how the project works.
 - Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+
+## v1.67.0 — the category screen answers the question instead of posing it
+
+**What the owner sees.** One headline (**THIS CYCLE**) on a filled panel, and directly under it the answer
+in words: *"About ₹1,500 more than your usual month."* with two bars — this cycle against usual. The
+6-month average is no longer a rival headline; it is the second bar.
+
+**Why.** He reported the screen "has become confusing". Diagnosis against his real House Maintenance Jpr
+figures: two headline numbers at identical weight (₹13,814 vs ₹15,339) covering different spans, two
+adjacent controls driving different figures, and the heading "SPENT IN THIS CYCLE **ONLY**" — a warning
+label compensating for an ambiguous layout rather than fixing it. The v1.65.0 reorder had fixed *which*
+period owned the list, but still left the reader doing the subtraction.
+
+**How.** New pure `CycleComparison.of(total, usual, cycleStillRunning)` returns the sentence plus two bar
+fractions, or null when there is no history to average. `AvgWindow` (3M/6M/All) moved INSIDE the comparison
+block — it only ever changed that figure, and sitting a few dp from the cycle stepper it read as though it
+changed both. Yearly is untouched: its figure and its list already describe the same year.
+
+**The honesty rule, and it is tested:** under-spending is only ever reported "**so far**" while the cycle is
+still running, because a half-finished month has not finished spending and a flat "₹4,800 less than usual"
+would congratulate a cycle that may still overshoot. Over-spending is stated flatly — once above a usual
+month, remaining time cannot make that untrue. The sentence also carries **no figure for "usual"**: it is
+rounded for readability while the bar beneath shows it to the paise, and printing both put two different
+numbers for one quantity a centimetre apart.
+
+**A real display defect fixed on the way.** In Smart Cycle the rows are bucketed by the paying card's
+BILLING day (`SmartCardCycle.filterToWindow`), so his 23 Jul transaction correctly sat under a
+"25 Jul – 24 Aug" heading — but nothing said so, and it read as a miscount. Such rows now carry a
+**"billed this cycle"** tag (`CategoryTxnRow.billedIntoCycle`). The maths was always right; the screen was
+not admitting what it had done.
+
+Three options were mocked up in `docs/category-screen-options.html` and the owner chose A ("Answer first").
+
+---
 
 ## v1.66.0 — an accidental "Ignore" can be undone
 
