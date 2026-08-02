@@ -11,7 +11,14 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.63.2 — nine releases.**
+**Currently untested: v1.57.0 → v1.66.0 — fourteen releases.** Install **v1.66.0**; it contains
+every one of them.
+
+> ⚠️ **Four sections below are now DEAD and must not be worked through.** v1.60.0, v1.61.0, v1.62.0 and
+> v1.64.0 test the AI insight cards, which were **removed entirely in v1.65.0**. There is no carousel and no
+> AI helper in the app any more, so those boxes can never be ticked. They are kept only so it is obvious they
+> were superseded rather than forgotten. The same applies to the "summary card's vs last cycle" item in
+> *Highest value* — that was an insight card.
 
 > **The capture bug is found and fixed in v1.63.2.** A Java-only regex flag made the SMS parser throw on
 > any real Android phone the first time it was touched, and the error was being swallowed — so bank texts
@@ -130,6 +137,8 @@ Settings → Automatic Entries → Recurring.)**
 ---
 
 ## v1.64.0 — insight cards name what they're about
+
+> **OBSOLETE — do not test.** Insight cards were removed in v1.65.0. Nothing here exists in the app any more.
 
 - [ ] ⭐⭐ **Every card that's about a category now says which one.** Swipe the Analytics carousel. A card
       like "You had a ₹10,000 charge, which is 15.4 times the typical ₹650 charge" should now read more
@@ -256,6 +265,8 @@ meant to be safe to send me.
 
 ## v1.62.0 — two judgement cards: commitments, and what you kept
 
+> **OBSOLETE — do not test.** Insight cards were removed in v1.65.0. Nothing here exists in the app any more.
+
 Needs the AI helper **on** (Settings → Automatic Entries → AI helper) with your Groq key. **Demo mode
 shows both** — it plants recurring rules and ~14 months of income.
 
@@ -310,6 +321,8 @@ card. Neither should appear anywhere, and nothing should mention weekends or nee
 
 ## v1.61.0 — insights that compare over time
 
+> **OBSOLETE — do not test.** Insight cards were removed in v1.65.0. Nothing here exists in the app any more.
+
 Needs the AI helper **on** (Settings → Automatic Entries → AI helper) with your Groq key. **Demo mode is
 the fastest way to see these** — it has ~14 months of data planted to make each one appear.
 
@@ -342,6 +355,8 @@ the fastest way to see these** — it has ~14 months of data planted to make eac
 ---
 
 ## v1.60.0 — the insights carousel (Phase A)
+
+> **OBSOLETE — do not test.** The insights carousel were removed in v1.65.0. Nothing here exists in the app any more.
 
 - [ ] Cards appear at all, with swipe dots, and the ✕ dismisses them.
 - [ ] The refresh button re-generates them.
