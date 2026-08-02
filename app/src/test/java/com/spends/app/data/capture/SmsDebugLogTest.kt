@@ -430,8 +430,8 @@ class SmsDebugLogTest {
 
     /**
      * The cap is this class's own, not a bound borrowed from elsewhere. An earlier version masked via
-     * `SmsParser.aiContextFor`, whose 300-char cap silently took ownership of it — leaving this class's
-     * `clip()` unreachable dead code that no mutation could kill.
+     * `SmsParser.aiContextFor` (removed with the AI helper in v1.65.0), whose 300-char cap silently took
+     * ownership of it — leaving this class's `clip()` unreachable dead code that no mutation could kill.
      */
     @Test
     fun `long text is clipped so one pathological message cannot bloat the log`() {
@@ -446,10 +446,11 @@ class SmsDebugLogTest {
     }
 
     /**
-     * Masking is done HERE, not by borrowing `SmsParser.aiContextFor`. That function strips the
-     * "not you? / SMS BLOCK…" trailer BEFORE masking, so a body that opens with such a phrase was
-     * deleted outright and stored as null — indistinguishable on screen from "the privacy gate withheld
-     * it". A real transaction losing its whole body to a diagnostic tool is the opposite of the point.
+     * Masking is done HERE, not borrowed. An earlier version borrowed `SmsParser.aiContextFor` (removed
+     * with the AI helper in v1.65.0), which stripped the "not you? / SMS BLOCK…" trailer BEFORE masking,
+     * so a body that opens with such a phrase was deleted outright and stored as null — indistinguishable
+     * on screen from "the privacy gate withheld it". A real transaction losing its whole body to a
+     * diagnostic tool is the opposite of the point.
      */
     @Test
     fun `a body opening with report boilerplate is still kept, masked`() {

@@ -277,12 +277,13 @@ class SmsDebugLog @Inject constructor() {
      * ("Rs.5000 debited… OTP 481920 to confirm") parse as genuine TRANSACTIONS, reached `PROMPTED`, and
      * had their passcode exported verbatim. **A parser heuristic is not a privacy control.**
      *
-     * That lesson is why the mask below is written HERE rather than reusing `SmsParser.aiContextFor`,
-     * which an earlier fix did. That function exists to build AI context, and it strips the "not you? /
-     * SMS BLOCK…" trailer first — which for a message that opens with such a phrase deletes the entire
-     * body and yields null, silently costing the diagnosis. Its 300-char cap also quietly took ownership
-     * of this class's own bound. A privacy control must not be a borrowed function whose purpose, and
-     * therefore whose future edits, belong to something else.
+     * That lesson is why the mask below is written HERE rather than borrowed from elsewhere, which an
+     * earlier fix did: it reused `SmsParser.aiContextFor` (the AI helper's context builder, removed with
+     * that feature in v1.65.0). That function stripped the "not you? / SMS BLOCK…" trailer first — which
+     * for a message opening with such a phrase deleted the entire body and yielded null, silently costing
+     * the diagnosis — and its 300-char cap quietly took ownership of this class's own bound. A privacy
+     * control must not be a borrowed function whose purpose, and therefore whose future edits, belong to
+     * something else. That holds whether or not the lender still exists.
      */
     private fun maskContent(text: String?): String? {
         if (text.isNullOrBlank()) return null
