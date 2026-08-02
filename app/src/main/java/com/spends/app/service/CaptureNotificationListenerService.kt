@@ -299,8 +299,16 @@ class CaptureNotificationListenerService : NotificationListenerService() {
                 when (outcome.decision) {
                     SmsCaptureRepository.NotificationDecision.QUEUED -> NotificationDebugLog.Outcome.QUEUED
                     SmsCaptureRepository.NotificationDecision.DUPLICATE -> NotificationDebugLog.Outcome.DUPLICATE
+                    // ⭐When the sender DOES resolve to a bank, a redacted alert reaches the parser and is
+                    // rejected as "not a transaction" — true, but it sends the reader looking for a parser
+                    // gap that isn't there. The body never arrived; say so. (`diagnose` cannot cover this:
+                    // it only runs when NOTHING survived the sender filter, and here something did.)
                     SmsCaptureRepository.NotificationDecision.NOT_TRANSACTION ->
-                        NotificationDebugLog.Outcome.NOT_A_TRANSACTION
+                        if (NotificationCapture.looksRedacted(c.body)) {
+                            NotificationDebugLog.Outcome.REDACTED_BY_ANDROID
+                        } else {
+                            NotificationDebugLog.Outcome.NOT_A_TRANSACTION
+                        }
                     // Unreachable (guarded by the != above); exhaustive so a new enum value breaks the
                     // build instead of silently reporting as "not a transaction".
                     SmsCaptureRepository.NotificationDecision.PROMPT -> NotificationDebugLog.Outcome.PROMPTED

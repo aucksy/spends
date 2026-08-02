@@ -167,11 +167,37 @@ class NotificationCaptureTest {
             title = "Truecaller",
             text = null,
             bigText = null,
+            // An unmapped business chat, so the sender does not resolve and this really is a rejection.
+            // The resolved-sender case is a different path entirely — see the test below.
+            conversationTitle = "Bakery Business Chat",
+            messages = listOf(RawMessage(null, "Sensitive notification content hidden", postTime)),
+            postTime = postTime,
+        )
+        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.REDACTED_BY_ANDROID)
+    }
+
+    /**
+     * ⭐**A redaction check must never run ahead of `candidates()`, and this pins that.**
+     *
+     * When the sender DOES resolve — "HDFC Bank" normalises onto the allowlist — `candidates()` produces a
+     * candidate and there is no rejection to explain, so `diagnose` correctly answers NONE. That candidate
+     * then fails at the parser instead, which is where the listener labels it.
+     *
+     * Written as a test because the tempting "simplification" is to check for the placeholder first and
+     * return early. That would make `diagnose` disagree with `candidates()` about whether anything
+     * survived — and anyone who then moved the same check into `candidates()` would start DROPPING real
+     * bank alerts whose text merely resembles the placeholder.
+     */
+    @Test fun a_resolved_bank_sender_is_not_a_rejection_even_when_the_body_is_redacted() {
+        val d = NotificationCapture.diagnose(
+            title = "Truecaller",
+            text = null,
+            bigText = null,
             conversationTitle = "HDFC Bank",
             messages = listOf(RawMessage("HDFC Bank", "Sensitive notification content hidden", postTime)),
             postTime = postTime,
         )
-        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.REDACTED_BY_ANDROID)
+        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.NONE)
     }
 
     @Test fun redaction_check_is_case_and_padding_insensitive() {

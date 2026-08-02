@@ -36,9 +36,34 @@ jobs:
           chmod +x gradlew
 
       - name: Unit tests
+        id: tests
         run: |
           set -o pipefail
           ./gradlew testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee gradle-test-output.txt
+
+      # Why this exists: the dev machine has no `gh` CLI and no API token, and BOTH the job log and the
+      # uploaded artifacts require authentication to download. Check-run ANNOTATIONS do not — they are
+      # readable from the plain REST API. So on failure we re-emit the lines that actually say what broke
+      # as `::error::` annotations, which is the only channel that reaches the developer. Without this, a
+      # red build is indistinguishable from any other red build without opening a browser and signing in.
+      - name: Surface the failure as annotations
+        if: failure() && steps.tests.outcome == 'failure'
+        run: |
+          echo "::group::extracted failure lines"
+          # Kotlin compile errors (`e: file:line:col: message`), Gradle task failures, and JUnit
+          # assertion failures - the three ways this step can go red.
+          grep -E "^e: |^w: .*error|FAILED$|^Execution failed|^\* What went wrong|^Caused by|expected:|AssertionError|Tests? .*(failed|FAILED)" \
+            gradle-test-output.txt | head -60 > failures.txt || true
+          if [ ! -s failures.txt ]; then
+            # Nothing matched the patterns - fall back to the tail so the build is never silently red.
+            tail -40 gradle-test-output.txt > failures.txt
+          fi
+          cat failures.txt
+          echo "::endgroup::"
+          while IFS= read -r line; do
+            # Strip characters that would break the annotation encoding.
+            printf '::error::%s\n' "$(printf '%s' "$line" | tr -d '\r' | cut -c1-400)"
+          done < failures.txt
 
       - name: Android Lint (informational)
         run: ./gradlew lintDebug --no-daemon --stacktrace
