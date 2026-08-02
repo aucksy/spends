@@ -53,6 +53,10 @@ can never contain a `|`, whereas the merchant is a verbatim slice of the bank's 
 It never throws and never drops a row — a key this code cannot parse is exactly the one that would
 otherwise stay stuck silencing an alert with no way out. Covered by `SilencedAlertTest`.
 
+**Known, not fixed (wording only, per the review stopping rule):** the "Silenced alerts" subtitle in
+`CaptureSection` hardcodes "3" rather than reading `SmsCaptureRepository.IGNORE_SUPPRESS_THRESHOLD`, which
+the screen itself uses. Correct today; it would drift if the threshold ever changed.
+
 **Not fixed, deliberately:** the twin guard can still drop a genuine second payment. Owner's call — rare
 on his setup, he will report it if money goes missing. Full write-up, cause, and the shape of the fix:
 `docs/KNOWN-ISSUE-TWIN-GUARD.md`.
