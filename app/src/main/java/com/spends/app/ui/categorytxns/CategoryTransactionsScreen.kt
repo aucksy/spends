@@ -114,7 +114,15 @@ fun CategoryTransactionsScreen(
  * trailing-window control now lives INSIDE the comparison block, because it only ever changed that figure —
  * sitting a few dp from the cycle stepper, it read as though it changed both.
  *
- * Yearly is left alone: its figure and its list already describe the same year, so it never had the defect.
+ * **Yearly gets the identical treatment** (the owner asked for it, for consistency), with the baseline
+ * swapped: a year is compared against the newest EARLIER year that has data, per month on both sides so a
+ * part-finished year still compares fairly. It keeps its own headline meaning — average per month, with the
+ * year's total on the line beneath — because that is the figure that was confirmed correct on the device.
+ *
+ * The heading above the figure comes from the view model ([CategoryTxnsUiState.periodHeading]) rather than
+ * being written here: only that layer knows whether the window is the current cycle, an earlier one, a whole
+ * year, or not a cycle at all. Hardcoding "THIS CYCLE" is what made a cycle stepped three months back
+ * announce itself as the current one.
  */
 @Composable
 private fun CategoryHeader(
@@ -143,116 +151,103 @@ private fun CategoryHeader(
             Spacer(Modifier.height(18.dp))
         }
 
-        if (yearly) {
-            // ---- Yearly: unchanged. The figure and the list already cover the same year. ----
+        // ---- THE headline. Both modes share it, so the screen reads the same way either way. ----
+        // Monthly: what the selected cycle came to. Yearly: the per-month figure for the selected year,
+        // with the year's total on the line beneath — the owner asked for both, not one behind a tap.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.primary)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
             Text(
-                "AVERAGE PER MONTH IN ${state.selectedYear}",
+                // Supplied by the view model: only it knows whether this is the current cycle, an earlier
+                // one, or not a cycle at all. Hardcoding "THIS CYCLE" here is what made a cycle from three
+                // months ago announce itself as the current one.
+                state.periodHeading,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f),
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                Money.formatRupees(state.monthlyAverageMinor),
+                Money.formatRupees(if (yearly) state.monthlyAverageMinor else state.totalMinor),
                 style = Numerals.amountLg,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.onPrimary,
             )
             Spacer(Modifier.height(2.dp))
+            val countPart = "${state.count} ${if (state.count == 1) "transaction" else "transactions"}"
             Text(
-                // The year's TOTAL under the average derived from it — the owner asked for both figures on
-                // screen rather than one behind a tap.
-                "${Money.formatRupees(state.totalMinor)} in total  ·  " +
-                    "${state.count} ${if (state.count == 1) "transaction" else "transactions"}",
+                if (yearly) {
+                    "${Money.formatRupees(state.totalMinor)} in total  ·  $countPart"
+                } else {
+                    // The concrete dates of the selected cycle. As you step with the ‹ › arrows below, this
+                    // updates — the stepper itself shows only the cycle's name.
+                    val datePart = state.cycleLabel.takeIf { it.isNotBlank() }?.let { "$it  ·  " } ?: ""
+                    "$datePart$countPart"
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
                 maxLines = 2,
             )
-            Spacer(Modifier.height(10.dp))
-            // Every year with data, newest first, no cap (the owner's choice) — so a LazyRow, which scrolls
-            // rather than shrinking each chip until the years are unreadable.
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.availableYears, key = { it }) { year ->
-                    FilterChip(
-                        selected = year == state.selectedYear,
-                        onClick = { onSelectYear(year) },
-                        label = { Text(year.toString()) },
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // ---- The answer, in words, with the baseline as a reference bar rather than a rival headline ----
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(horizontal = 14.dp, vertical = 13.dp),
+        ) {
+            val onContainer = MaterialTheme.colorScheme.onPrimaryContainer
+            Text(
+                // Null means there is no baseline: no history at all in Monthly, or no earlier year with
+                // data in Yearly. Say which, rather than rendering an empty box or comparing against zero.
+                state.comparison?.sentence ?: if (yearly) {
+                    "No earlier year to compare ${state.selectedYear} with yet."
+                } else {
+                    "Not enough history yet to say what a usual month looks like."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = onContainer,
+            )
+            state.comparison?.let { c ->
+                Spacer(Modifier.height(10.dp))
+                ComparisonBar(
+                    label = state.comparisonSelfLabel,
+                    value = Money.formatRupees(state.comparisonSelfMinor, alwaysTwoDecimals = false),
+                    fraction = c.cycleFraction,
+                    fill = MaterialTheme.colorScheme.primary,
+                    onContainer = onContainer,
+                )
+                ComparisonBar(
+                    label = state.comparisonRefLabel,
+                    value = Money.formatRupees(state.comparisonRefMinor, alwaysTwoDecimals = false),
+                    fraction = c.usualFraction,
+                    fill = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                    onContainer = onContainer,
+                )
+                if (yearly) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        // Both sides are per-month, so a part-finished year compares fairly against a whole
+                        // one. Said out loud, because "2026 vs 2025" otherwise invites the opposite reading.
+                        "Both figures are per month, so a part-finished year still compares fairly.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = onContainer.copy(alpha = 0.7f),
                     )
                 }
             }
-            Spacer(Modifier.height(14.dp))
-        } else {
-            // ---- THE headline: this cycle. Nothing else on the screen competes with it. ----
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-            ) {
-                Text(
-                    "THIS CYCLE",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    Money.formatRupees(state.totalMinor),
-                    style = Numerals.amountLg,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-                Spacer(Modifier.height(2.dp))
-                // The concrete dates of the selected cycle plus the count. As you step cycles with the ‹ ›
-                // arrows below, this updates — the stepper itself shows only the cycle's name.
-                val datePart = state.cycleLabel.takeIf { it.isNotBlank() }?.let { "$it  ·  " } ?: ""
-                Text(
-                    "$datePart${state.count} ${if (state.count == 1) "transaction" else "transactions"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                    maxLines = 2,
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // ---- The answer, in words, with the average as a reference bar rather than a rival headline ----
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
-            ) {
-                val onContainer = MaterialTheme.colorScheme.onPrimaryContainer
-                Text(
-                    // Null only when there is no history to average — then say so plainly rather than
-                    // rendering an empty box or, worse, comparing against a zero.
-                    state.comparison?.sentence
-                        ?: "Not enough history yet to say what a usual month looks like.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = onContainer,
-                )
-                state.comparison?.let { c ->
-                    Spacer(Modifier.height(10.dp))
-                    ComparisonBar(
-                        label = "This cycle",
-                        value = Money.formatRupees(state.totalMinor, alwaysTwoDecimals = false),
-                        fraction = c.cycleFraction,
-                        fill = MaterialTheme.colorScheme.primary,
-                        onContainer = onContainer,
-                    )
-                    ComparisonBar(
-                        label = "Usual",
-                        value = Money.formatRupees(state.monthlyAverageMinor, alwaysTwoDecimals = false),
-                        fraction = c.usualFraction,
-                        fill = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                        onContainer = onContainer,
-                    )
-                }
+            if (!yearly) {
                 Spacer(Modifier.height(10.dp))
                 // The trailing-window control lives HERE, inside the only figure it changes. Sitting outside,
-                // a few dp from the cycle stepper, it read as though it re-scoped the cycle as well.
+                // a few dp from the cycle stepper, it read as though it re-scoped the cycle as well. Yearly has
+                // no equivalent: its baseline is the previous year, which the year chips below already pick.
                 val windows = AvgWindow.entries
                 PillSegmentedControl(
                     options = windows.map { it.label },
@@ -270,14 +265,28 @@ private fun CategoryHeader(
                     color = onContainer.copy(alpha = 0.7f),
                 )
             }
+        }
 
+        Spacer(Modifier.height(12.dp))
+        if (yearly) {
+            // Every year with data, newest first, no cap (the owner's choice) — so a LazyRow, which scrolls
+            // rather than shrinking each chip until the years are unreadable.
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(state.availableYears, key = { it }) { year ->
+                    FilterChip(
+                        selected = year == state.selectedYear,
+                        onClick = { onSelectYear(year) },
+                        label = { Text(year.toString()) },
+                    )
+                }
+            }
+        } else {
             // Cycle selector (#5) — a COMPACT single-line control, seeded from the cycle you were viewing so it
             // matches the number you tapped. For a single current cycle it's a ‹ › prev/next stepper; for
             // All-time / Last-N / Custom it's a tappable name. LOCAL: re-scopes the total, count and list without
             // touching the main Transactions/Analytics cycle. label="" keeps it to one line (dates on the hero
             // above). Smart Cycle IS offered (it's one contiguous window now, so it slices a category exactly),
             // but without the card narrowing — a per-category list isn't per-card.
-            Spacer(Modifier.height(12.dp))
             PeriodSelectorBar(
                 selection = selection,
                 label = "",
@@ -285,8 +294,8 @@ private fun CategoryHeader(
                 smartCycleEnabled = smartCycleEnabled,
                 showCardSection = false,
             )
-            Spacer(Modifier.height(16.dp))
         }
+        Spacer(Modifier.height(16.dp))
 
         // Names what the list underneath actually holds. Without it the rows are simply adjacent to the
         // figures above, which is exactly how a one-cycle list came to be read as six months of history.

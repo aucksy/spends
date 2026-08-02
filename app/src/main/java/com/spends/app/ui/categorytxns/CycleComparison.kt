@@ -32,25 +32,36 @@ data class CycleComparison(
 
         /**
          * Build the comparison, or null when there is nothing honest to say — which is the case whenever
-         * there is no usual to compare against (a category with no history divides by nothing).
+         * there is no baseline to compare against (a category with no history divides by nothing).
          *
-         * [cycleStillRunning] must be true for the current, unfinished cycle.
+         * [reference] names what is being compared against, and is the only part that differs between the
+         * two modes: "your usual month" in Monthly, "your monthly average in 2025" in Yearly. Parametrised
+         * rather than duplicated so the two screens can never drift into saying it differently.
+         *
+         * [stillRunning] must be true when the selected period has not ended — the current cycle, or the
+         * current calendar year.
          */
-        fun of(totalMinor: Long, usualMonthMinor: Long, cycleStillRunning: Boolean): CycleComparison? {
+        fun of(
+            totalMinor: Long,
+            usualMonthMinor: Long,
+            stillRunning: Boolean,
+            reference: String = "your usual month",
+            emptyText: String = "Nothing in this cycle yet.",
+        ): CycleComparison? {
             if (usualMonthMinor <= 0L) return null
             if (totalMinor <= 0L) {
-                return CycleComparison("Nothing in this cycle yet.", cycleFraction = 0f, usualFraction = 1f)
+                return CycleComparison(emptyText, cycleFraction = 0f, usualFraction = 1f)
             }
             val diff = totalMinor - usualMonthMinor
             val percent = abs(diff) * 100.0 / usualMonthMinor
-            // Deliberately no figure for "usual" in the sentence. It is rounded for readability, while the
-            // bar directly beneath shows it to the paise — printing both put two different numbers for the
-            // same quantity a centimetre apart, which is the exact confusion this screen is fixing.
+            // Deliberately no figure for the reference in the sentence. It is rounded for readability, while
+            // the bar directly beneath shows it to the paise — printing both put two different numbers for
+            // the same quantity a centimetre apart, the exact confusion this screen is fixing.
             val sentence = when {
-                percent < NEAR_ENOUGH_PERCENT -> "About the same as your usual month."
-                diff > 0 -> "About ${money(diff)} more than your usual month."
-                cycleStillRunning -> "About ${money(-diff)} under your usual month so far."
-                else -> "About ${money(-diff)} less than your usual month."
+                percent < NEAR_ENOUGH_PERCENT -> "About the same as $reference."
+                diff > 0 -> "About ${money(diff)} more than $reference."
+                stillRunning -> "About ${money(-diff)} under $reference so far."
+                else -> "About ${money(-diff)} less than $reference."
             }
             val max = maxOf(totalMinor, usualMonthMinor).toFloat()
             return CycleComparison(

@@ -100,9 +100,20 @@ data class CategoryTxnsUiState(
     val rows: List<CategoryTxnRow> = emptyList(),
     /**
      * "About ₹1,500 more than your usual month." — the answer the screen exists to give, in words.
-     * Null in Yearly mode (there is no cycle to compare) and whenever there is no usual to compare with.
+     * Null whenever there is no baseline: no history in Monthly, no earlier year with data in Yearly.
      */
     val comparison: CycleComparison? = null,
+    /** The two comparison bars, ready to draw. Monthly: this cycle vs usual. Yearly: this year vs last. */
+    val comparisonSelfLabel: String = "",
+    val comparisonRefLabel: String = "",
+    val comparisonSelfMinor: Long = 0,
+    val comparisonRefMinor: Long = 0,
+    /**
+     * The heading above the headline figure. Computed here rather than in the screen because only this
+     * layer knows whether the selected window is the current cycle, an earlier one, or not a cycle at
+     * all — a screen that assumed "current" called a cycle from three months ago "THIS CYCLE".
+     */
+    val periodHeading: String = "THIS CYCLE",
 )
 
 @HiltViewModel
@@ -254,17 +265,52 @@ class CategoryTransactionsViewModel @Inject constructor(
             //  - the end at now, so the CURRENT year divides by the months elapsed rather than by twelve —
             //    without which this August would report an "average" a third under the real one, and 2026
             //    would look like a spending collapse next to 2025 every year until December.
-            val windowItems = allItems.filter { it.expense.occurredAt in avgStart until avgEndExclusive }
-            val windowTotal = windowItems.sumOf { it.allocatedToCategory() }
-            val effectiveStart = maxOf(avgStart, earliestAll ?: now)
-            val effectiveEnd = minOf(avgEndExclusive, now)
-            val months = if (effectiveEnd <= effectiveStart) {
-                1.0
-            } else {
-                ((effectiveEnd - effectiveStart).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
+            // Extracted so the Yearly view can run the identical calculation over the PREVIOUS year and
+            // compare like with like. Inlining it twice is how the two would drift apart.
+            fun monthlyAverageOver(startMillis: Long, endExclusiveMillis: Long): Long {
+                val windowTotal = allItems
+                    .filter { it.expense.occurredAt in startMillis until endExclusiveMillis }
+                    .sumOf { it.allocatedToCategory() }
+                val effectiveStart = maxOf(startMillis, earliestAll ?: now)
+                val effectiveEnd = minOf(endExclusiveMillis, now)
+                val months = if (effectiveEnd <= effectiveStart) {
+                    1.0
+                } else {
+                    ((effectiveEnd - effectiveStart).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
+                }
+                return (windowTotal / months).toLong()
             }
 
-            val averageMinor = (windowTotal / months).toLong()
+            val averageMinor = monthlyAverageOver(avgStart, avgEndExclusive)
+
+            // Yearly compares this year's per-month figure against the newest EARLIER year that actually
+            // has data — not `year - 1`, which would show an empty bar for anyone with a gap in their
+            // history. Both sides divide by months elapsed, so a part-finished year compares fairly.
+            val previousYear = if (yearlyList) availableYears.firstOrNull { it < year!! } else null
+            val previousYearAverage = previousYear?.let {
+                monthlyAverageOver(
+                    DateUtils.startOfDayMillis(LocalDate.of(it, 1, 1)),
+                    DateUtils.startOfDayMillis(LocalDate.of(it + 1, 1, 1)),
+                )
+            } ?: 0L
+
+            val comparison = if (yearlyList) {
+                CycleComparison.of(
+                    totalMinor = averageMinor,
+                    usualMonthMinor = previousYearAverage,
+                    stillRunning = year == today.year,
+                    reference = "your monthly average in $previousYear",
+                    emptyText = "Nothing in $year yet.",
+                )
+            } else {
+                // `stillRunning` keeps the wording honest about a cycle that has not finished.
+                CycleComparison.of(
+                    totalMinor = total,
+                    usualMonthMinor = averageMinor,
+                    stillRunning = resolved.endExclusiveMillis > now,
+                )
+            }
+
             CategoryTxnsUiState(
                 loading = false,
                 categoryName = categoryName,
@@ -272,16 +318,19 @@ class CategoryTransactionsViewModel @Inject constructor(
                 totalMinor = total,
                 count = rows.size,
                 monthlyAverageMinor = averageMinor,
-                // Monthly only: Yearly has no cycle, and its figure and list already cover the same year.
-                // `cycleStillRunning` keeps the wording honest about a month that has not finished.
-                comparison = if (yearlyList) {
-                    null
-                } else {
-                    CycleComparison.of(
-                        totalMinor = total,
-                        usualMonthMinor = averageMinor,
-                        cycleStillRunning = resolved.endExclusiveMillis > now,
-                    )
+                comparison = comparison,
+                comparisonSelfLabel = if (yearlyList) year.toString() else "This cycle",
+                comparisonRefLabel = if (yearlyList) previousYear?.toString().orEmpty() else "Usual",
+                comparisonSelfMinor = if (yearlyList) averageMinor else total,
+                comparisonRefMinor = if (yearlyList) previousYearAverage else averageMinor,
+                // Only a CURRENT-range selection is a single cycle that can be "this" one; stepping back
+                // ends the window, and All-time / Last-N / Custom are not cycles at all.
+                periodHeading = when {
+                    yearlyList -> "AVERAGE PER MONTH IN $year"
+                    sel.range != PeriodRange.CURRENT -> "SELECTED PERIOD"
+                    resolved.startMillis > now -> "UPCOMING CYCLE"
+                    resolved.endExclusiveMillis > now -> "THIS CYCLE"
+                    else -> "EARLIER CYCLE"
                 },
                 avgMode = mode,
                 avgWindow = avgSel.window,

@@ -11,7 +11,7 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.67.0 — fifteen releases.** Install **v1.67.0**; it contains
+**Currently untested: v1.57.0 → v1.68.0 — sixteen releases.** Install **v1.68.0**; it contains
 every one of them.
 
 > ⚠️ **Four sections below are now DEAD and must not be worked through.** v1.60.0, v1.61.0, v1.62.0 and
@@ -25,6 +25,32 @@ every one of them.
 > silently stopped becoming transactions from **v1.58.0** onward, which matches exactly when capture
 > stopped working. The same copied line is what crashed the v1.63.0 debug screen. **The single most
 > valuable thing to check now is whether a real bank text captures again.**
+
+---
+
+## v1.68.0 — two fixes to the new category screen
+
+- [ ] ⭐ **Step back a cycle with the ‹ arrow.** The green panel must STOP saying "THIS CYCLE" and say
+      **"EARLIER CYCLE"**. This was wrong in v1.67.0 — an old cycle announced itself as the current one.
+- [ ] Step forward again to the current cycle → it says "THIS CYCLE" again.
+- [ ] Pick **All time** or a multi-cycle range from the selector → it says **"SELECTED PERIOD"**,
+      because those aren't a single cycle.
+- [ ] ⭐ The comparison sentence updates for the older cycle too — and because that cycle has ENDED,
+      it should say "less than" rather than "under … so far".
+
+**Yearly now looks like Monthly** (you asked for consistency):
+
+- [ ] Tap **Yearly**. Same green panel, same comparison box — not the old plain layout.
+- [ ] The green panel still means what it did: **average per month** in that year, with the year's
+      **total** on the line underneath.
+- [ ] ⭐ The comparison now compares that year against **the previous year you have data for**,
+      e.g. "About ₹2,000 more than your monthly average in 2025." Bars are labelled with the two years.
+- [ ] ⭐ Both bars are **per month**, so a part-finished 2026 should NOT look tiny next to a full 2025.
+      A line under the bars says so.
+- [ ] Your **oldest** year has no earlier year to compare with → it says so plainly instead of
+      showing a comparison against zero.
+- [ ] The 3M/6M/All buttons do **not** appear in Yearly (they don't apply); the year chips do.
+- [ ] ⭐ Numbers unchanged from v1.67.0 — this is a layout change, not a maths change.
 
 ---
 

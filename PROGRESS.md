@@ -4,7 +4,11 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.67.0** — versionCode **77**, versionName **"1.67.0"**. The category screen leads with ONE
+- **Shipped: v1.68.0** — versionCode **78**, versionName **"1.68.0"**. Two fixes to v1.67.0's category screen:
+  stepping back a cycle no longer calls it "THIS CYCLE", and Yearly gets the same hero + comparison layout,
+  compared against the previous year with data. No schema change.
+  APK: https://github.com/aucksy/spends/releases/download/v1.68.0/Spends-v1.68.0.apk
+- Previous: **v1.67.0** — versionCode **77**, versionName **"1.67.0"**. The category screen leads with ONE
   number (this cycle) and states the comparison in words — "About ₹1,500 more than your usual month" —
   instead of showing two equally loud figures over two different spans. No schema change.
   APK: https://github.com/aucksy/spends/releases/download/v1.67.0/Spends-v1.67.0.apk
@@ -33,6 +37,30 @@ for how the project works.
 - Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+
+## v1.68.0 — two fixes to the new category screen
+
+**A wrong label, reported from the device.** Stepping back with the ‹ arrow left the headline reading
+"THIS CYCLE" over a cycle that was months old. The heading was hardcoded in the composable, which cannot
+know which window is selected. It now comes from the view model as `CategoryTxnsUiState.periodHeading`,
+which distinguishes four cases the screen could not: the current cycle, an EARLIER cycle (the window has
+ended), an UPCOMING one, and SELECTED PERIOD for All-time / Last-N / Custom ranges, which are not a single
+cycle at all. The comparison wording was already correct for a past cycle — an ended window reports "less
+than" rather than "under … so far" — because it keys off the same `now` boundary.
+
+**Yearly now matches Monthly**, at the owner's request, for consistency. Same filled headline panel, same
+comparison block. The baseline swaps: a year is compared against the newest EARLIER year that actually has
+data — not `year - 1`, which would draw an empty bar for anyone with a gap. Both sides are per-month, so a
+part-finished year still compares fairly, and the screen says so out loud because "2026 vs 2025" otherwise
+invites the opposite reading. Yearly keeps its own headline meaning (average per month, year's total
+beneath), which was confirmed correct on the device in the v1.65.0 round. It has no 3M/6M/All control,
+because its baseline is picked by the year chips instead.
+
+`CycleComparison.of` gained `reference` and `emptyText` parameters so both modes share one implementation
+and can never drift into wording it differently; `monthlyAverageOver(start, end)` was extracted in the view
+model for the same reason, so the two years are averaged by identical arithmetic.
+
+---
 
 ## v1.67.0 — the category screen answers the question instead of posing it
 
