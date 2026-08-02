@@ -31,11 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,18 +72,7 @@ fun AnalyticsScreen(
     val selection by viewModel.periodSelection.collectAsStateWithLifecycle()
     val smartCycleEnabled by viewModel.smartCycleEnabled.collectAsStateWithLifecycle()
     val cardChoices by viewModel.cardChoices.collectAsStateWithLifecycle()
-    val insights by viewModel.insights.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
-    // Tell the ViewModel when this tab is actually on screen, so no AI call fires while the user is
-    // elsewhere in the app (the Analytics ViewModel outlives the tab — it's scoped to the Home entry).
-    DisposableEffect(Unit) {
-        viewModel.setAnalyticsVisible(true)
-        onDispose { viewModel.setAnalyticsVisible(false) }
-    }
-
-    // Dismiss hides the carousel until a fresh set arrives (new cycle / refresh) — resets when the cards change.
-    var insightsDismissed by remember { mutableStateOf(false) }
-    LaunchedEffect(insights.cards) { if (insights.cards.isNotEmpty()) insightsDismissed = false }
     // The cycle these numbers belong to (#5): the selection name, plus the concrete date range when it adds
     // information (a composite's label already IS its name). Passed to the drill-down so it updates per cycle.
     val cycleLabel = selection.describe().let { name ->
@@ -112,19 +97,6 @@ fun AnalyticsScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
-
-        // AI insights: a swipeable carousel — the cycle summary first, then whatever the on-device engine
-        // found worth saying. Hidden unless AI + the sub-toggle + a key are on; never shown for an empty
-        // cycle or when nothing came back (fail-closed).
-        if (insights.visible && !insightsDismissed && (insights.loading || insights.cards.isNotEmpty())) {
-            InsightsCarousel(
-                loading = insights.loading,
-                cards = insights.cards,
-                onRefresh = viewModel::refreshInsights,
-                onDismiss = { insightsDismissed = true },
-            )
-            Spacer(Modifier.height(12.dp))
-        }
 
         // Smart Cycle (#4): the per-instrument breakdown lives here now (moved off the timeline). Gated on
         // the SELECTION (not state.isComposite) — the all-instruments Smart view is a contiguous window now,

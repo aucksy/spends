@@ -137,6 +137,12 @@
             android:name=".receiver.RecurringAlarmReceiver"
             android:exported="false" />
 
+        <!-- "Dismiss" action of a "recurring added" notification (#3). Clears the notification only;
+             internal, so not exported. -->
+        <receiver
+            android:name=".receiver.RecurringActionReceiver"
+            android:exported="false" />
+
         <!-- Re-arm the recurring exact alarm after a reboot (#4). Exported so the system can deliver
              BOOT_COMPLETED; guarded by RECEIVE_BOOT_COMPLETED. -->
         <receiver

@@ -35,11 +35,11 @@ Play Console → **Create app**. Name **Spends**, default language **English (In
   store description.
 
 ## 4. Data safety  **[owner]** — answers are **[done]** in `play/DATA_SAFETY.md`
-⚠ **This section used to say "local-first → No data collected/shared". That answer has been wrong since
-v1.56.0 and must not be used.** The optional AI helper sends data to Groq, a third party, so under Play's
-definition the app **does** collect and share — and `play/DATA_SAFETY.md` answers **Yes**, with an itemised
-table. Fill the form from that file, not from memory. Everything else there still holds: deletion is
-available, and transit is encrypted.
+⚠ **Re-submit this section for v1.65.0.** The AI helper was removed, so the app no longer shares anything
+with any third party. `play/DATA_SAFETY.md` now answers **collected: Yes** (Drive backup only) and
+**shared: No**, with SMS collecting nothing at all. The declaration filed for v1.56.0–v1.64.0 says the
+opposite and is now wrong. Fill the form from that file, not from memory. Everything else there still
+holds: deletion is available, and transit is encrypted.
 
 ## 5. Content rating  **[owner]**
 Policy → App content → **Content ratings** → complete the IARC questionnaire. Spends is a finance/utility

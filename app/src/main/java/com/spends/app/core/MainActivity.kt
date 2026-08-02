@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         splash.setKeepOnScreenCondition { viewModel.uiState.value.loading }
         handleCaptureEditIntent(intent)
+        handleOpenExpenseIntent(intent)
         // Only honor a widget quick-add on a genuinely fresh launch. On a config-change/process-death
         // recreate, savedInstanceState != null and Android re-delivers the original launch intent (extra
         // still set), which would otherwise re-pop the sheet. A real new tap arrives via onNewIntent.
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val pendingCaptureDraft by viewModel.pendingCaptureDraft.collectAsStateWithLifecycle()
+            val pendingOpenExpenseId by viewModel.pendingOpenExpenseId.collectAsStateWithLifecycle()
             val pendingQuickAdd by viewModel.pendingQuickAdd.collectAsStateWithLifecycle()
             // Quiet brand splash on every cold start (#10), then hand off to the app.
             var showSplash by rememberSaveable { mutableStateOf(true) }
@@ -81,6 +83,8 @@ class MainActivity : ComponentActivity() {
                                 settings = state.settings,
                                 pendingCaptureDraft = pendingCaptureDraft,
                                 onCaptureDraftConsumed = viewModel::consumeCaptureDraft,
+                                pendingOpenExpenseId = pendingOpenExpenseId,
+                                onOpenExpenseConsumed = viewModel::consumeOpenExpense,
                                 pendingQuickAdd = pendingQuickAdd,
                                 onQuickAddConsumed = viewModel::consumeQuickAdd,
                             )
@@ -97,6 +101,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleCaptureEditIntent(intent)
+        handleOpenExpenseIntent(intent)
         handleQuickAddIntent(intent)
     }
 
@@ -127,8 +132,26 @@ class MainActivity : ComponentActivity() {
         intent.removeExtra(EXTRA_CAPTURE_EDIT) // consume so a config change / re-create doesn't re-fire
     }
 
+    /**
+     * "Edit" (or the body) of a "recurring added" notification (#3): open that transaction for editing.
+     *
+     * Unlike the capture prompt above, the row already EXISTS — this opens the real transaction, so a stale
+     * notification acted on after the user deleted the transaction simply finds nothing and falls back to a
+     * blank add rather than resurrecting anything.
+     */
+    private fun handleOpenExpenseIntent(intent: Intent?) {
+        val expenseId = intent?.getLongExtra(EXTRA_OPEN_EXPENSE_ID, NO_ID) ?: NO_ID
+        if (expenseId == NO_ID) return
+        viewModel.requestOpenExpense(expenseId)
+        intent?.removeExtra(EXTRA_OPEN_EXPENSE_ID) // consume so a recreate doesn't re-open it
+    }
+
     companion object {
         const val EXTRA_CAPTURE_EDIT = "capture_edit"
         const val EXTRA_OPEN_QUICK_ADD = "open_quick_add"
+
+        /** Transaction id carried by a "recurring added" notification (#3). */
+        const val EXTRA_OPEN_EXPENSE_ID = "open_expense_id"
+        private const val NO_ID = -1L
     }
 }

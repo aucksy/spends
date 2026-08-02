@@ -23,7 +23,6 @@ import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
 import com.spends.app.ui.recurring.RecurringScreen
 import com.spends.app.ui.review.ReviewScreen
-import com.spends.app.ui.settings.AiSettingsScreen
 import com.spends.app.ui.settings.AppearanceSettingsScreen
 import com.spends.app.ui.settings.AutomaticSettingsScreen
 import com.spends.app.ui.settings.BackupSettingsScreen
@@ -37,6 +36,8 @@ fun SpendsNavHost(
     settings: SettingsState,
     pendingCaptureDraft: Boolean = false,
     onCaptureDraftConsumed: () -> Unit = {},
+    pendingOpenExpenseId: Long? = null,
+    onOpenExpenseConsumed: () -> Unit = {},
     pendingQuickAdd: Boolean = false,
     onQuickAddConsumed: () -> Unit = {},
 ) {
@@ -49,6 +50,14 @@ fun SpendsNavHost(
         if (!pendingCaptureDraft) return@LaunchedEffect
         if (settings.onboardingComplete) navController.navigate(Routes.addEditDraft())
         onCaptureDraftConsumed()
+    }
+
+    // A "recurring added" notification's Edit tap (#3) — open that saved transaction. Unlike the draft above
+    // the row already exists, so this is an ordinary edit route.
+    LaunchedEffect(pendingOpenExpenseId) {
+        val id = pendingOpenExpenseId ?: return@LaunchedEffect
+        if (settings.onboardingComplete) navController.navigate(Routes.addEdit(id))
+        onOpenExpenseConsumed()
     }
 
     NavHost(
@@ -92,7 +101,7 @@ fun SpendsNavHost(
                 onEditTransaction = { id -> navController.navigate(Routes.addEdit(id)) },
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+                onOpenRecurring = { navController.navigate(Routes.recurring()) },
                 onOpenCategory = { categoryId, name, cycleLabel, start, end ->
                     navController.navigate(Routes.categoryTxns(categoryId, name, cycleLabel, start, end))
                 },
@@ -119,7 +128,10 @@ fun SpendsNavHost(
                 },
             ),
         ) {
-            AddEditScreen(onDone = { navController.popBackStack() })
+            AddEditScreen(
+                onDone = { navController.popBackStack() },
+                onOpenRule = { ruleId -> navController.navigate(Routes.recurring(ruleId)) },
+            )
         }
 
         composable(
@@ -162,13 +174,8 @@ fun SpendsNavHost(
             AutomaticSettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenCapture = { navController.navigate(Routes.CAPTURE) },
-                onOpenRecurring = { navController.navigate(Routes.RECURRING) },
-                onOpenAi = { navController.navigate(Routes.SETTINGS_AI) },
+                onOpenRecurring = { navController.navigate(Routes.recurring()) },
             )
-        }
-
-        composable(Routes.SETTINGS_AI) {
-            AiSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.SETTINGS_APPEARANCE) {
@@ -214,8 +221,20 @@ fun SpendsNavHost(
             CategoriesScreen(onBack = { navController.popBackStack() })
         }
 
-        composable(Routes.RECURRING) {
-            RecurringScreen(onBack = { navController.popBackStack() })
+        composable(
+            route = Routes.RECURRING_PATTERN,
+            arguments = listOf(
+                navArgument(Routes.ARG_RULE_ID) {
+                    type = NavType.LongType
+                    defaultValue = Routes.NO_RULE_ID
+                },
+            ),
+        ) { entry ->
+            val ruleId = entry.arguments?.getLong(Routes.ARG_RULE_ID) ?: Routes.NO_RULE_ID
+            RecurringScreen(
+                onBack = { navController.popBackStack() },
+                openRuleId = ruleId.takeIf { it != Routes.NO_RULE_ID },
+            )
         }
 
         composable(Routes.CYCLE_BREAKDOWN) {

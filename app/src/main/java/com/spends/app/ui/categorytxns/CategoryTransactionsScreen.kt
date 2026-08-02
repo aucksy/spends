@@ -1,5 +1,6 @@
 package com.spends.app.ui.categorytxns
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,10 +12,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,11 +79,13 @@ fun CategoryTransactionsScreen(
                         selection = selection,
                         smartCycleEnabled = smartCycleEnabled,
                         onSelectPeriod = viewModel::setPeriod,
+                        onAvgMode = viewModel::setAvgMode,
                         onAvgWindow = viewModel::setAvgWindow,
+                        onSelectYear = viewModel::setYear,
                     )
                 }
                 if (state.rows.isEmpty()) {
-                    item(key = "empty") { EmptyCategory() }
+                    item(key = "empty") { EmptyCategory(state.avgMode, state.selectedYear) }
                 } else {
                     items(state.rows, key = { it.id }) { row -> CategoryTxnRowItem(row) }
                 }
@@ -89,89 +94,155 @@ fun CategoryTransactionsScreen(
     }
 }
 
+/**
+ * ⭐**The average comes FIRST, and the cycle total sits in its own block below it.**
+ *
+ * They used to be the other way round, which put a 6-month average immediately above a list holding ONE
+ * cycle — so the list read as if it showed six months of transactions. The order is the fix: the average is
+ * the headline of the screen, and the cycle block that owns the list is separated from it by a rule and
+ * names its own dates. In Yearly mode there is only one block, because the figure and the list then cover
+ * the same year and there is nothing left to confuse.
+ */
 @Composable
 private fun CategoryHeader(
     state: CategoryTxnsUiState,
     selection: PeriodSelection,
     smartCycleEnabled: Boolean,
     onSelectPeriod: (PeriodSelection) -> Unit,
+    onAvgMode: (AvgMode) -> Unit,
     onAvgWindow: (AvgWindow) -> Unit,
+    onSelectYear: (Int) -> Unit,
 ) {
+    val yearly = state.avgMode == AvgMode.YEARLY && state.selectedYear != null
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
+        // Monthly / Yearly. Hidden entirely when there is nothing to look at year-by-year, rather than
+        // offering a button that lands on an empty screen.
+        if (state.availableYears.isNotEmpty()) {
+            val modes = AvgMode.entries
+            PillSegmentedControl(
+                options = modes.map { it.label },
+                selectedIndex = modes.indexOf(state.avgMode).coerceAtLeast(0),
+                onSelect = { onAvgMode(modes[it]) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(18.dp))
+        }
+
+        // ---- The average: the headline of this screen ----
         Text(
-            "TOTAL SPENT",
+            if (yearly) "AVERAGE PER MONTH IN ${state.selectedYear}" else "MONTHLY AVERAGE",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            Money.formatRupees(state.totalMinor),
+            Money.formatRupees(state.monthlyAverageMinor),
             style = Numerals.amountLg,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(2.dp))
-        // Count + the concrete dates of the selected cycle. As you step cycles with the ‹ › arrows below,
-        // this line updates so the exact window is always clear (the stepper itself shows only the name).
-        val datePart = state.cycleLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""
         Text(
-            "${state.count} ${if (state.count == 1) "transaction" else "transactions"}$datePart",
+            // Yearly: the year's TOTAL, sitting under the average that was derived from it — the owner asked
+            // for both figures on screen rather than one behind a tap.
+            // Monthly: names the stretch the average covers in words, so it can't be read as this cycle's.
+            if (yearly) {
+                "${Money.formatRupees(state.totalMinor)} in total  ·  " +
+                    "${state.count} ${if (state.count == 1) "transaction" else "transactions"}"
+            } else {
+                when (state.avgWindow) {
+                    AvgWindow.ALL -> "Averaged across all your history"
+                    else -> "Averaged over the last ${state.avgWindow.label.removeSuffix("M")} months"
+                }
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
         )
 
-        // Cycle selector (#5) — a COMPACT single-line control, seeded from the cycle you were viewing so it
-        // matches the number you tapped. For a single current cycle it's a ‹ › prev/next stepper; for
-        // All-time / Last-N / Custom it's a tappable name. LOCAL: re-scopes the total, count and list without
-        // touching the main Transactions/Analytics cycle. label="" keeps it to one line (dates on the count
-        // line above). Smart Cycle IS offered (it's one contiguous window now, so it slices a category
-        // exactly), but without the card narrowing — a per-category list isn't per-card.
-        Spacer(Modifier.height(14.dp))
-        PeriodSelectorBar(
-            selection = selection,
-            label = "",
-            onSelect = onSelectPeriod,
-            smartCycleEnabled = smartCycleEnabled,
-            showCardSection = false,
-        )
+        Spacer(Modifier.height(10.dp))
+        if (yearly) {
+            // Every year with data, newest first, no cap (the owner's choice) — so a LazyRow, which scrolls
+            // rather than shrinking each chip until the years are unreadable.
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(state.availableYears, key = { it }) { year ->
+                    FilterChip(
+                        selected = year == state.selectedYear,
+                        onClick = { onSelectYear(year) },
+                        label = { Text(year.toString()) },
+                    )
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Last",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(10.dp))
+                val windows = AvgWindow.entries
+                PillSegmentedControl(
+                    options = windows.map { it.label },
+                    selectedIndex = windows.indexOf(state.avgWindow).coerceAtLeast(0),
+                    onSelect = { onAvgWindow(windows[it]) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
 
-        Spacer(Modifier.height(18.dp))
-        // Monthly average with its own trailing window (#8): "Last" is static; 3M / 6M / All are tappable.
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (yearly) {
+            // One block, one period: the list below is the same year the figures describe.
+            Spacer(Modifier.height(14.dp))
+        } else {
+            // ---- The cycle: what the list below actually contains ----
+            // Ruled off from the average above, because this is where the two periods diverge and the
+            // separation is the whole point of the reorder.
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Spacer(Modifier.height(16.dp))
             Text(
-                "Monthly average",
+                "SPENT IN THIS CYCLE ONLY",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
             )
+            Spacer(Modifier.height(4.dp))
             Text(
-                Money.formatRupees(state.monthlyAverageMinor),
-                style = Numerals.amountRow,
+                Money.formatRupees(state.totalMinor),
+                style = Numerals.amountLg,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(2.dp))
+            // Count + the concrete dates of the selected cycle. As you step cycles with the ‹ › arrows below,
+            // this line updates so the exact window is always clear (the stepper itself shows only the name).
+            val datePart = state.cycleLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""
             Text(
-                "Last",
+                "${state.count} ${if (state.count == 1) "transaction" else "transactions"}$datePart",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
             )
-            Spacer(Modifier.width(10.dp))
-            val windows = AvgWindow.entries
-            PillSegmentedControl(
-                options = windows.map { it.label },
-                selectedIndex = windows.indexOf(state.avgWindow).coerceAtLeast(0),
-                onSelect = { onAvgWindow(windows[it]) },
-                modifier = Modifier.weight(1f),
+
+            // Cycle selector (#5) — a COMPACT single-line control, seeded from the cycle you were viewing so it
+            // matches the number you tapped. For a single current cycle it's a ‹ › prev/next stepper; for
+            // All-time / Last-N / Custom it's a tappable name. LOCAL: re-scopes the total, count and list without
+            // touching the main Transactions/Analytics cycle. label="" keeps it to one line (dates on the count
+            // line above). Smart Cycle IS offered (it's one contiguous window now, so it slices a category
+            // exactly), but without the card narrowing — a per-category list isn't per-card.
+            Spacer(Modifier.height(14.dp))
+            PeriodSelectorBar(
+                selection = selection,
+                label = "",
+                onSelect = onSelectPeriod,
+                smartCycleEnabled = smartCycleEnabled,
+                showCardSection = false,
             )
+            // Breathing room before the transaction list (#5).
+            Spacer(Modifier.height(14.dp))
         }
-        // Breathing room before the transaction list (#5).
-        Spacer(Modifier.height(14.dp))
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 }
@@ -232,7 +303,7 @@ private fun CategoryTxnRowItem(row: CategoryTxnRow) {
 }
 
 @Composable
-private fun EmptyCategory() {
+private fun EmptyCategory(mode: AvgMode, year: Int?) {
     // Inline (not full-screen) so the header + cycle selector above it stay visible and the user can pick a
     // different cycle.
     Box(
@@ -243,7 +314,12 @@ private fun EmptyCategory() {
             Text("No transactions", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(
-                "Nothing in this category for the selected cycle.",
+                // Naming the period that came up empty, so the user knows which control to change.
+                if (mode == AvgMode.YEARLY && year != null) {
+                    "Nothing in this category in $year."
+                } else {
+                    "Nothing in this category for the selected cycle."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

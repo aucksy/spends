@@ -292,6 +292,13 @@ internal fun plainOutcome(o: NotificationDebugLog.Outcome): String = when (o) {
     NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT ->
         "⚠️ Readable text was there but Spends looked in the wrong place — this one is a bug we can fix"
     NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED -> "Text was readable, but the sender isn't a bank Spends knows"
+    // Named as the phone's doing, not the app's, because it is: this outcome only fires when the text we
+    // were handed IS Android's placeholder. Everything Spends could change sits downstream of a message
+    // that never arrived, so the sentence has to stop the owner looking for an app-side fix.
+    NotificationDebugLog.Outcome.REDACTED_BY_ANDROID ->
+        "🔒 Your phone hid this message from Spends. Android replaced the text with " +
+            "\"Sensitive notification content hidden\" before Spends was given it, so there was nothing to " +
+            "read. No app-side fix exists — see the note under the list."
     NotificationDebugLog.Outcome.TOO_OLD -> "Skipped — older than the capture window"
     // Open-ended, matching the SMS screen: both paths take this verdict from the same SmsParser, so the
     // closed list was false here for exactly the same reason — a real SBI UPI debit or an HDFC IMPS
@@ -337,6 +344,15 @@ private fun verdictOf(
     log.entries.isEmpty() ->
         "The reader is working (${log.totalSeen} notifications seen), but nothing has arrived from " +
             "the apps you're watching. Check the package list below for the app your bank alert came from."
+    // Promoted above the generic line: when the phone is redacting, EVERY other reading of this screen is a
+    // red herring, and the owner has been sent to the sender allowlist by the old wording before.
+    log.entries.any { it.outcome == NotificationDebugLog.Outcome.REDACTED_BY_ANDROID } ->
+        "Your phone is hiding these messages from Spends before it sees them. Android replaces alerts it " +
+            "thinks contain a code with \"Sensitive notification content hidden\", and only Google's own " +
+            "apps are allowed to read the real text. Nothing in Spends can undo this. Try Settings → " +
+            "Notifications → Enhanced notifications and turn it OFF, then reproduce the alert — if the text " +
+            "below is still the placeholder, this route can't work on this phone and SMS capture is the " +
+            "one that will."
     else ->
         "The reader is seeing your watched apps. Each alert below says where it stopped."
 }

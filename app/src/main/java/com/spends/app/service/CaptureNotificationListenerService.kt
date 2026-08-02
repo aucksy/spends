@@ -220,6 +220,8 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             NotificationCapture.Rejection.NO_READABLE_TEXT -> NotificationDebugLog.Outcome.NO_READABLE_TEXT
             NotificationCapture.Rejection.MESSAGES_SHADOWED_BIG_TEXT ->
                 NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT
+            NotificationCapture.Rejection.REDACTED_BY_ANDROID ->
+                NotificationDebugLog.Outcome.REDACTED_BY_ANDROID
             else -> NotificationDebugLog.Outcome.SENDER_NOT_RECOGNISED
         }
         return debugEntry(

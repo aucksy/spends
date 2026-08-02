@@ -142,4 +142,62 @@ class NotificationCaptureTest {
         )
         assertThat(out).isEmpty()
     }
+
+    // ---- Android's own redaction (the Truecaller Business Chat finding) ----
+    //
+    // This is the shape the owner's phone actually produced: title = the APP's name, text = the platform
+    // placeholder, no bigText, no MessagingStyle. Before these tests it was reported as "the sender isn't a
+    // bank Spends knows", which sent the investigation to the sender allowlist — a file that cannot possibly
+    // be the cause when the body never arrived.
+
+    @Test fun redacted_plain_notification_is_diagnosed_as_redacted_not_unknown_sender() {
+        val d = NotificationCapture.diagnose(
+            title = "Truecaller",
+            text = "Sensitive notification content hidden",
+            bigText = null,
+            conversationTitle = null,
+            messages = emptyList(),
+            postTime = postTime,
+        )
+        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.REDACTED_BY_ANDROID)
+    }
+
+    @Test fun redacted_message_inside_a_chat_is_also_diagnosed_as_redacted() {
+        val d = NotificationCapture.diagnose(
+            title = "Truecaller",
+            text = null,
+            bigText = null,
+            conversationTitle = "HDFC Bank",
+            messages = listOf(RawMessage("HDFC Bank", "Sensitive notification content hidden", postTime)),
+            postTime = postTime,
+        )
+        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.REDACTED_BY_ANDROID)
+    }
+
+    @Test fun redaction_check_is_case_and_padding_insensitive() {
+        assertThat(NotificationCapture.looksRedacted("  Sensitive Content Hidden  ")).isTrue()
+        assertThat(NotificationCapture.looksRedacted("SENSITIVE NOTIFICATION CONTENT HIDDEN")).isTrue()
+    }
+
+    // ⭐The guard that matters most. A real bank alert must NEVER be written off as a platform redaction —
+    // that would blame the phone for a parser bug and close the only investigation that could fix it.
+    @Test fun a_real_message_mentioning_hidden_is_not_treated_as_redacted() {
+        assertThat(NotificationCapture.looksRedacted("INR 499 debited. Balance hidden for security")).isFalse()
+        assertThat(NotificationCapture.looksRedacted("Your sensitive data is safe with us")).isFalse()
+        assertThat(NotificationCapture.looksRedacted(null)).isFalse()
+    }
+
+    // A redacted body carries no amount, so capture was always going to fail on it. Pinned so the diagnosis
+    // change can never be mistaken for a capture change.
+    @Test fun redaction_diagnosis_does_not_alter_what_capture_does() {
+        val out = NotificationCapture.candidates(
+            title = "Truecaller",
+            text = "Sensitive notification content hidden",
+            bigText = null,
+            conversationTitle = null,
+            messages = emptyList(),
+            postTime = postTime,
+        )
+        assertThat(out).isEmpty()
+    }
 }

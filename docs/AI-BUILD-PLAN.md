@@ -1,3 +1,10 @@
+> ⚠️ **HISTORICAL — the feature this document describes no longer exists.**
+> The AI helper was removed from Spends in **v1.65.0** (2 August 2026), along with the insight cards, the
+> category suggestions and the Groq integration. This file is kept only as a record of how it was built and
+> why particular decisions were taken. **Nothing in it describes the shipping app.** Do not use it as a
+> specification, and do not restore anything from it without redoing the privacy disclosure sweep listed in
+> `README.md`.
+
 # Spends — "AI helper" build plan (files + order)
 
 **Status:** BUILT + adversarially reviewed 2026-07-24, **awaiting the owner's ship word** (no tag yet).

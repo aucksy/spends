@@ -45,6 +45,66 @@ wrong number about real money, rather than something looking untidy.
 
 ---
 
+## v1.65.0 — recurring notifications, the rule link, the category average, and the AI removal
+
+**Recurring notification (needs a rule that fires — easiest: create a rule with a start date of today,
+save, then let the 9 AM alarm run, or set the notify time a couple of minutes ahead in
+Settings → Automatic Entries → Recurring.)**
+
+- [ ] ⭐ The notification now shows **the name, the note and the amount** of what was added — not just
+      "1 scheduled transaction was added".
+- [ ] An income rule shows **+₹**; an expense rule shows **-₹**.
+- [ ] A rule saved with a note but **no name** shows the note as the heading (not "Scheduled transaction").
+- [ ] Tapping **Edit** opens **that exact transaction**, already filled in.
+- [ ] Tapping **Dismiss** clears the notification — and the transaction is **still there** in the list.
+      ⭐ If Dismiss deletes it, stop and tell me: that would be money disappearing.
+- [ ] Two rules firing the same day give **two separate notifications**, each naming its own transaction.
+- [ ] If you have been away from the app long enough for many occurrences to back-fill at once, you get
+      **one roll-up** ("N scheduled transactions were added") rather than a wall of notifications.
+
+**The rule behind a transaction**
+
+- [ ] Open a transaction that a rule created → a band reads **"Added by a repeating rule"**. Tap it →
+      the rule's editor opens, already loaded with that rule.
+- [ ] The band does **not** appear on a transaction you typed yourself or one captured from an SMS.
+- [ ] ⭐ Change the amount on the **transaction** and save → the **rule** is unchanged (check
+      Settings → Automatic Entries → Recurring). The two are meant to be separate.
+- [ ] Go back from the rule editor → you land on the transaction, and Back again leaves normally
+      (it must not bounce you into the editor again).
+
+**Category screen — average at the top, and the Yearly view**
+
+- [ ] Open any category from Analytics. The **average is now the first thing** on the screen; the cycle
+      total sits below it under **"SPENT IN THIS CYCLE ONLY"** with its own dates.
+- [ ] It is now obvious that the list underneath is **one cycle**, not the 6 months the average covers.
+- [ ] Tap **Yearly** → the 3M/6M/All buttons become **years**, and only years you actually have data for
+      appear (newest first).
+- [ ] ⭐ In Yearly, the big figure is the **average per month in that year** and the line under it is the
+      **year's total**. Sanity-check one: total ÷ months should land near the average.
+- [ ] ⭐ For the **current** year the average is divided by the months **so far**, not twelve — 2026
+      should not look dramatically smaller than 2025 just because the year isn't over.
+- [ ] In Yearly, the list below shows **the whole year**, and the cycle stepper is gone.
+- [ ] Switch back to Monthly → everything behaves as it did before.
+
+**The AI helper is gone**
+
+- [ ] Settings → Automatic Entries: there is **no "AI helper" row** any more.
+- [ ] Analytics: the insight card carousel is gone; the charts, donut and totals are unchanged.
+- [ ] The review queue still works, and still auto-fills the category for merchants you have taught it.
+      (The "Suggested:" / "Same as before" chip is gone — that was the AI.)
+- [ ] Nothing anywhere in the app mentions AI, Groq or an API key.
+
+**Truecaller / notification capture — read, don't fix**
+
+- [ ] ⭐ Reproduce a Truecaller bank alert, then open Settings → Automatic Entries → Capture →
+      Notification debug. If the verdict says **"Your phone is hiding these messages from Spends"**, that
+      is the confirmed cause and there is nothing in the app to change.
+- [ ] Try the suggested phone setting (**Settings → Notifications → Enhanced notifications → OFF**),
+      reproduce the alert again, and tell me whether the text is still the placeholder. That answer
+      decides whether this route can ever work on your phone.
+
+---
+
 ## v1.64.0 — insight cards name what they're about
 
 - [ ] ⭐⭐ **Every card that's about a category now says which one.** Swipe the Analytics carousel. A card
@@ -304,4 +364,4 @@ the fastest way to see these** — it has ~14 months of data planted to make eac
 - Every release adds a section here **before** the APK link is posted.
 - Ticked sections older than two releases can be deleted; unticked ones stay, however old.
 - ⭐ marks anything where being wrong means a wrong figure about real money.
-- If a check needs a specific setup (demo mode, AI helper on, a particular cycle type), the item says so.
+- If a check needs a specific setup (demo mode, a particular cycle type), the item says so.

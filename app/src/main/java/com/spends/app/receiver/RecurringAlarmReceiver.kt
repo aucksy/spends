@@ -47,7 +47,7 @@ class RecurringAlarmReceiver : BroadcastReceiver() {
             try {
                 val s = settings.settings.first()
                 val created = recurring.materializeDue(DateUtils.nowMillis())
-                if (created > 0 && s.recurringNotifyEnabled) RecurringNotifier.notify(app, created)
+                if (created.isNotEmpty() && s.recurringNotifyEnabled) RecurringNotifier.notify(app, created)
                 // Re-arm the next daily run at the (possibly changed) persisted time.
                 RecurringAlarmScheduler.schedule(app, s.recurringNotifyMinute)
             } finally {

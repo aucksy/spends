@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.capture.CaptureDraftStore
+import com.spends.app.data.backup.SecureKeyStore
 import com.spends.app.data.capture.SmsCaptureRepository
 import com.spends.app.data.demo.DemoDataSeeder
 import com.spends.app.data.demo.DemoMode
@@ -39,6 +40,7 @@ class MainViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val captureRepository: SmsCaptureRepository,
     private val captureDraftStore: CaptureDraftStore,
+    private val secureKeyStore: SecureKeyStore,
     // A Provider so the seeder's object graph is never built for the overwhelming majority of launches,
     // which are not in demo mode.
     private val demoDataSeeder: Provider<DemoDataSeeder>,
@@ -94,6 +96,20 @@ class MainViewModel @Inject constructor(
         _pendingCaptureDraft.value = false
     }
 
+    // Set when a "recurring added" notification is tapped (#3) — the nav host opens that transaction in the
+    // editor. Unlike a capture draft this is a saved row, so nothing needs staging: the id is enough.
+    private val _pendingOpenExpenseId = MutableStateFlow<Long?>(null)
+    val pendingOpenExpenseId: StateFlow<Long?> = _pendingOpenExpenseId
+
+    fun requestOpenExpense(id: Long) {
+        // A notification left over from before the switch would open a REAL transaction inside the demo
+        // sandbox, where editing it changes fabricated data and the next reset destroys the edit.
+        if (DemoMode.isEnabled(context)) return
+        _pendingOpenExpenseId.value = id
+    }
+
+    fun consumeOpenExpense() { _pendingOpenExpenseId.value = null }
+
     // Set when the home-screen widget is tapped (#14) — the nav host opens the quick-add sheet.
     private val _pendingQuickAdd = MutableStateFlow(false)
     val pendingQuickAdd: StateFlow<Boolean> = _pendingQuickAdd
@@ -120,6 +136,11 @@ class MainViewModel @Inject constructor(
             runCatching { recurringRepository.materializeDue(System.currentTimeMillis()) }
             runCatching { categoryRepository.refreshAutoIcons() }
             runCatching { captureRepository.pruneLearnedOrphans() }
+            // v1.65.0: the AI helper is gone, so erase the API key it needed. It is a personal credential
+            // the user can no longer see or delete themselves — the screen that managed it does not exist
+            // any more — so leaving it encrypted on the phone forever is not an option. Guarded on
+            // presence so the overwhelming majority of launches do no write at all.
+            runCatching { if (secureKeyStore.hasApiKey()) secureKeyStore.clearApiKey() }
         }
     }
 }

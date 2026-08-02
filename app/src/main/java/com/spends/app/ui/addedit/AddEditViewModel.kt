@@ -100,6 +100,17 @@ class AddEditViewModel @Inject constructor(
     private val _initial = MutableStateFlow<AddEditInitial?>(null)
     val initial: StateFlow<AddEditInitial?> = _initial
 
+    /**
+     * The recurring rule that CREATED this transaction, or null (#5) — the overwhelmingly common answer,
+     * since only rows the scheduler materialised carry the link.
+     *
+     * Exposed so the editor can offer a way through to the rule itself. Editing the transaction still edits
+     * only the transaction: this is a route, not a binding, so correcting one month's rent here never
+     * silently rewrites the standing rule.
+     */
+    private val _recurringRuleId = MutableStateFlow<Long?>(null)
+    val recurringRuleId: StateFlow<Long?> = _recurringRuleId
+
     private val _saving = MutableStateFlow(false)
     val saving: StateFlow<Boolean> = _saving
 
@@ -110,6 +121,7 @@ class AddEditViewModel @Inject constructor(
         when {
             isEdit -> viewModelScope.launch {
                 val e = expenseRepository.getById(expenseId)
+                _recurringRuleId.value = e?.expense?.recurringRuleId
                 _initial.value = if (e != null) {
                     AddEditInitial(
                         amountText = Money.toEditString(e.expense.amountMinor),

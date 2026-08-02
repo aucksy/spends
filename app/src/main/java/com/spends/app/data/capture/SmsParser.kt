@@ -334,40 +334,6 @@ object SmsParser {
         Regex("\\bcall\\s+\\d[\\d\\s-]{5,}.*$", RegexOption.IGNORE_CASE),
     )
 
-    /**
-     * The message as the optional AI helper may see it: the report trailer removed and **every digit run
-     * masked to `#`**. That leaves the descriptive words — which is all the categoriser needs ("Hello
-     * Fuels" → Fuel) — while amounts, balances, card numbers, dates, phone numbers and reference numbers
-     * never leave the phone. Pure; returns null when nothing useful survives.
-     */
-    fun aiContextFor(body: String?): String? {
-        if (body.isNullOrBlank()) return null
-        val cleaned = stripReportTrailer(body.replace('\n', ' ').replace(Regex("\\s+"), " ").trim())
-        val masked = cleaned.replace(NUMERAL, "#").replace(Regex("\\s+"), " ").trim()
-        if (masked.none { it.isLetter() }) return null
-        return masked.take(MAX_AI_CONTEXT_CHARS)
-    }
-
-    /**
-     * One whole numeral → one `#`. Two deliberate details:
-     *  - `\p{Nd}` is "any Unicode decimal digit". Kotlin's plain `\d` is ASCII `[0-9]`, so a Devanagari
-     *    or Arabic-Indic digit would slip through the mask untouched and be sent.
-     *  - Grouping separators and decimals are swallowed, so `Rs.5,59,393.44` becomes `Rs.#` rather than
-     *    `Rs.#,#,#.#` — otherwise the digit count leaks the order of magnitude of every amount.
-     *
-     * **Never write this as `(?U)\d`.** That inline flag is Java-only syntax. Android's regex engine is
-     * ICU-backed and rejects it outright, so the pattern throws [java.util.regex.PatternSyntaxException]
-     * while this `object`'s initialiser runs — which means the very first call to [parse] dies with an
-     * `ExceptionInInitializerError` and every caller's `runCatching` swallows it. That is exactly what
-     * happened: `(?U)` arrived in v1.58.0 and silently killed live SMS capture on the phone for five
-     * releases, while every JVM unit test kept passing because the JVM *does* accept `(?U)`.
-     * `\p{Nd}` means the same thing and is understood by both engines. Guarded by `JvmOnlyRegexTest`.
-     */
-    private val NUMERAL = Regex("\\p{Nd}[\\p{Nd},]*(?:\\.\\p{Nd}+)?")
-
-    /** Bank alerts run ~150 chars; this bounds a pathological one without truncating a real merchant. */
-    private const val MAX_AI_CONTEXT_CHARS = 300
-
     // ---- date parsing (handles every format in the fixtures) ----
 
     /**

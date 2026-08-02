@@ -80,42 +80,21 @@ class SecureKeyStore @Inject constructor(
         )
     }
 
-    // ---- Groq API key (BYOK) — encrypted at rest, device-local, NEVER in the backup snapshot ----
+    // ---- Leftover AI-helper API key: removed in v1.65.0, and erased on next launch ----
 
     /**
-     * Store the user's Groq API key encrypted by the same hardware-wrapped master key the DEK uses, in
-     * the device-local `spends_secure` prefs. Like the DEK it never leaves the device and is NOT part of
-     * any backup snapshot. A blank key clears it. See [AI-RESEARCH.md] §2.5.
+     * The AI helper is gone, so the API key it needed is now nothing but a personal credential sitting
+     * encrypted on the phone for no reason. It is erased on the next launch rather than left behind:
+     * an unused secret is a liability, and the user cannot delete it themselves once the screen that
+     * managed it no longer exists.
+     *
+     * The read and write paths are deliberately deleted — only the check and the erase remain, so nothing
+     * in the app can put a key back or read one. Kept (rather than erasing blindly every launch) so the
+     * write only happens on the phones that actually have one.
      */
-    fun setApiKey(key: String) {
-        val trimmed = key.trim()
-        if (trimmed.isEmpty()) {
-            clearApiKey()
-            return
-        }
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, masterKey())
-        val ct = cipher.doFinal(trimmed.toByteArray(Charsets.UTF_8))
-        val blob = cipher.iv + ct
-        prefs.edit().putString(KEY_API_KEY_BLOB, blob.b64()).apply()
-    }
-
-    /** The stored Groq API key, or null if none is set or it can't be decrypted (fail-closed). */
-    fun apiKey(): String? {
-        val blob = prefs.getString(KEY_API_KEY_BLOB, null)?.unb64() ?: return null
-        return runCatching {
-            val iv = blob.copyOfRange(0, IV_LEN)
-            val ct = blob.copyOfRange(IV_LEN, blob.size)
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, masterKey(), GCMParameterSpec(128, iv))
-            String(cipher.doFinal(ct), Charsets.UTF_8)
-        }.getOrNull()?.takeIf { it.isNotBlank() }
-    }
-
-    /** True when a Groq API key is stored (presence only — the actual call fails closed if it can't decrypt). */
     fun hasApiKey(): Boolean = prefs.contains(KEY_API_KEY_BLOB)
 
-    /** Remove the stored Groq API key. */
+    /** Erase the stored key. Safe to call when there is none. */
     fun clearApiKey() {
         prefs.edit().remove(KEY_API_KEY_BLOB).apply()
     }

@@ -47,6 +47,10 @@ class NotificationReportRedactionTest {
             NotificationDebugLog.Outcome.NO_READABLE_TEXT,
             NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT,
             NotificationDebugLog.Outcome.SKIPPED_SHAPE,
+            // Recorded before the sender filter like the four above. The body is usually just Android's
+            // placeholder, but `looksRedacted` matches a substring, so the entry can still carry whatever
+            // text surrounds it — and no bank check ever ran on this path.
+            NotificationDebugLog.Outcome.REDACTED_BY_ANDROID,
         )
         // Partitioned over the WHOLE enum, so a new outcome must be classified deliberately rather than
         // defaulting into the exported half by being forgotten.

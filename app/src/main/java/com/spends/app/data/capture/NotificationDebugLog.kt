@@ -40,6 +40,13 @@ class NotificationDebugLog @Inject constructor() {
         /** Text was readable, but the sender/title isn't a bank we know. */
         SENDER_NOT_RECOGNISED,
 
+        /**
+         * Android replaced the message with its "sensitive content hidden" placeholder before handing it
+         * over — see [NotificationCapture.Rejection.REDACTED_BY_ANDROID]. Nothing this app can parse ever
+         * arrived, and no change here can make one arrive.
+         */
+        REDACTED_BY_ANDROID,
+
         /** Older than the listener's age window. */
         TOO_OLD,
 

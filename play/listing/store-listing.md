@@ -20,10 +20,10 @@ Auto-track expenses from bank SMS. Private, offline, salary-cycle budgeting.
 
 ## Full description  (max 4000 chars)
 ```
-Spends turns the transaction SMS your bank already sends into an effortless expense tracker — and your data stays on your phone, unless you switch on the optional AI helper described below.
+Spends turns the transaction SMS your bank already sends into an effortless expense tracker — and your data stays on your phone.
 
 ▍ Automatic expense capture from SMS
-The moment your bank or credit-card SMS arrives, Spends detects the transaction and notifies you to add it in one tap — no typing the amount, no switching apps. Spends reads these messages on your device to find the amount and account; nothing is ever uploaded to us. (One optional feature, an AI helper that is OFF by default and needs your own API key, can send data to an AI provider — for category suggestions, a number-masked extract of that one message plus the merchant name as your bank wrote it, your category names, and up to 100 of your saved merchant→category shortcuts; and for the insight cards, your cycle's spending and income totals, comparisons over time, how much of that income you have kept, against what you usually keep, and your monthly recurring-payment total and how many there are against what a cycle usually brings in. Your choice, and never on by default.) Prefer not to grant SMS access? Spends works fully with quick manual entry too — SMS is optional, and the app is completely usable without it.
+The moment your bank or credit-card SMS arrives, Spends detects the transaction and notifies you to add it in one tap — no typing the amount, no switching apps. Spends reads these messages on your device to find the amount and account; nothing is ever uploaded to us, and nothing is sent to anyone else. Prefer not to grant SMS access? Spends works fully with quick manual entry too — SMS is optional, and the app is completely usable without it.
 
 ▍ Budget by YOUR cycle, not the calendar
 Smart Cycle tracks your money by your real salary and card-billing cycles, so you always know what's actually left to spend before your next paycheck — not just a generic calendar month.
@@ -39,7 +39,7 @@ Smart Cycle tracks your money by your real salary and card-billing cycles, so yo
 • Dark mode and Material You colours
 
 ▍ Private by design
-No account. No ads. No analytics or tracking on your financial data. Your SMS and transactions are processed and stored on your device. The only network Spends uses is your own Google Drive backup — and only if you turn it on — apart from the optional AI helper described above, which is off by default and needs your own API key.
+No account. No ads. No analytics or tracking on your financial data. Your SMS and transactions are processed and stored on your device. The only network Spends uses is your own Google Drive backup — and only if you turn it on.
 
 Spends requests SMS access solely to auto-detect your bank transaction alerts on your device, and it always works without it.
 

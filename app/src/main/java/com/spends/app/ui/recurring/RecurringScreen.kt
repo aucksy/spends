@@ -52,6 +52,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,6 +87,8 @@ import com.spends.app.ui.components.CategoryPickerSheet
 @Composable
 fun RecurringScreen(
     onBack: () -> Unit,
+    /** Arrived from "View the repeating rule" on a transaction (#5): open this rule's editor straight away. */
+    openRuleId: Long? = null,
     viewModel: RecurringViewModel = hiltViewModel(),
 ) {
     val rules by viewModel.rules.collectAsStateWithLifecycle()
@@ -99,6 +102,22 @@ fun RecurringScreen(
     var editTarget by remember { mutableStateOf<RecurringRuleEntity?>(null) }
     var sortByDate by rememberSaveable { mutableStateOf(true) }
     var showNotifyTimePicker by remember { mutableStateOf(false) }
+
+    // Open the requested rule once the list has loaded — the rules flow starts empty, so keying on `rules`
+    // is what makes this fire on the first non-empty emission instead of finding nothing and giving up.
+    // `autoOpened` makes it strictly once: without it, cancelling the editor would re-open it on the next
+    // recomposition and the Back button would be unusable.
+    var autoOpened by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(openRuleId, rules, autoOpened) {
+        if (openRuleId == null || autoOpened || rules.isEmpty()) return@LaunchedEffect
+        val target = rules.firstOrNull { it.id == openRuleId }
+        autoOpened = true
+        // A deleted rule leaves the user on the list rather than in an "add new" editor they never asked for.
+        if (target != null) {
+            editTarget = target
+            editing = true
+        }
+    }
 
     if (editing) {
         RecurringEditor(

@@ -5,7 +5,6 @@ import androidx.room.withTransaction
 import com.spends.app.core.category.ColorAssigner
 import com.spends.app.core.category.IconAssigner
 import com.spends.app.core.time.DateUtils
-import com.spends.app.data.ai.GroqClient
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.dao.CategoryDao
 import com.spends.app.data.db.dao.ExpenseDao
@@ -34,7 +33,6 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import javax.inject.Inject
-import javax.inject.Provider
 import javax.inject.Singleton
 
 /**
@@ -60,11 +58,6 @@ class DemoDataSeeder @Inject constructor(
     private val pendingCaptureDao: PendingCaptureDao,
     private val merchantCategoryDao: MerchantCategoryDao,
     private val settingsRepository: SettingsRepository,
-    // A Provider, not the instance: this seeder is a constructor dependency of MainViewModel, so eagerly
-    // injecting GroqClient would build an OkHttpClient and load SecureKeyStore's SharedPreferences on the
-    // main thread during EVERY cold start — including for the vast majority of users who never open demo
-    // mode. Resolved only inside applyDemoSettings, which runs only in the sandbox.
-    private val groqClient: Provider<GroqClient>,
 ) {
 
     /** Wipe and rebuild the demo account as of today. Safe to call repeatedly ("Reset demo data"). */
@@ -299,12 +292,5 @@ class DemoDataSeeder @Inject constructor(
         settingsRepository.setSmsCaptureEnabled(false)
         settingsRepository.setNotificationCaptureEnabled(false)
 
-        // If the user already has a Groq key, switch the AI helper on so its features are demoable. The key
-        // itself is device-local and shared (it is not part of the swapped settings file).
-        if (groqClient.get().hasKey()) {
-            settingsRepository.setAiEnabled(true)
-            settingsRepository.setAiCategorize(true)
-            settingsRepository.setAiInsights(true)
-        }
     }
 }

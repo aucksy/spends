@@ -1,5 +1,6 @@
 package com.spends.app.ui.addedit
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
@@ -50,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -74,6 +78,8 @@ import com.spends.app.ui.cards.PaymentState
 @Composable
 fun AddEditScreen(
     onDone: () -> Unit,
+    /** Open the recurring rule that created this transaction (#5). */
+    onOpenRule: (Long) -> Unit = {},
     viewModel: AddEditViewModel = hiltViewModel(),
 ) {
     val initial by viewModel.initial.collectAsStateWithLifecycle()
@@ -81,6 +87,7 @@ fun AddEditScreen(
     val saving by viewModel.saving.collectAsStateWithLifecycle()
     val finished by viewModel.finished.collectAsStateWithLifecycle()
     val paymentState by viewModel.paymentState.collectAsStateWithLifecycle()
+    val recurringRuleId by viewModel.recurringRuleId.collectAsStateWithLifecycle()
     var showDelete by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(finished) { if (finished) onDone() }
@@ -118,6 +125,8 @@ fun AddEditScreen(
                 saveLabel = viewModel.saveLabel,
                 paymentState = paymentState,
                 showPaidWith = viewModel.showPaidWith,
+                recurringRuleId = recurringRuleId,
+                onOpenRule = onOpenRule,
                 onAddCategory = { name, usage, iconKey, onCreated -> viewModel.addCategory(name, usage, iconKey, onCreated) },
                 onSave = { amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId ->
                     viewModel.save(amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId)
@@ -139,6 +148,52 @@ fun AddEditScreen(
     }
 }
 
+/**
+ * "This one was added by a repeating rule — open the rule" (#5).
+ *
+ * The point is that the user can get from a transaction they did not type to the thing that keeps creating
+ * it. Tapping opens the RULE's editor, so changing the amount there changes every future occurrence; the
+ * form below this banner still edits only this one month. The two are deliberately separate screens, since
+ * "fix this month's rent" and "rent has gone up permanently" are different intentions.
+ */
+@Composable
+private fun RecurringRuleBanner(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.Autorenew,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Added by a repeating rule",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                "Tap to open the rule that creates it",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddEditForm(
@@ -149,6 +204,9 @@ private fun AddEditForm(
     saveLabel: String,
     paymentState: PaymentState,
     showPaidWith: Boolean,
+    /** Non-null only for a transaction a recurring rule created (#5). */
+    recurringRuleId: Long?,
+    onOpenRule: (Long) -> Unit,
     onAddCategory: (String, CategoryUsage, String?, (Long) -> Unit) -> Unit,
     onSave: (Long, TxnKind, Long, String, String, Long, Long?) -> Unit,
 ) {
@@ -181,6 +239,12 @@ private fun AddEditForm(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 8.dp),
     ) {
+        // Only ever shown for a row the scheduler created (#5). Above the form, not buried at the bottom,
+        // because "why did this appear on its own?" is the question the user has BEFORE they start editing.
+        if (recurringRuleId != null) {
+            RecurringRuleBanner(onClick = { onOpenRule(recurringRuleId) })
+            Spacer(Modifier.height(16.dp))
+        }
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
                 selected = kind == TxnKind.EXPENSE,

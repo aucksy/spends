@@ -16,6 +16,24 @@ import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * One transaction a rule has just created — everything the "recurring added" notification needs to say
+ * WHAT it added (#3), rather than only how many.
+ *
+ * [expenseId] is what the notification's Edit action opens; [ruleId] is what the transaction screen then
+ * offers as "the rule behind this" (#5). Both are real row ids, so a notification acted on days later
+ * either lands on the right row or finds nothing — never on a different transaction.
+ */
+data class MaterializedTxn(
+    val expenseId: Long,
+    val ruleId: Long,
+    /** The rule's merchant — the name the user typed. Null when they never gave one. */
+    val name: String?,
+    val note: String?,
+    val amountMinor: Long,
+    val kind: TxnKind,
+)
+
 /** Everything needed to create or update a recurring rule (start date is an epoch-millis anchor). */
 data class RecurringInput(
     val amountMinor: Long,
@@ -47,15 +65,6 @@ class RecurringRepository @Inject constructor(
     private val materializeMutex = Mutex()
 
     fun observeAll(): Flow<List<RecurringRuleEntity>> = dao.observeAll()
-
-    /**
-     * Every rule, once — used by the insights commitments card (Phase C).
-     *
-     * A one-shot rather than a subscription on purpose: the carousel is built on demand behind the AI
-     * helper's master switch, and an always-live flow here would run a query with the switch off, breaking
-     * G2 ("AI off = today's app, byte for byte").
-     */
-    suspend fun allOnce(): List<RecurringRuleEntity> = dao.getAllOnce()
 
     suspend fun getById(id: Long): RecurringRuleEntity? = dao.getById(id)
 
@@ -145,16 +154,24 @@ class RecurringRepository @Inject constructor(
      *  - each rule's create-loop + its nextRunAt advance run in one [db].withTransaction (atomic, so a
      *    mid-loop failure rolls back the whole rule and re-runs cleanly);
      *  - every occurrence carries a [DedupeKey.forRecurring] hash and is skipped if that hash already
-     *    exists, so even an errant rewind can never double-create. Returns occurrences created.
+     *    exists, so even an errant rewind can never double-create.
+     *
+     * Returns the occurrences actually created, in creation order — the notification names them (#3), and
+     * every other caller just reads `.size`.
      */
-    suspend fun materializeDue(now: Long): Int = materializeMutex.withLock {
+    suspend fun materializeDue(now: Long): List<MaterializedTxn> = materializeMutex.withLock {
         val today = DateUtils.toLocalDate(now)
         val cutoff = DateUtils.endOfDayExclusiveMillis(today) // start of tomorrow
         val due = dao.getActiveDueBefore(cutoff)
         val seen = expenseRepository.existingDedupeHashes()
-        var created = 0
+        val created = mutableListOf<MaterializedTxn>()
         for (rule in due) {
             runCatching {
+                // Collected per rule and merged only after its transaction COMMITS. A rule's whole
+                // create-loop is one transaction, so a mid-loop failure rolls every row of it back —
+                // appending as we go would hand the notification transactions that no longer exist, and
+                // its Edit button would open an empty editor.
+                val fromThisRule = mutableListOf<MaterializedTxn>()
                 db.withTransaction {
                     var date = DateUtils.toLocalDate(rule.nextRunAt)
                     var last = rule.lastRunAt
@@ -169,7 +186,7 @@ class RecurringRepository @Inject constructor(
                         val occurredAt = DateUtils.startOfDayMillis(date)
                         val hash = DedupeKey.forRecurring(rule.id, occurredAt, rule.amountMinor, rule.kind)
                         if (seen.add(hash)) {
-                            expenseRepository.create(
+                            val expenseId = expenseRepository.create(
                                 TransactionInput(
                                     amountMinor = rule.amountMinor,
                                     kind = rule.kind,
@@ -183,8 +200,15 @@ class RecurringRepository @Inject constructor(
                                     paymentMethodId = rule.paymentMethodId, // pay each occurrence with the rule's instrument (#6)
                                 ),
                             )
+                            fromThisRule += MaterializedTxn(
+                                expenseId = expenseId,
+                                ruleId = rule.id,
+                                name = rule.merchant?.takeIf { it.isNotBlank() },
+                                note = rule.note?.takeIf { it.isNotBlank() },
+                                amountMinor = rule.amountMinor,
+                                kind = rule.kind,
+                            )
                             last = occurredAt
-                            created++
                         }
                         date = RecurrenceMath.nextDate(date, rule.frequency, rule.intervalCount, rule.anchorDay)
                         guard++
@@ -200,6 +224,7 @@ class RecurringRepository @Inject constructor(
                         ),
                     )
                 }
+                created += fromThisRule
             }
         }
         created

@@ -50,21 +50,19 @@
 <div class="wrap">
   <header>
     <h1>Spends — Privacy Policy</h1>
-    <p class="sub">Effective 4 July 2026 · Last updated 27 July 2026</p>
+    <p class="sub">Effective 4 July 2026 · Last updated 2 August 2026</p>
   </header>
 
   <p><strong>Spends</strong> is an offline-first personal expense tracker for Android. It has no account,
   no ads, and no analytics or tracking on your financial data. Your information stays on your device — and,
-  only if you choose to turn them on, in your own Google Drive (backup) and with a third-party AI provider
-  in the limited form described in section 3. We (the developer) never receive, store, or have access to your
-  financial data or your messages.</p>
+  only if you choose to turn it on, in your own Google Drive for backup. Nothing is sent to any other company.
+  We (the developer) never receive, store, or have access to your financial data or your messages.</p>
 
   <div class="callout">
     <strong>In one line:</strong> Spends reads your bank's transaction SMS <em>on your device only</em> to
-    help you log expenses in one tap. Nothing is ever uploaded to us. SMS access is optional — the app works
-    fully with manual entry if you don't grant it. One feature can send limited data to a third party: the
-    <strong>optional AI helper</strong>, which is <strong>off by default</strong> and needs your own API key
-    — see section 3.
+    help you log expenses in one tap. Nothing is ever uploaded to us, and nothing is sent to any other
+    company. SMS access is optional — the app works fully with manual entry if you don't grant it. The only
+    connection Spends ever makes is to <strong>your own</strong> Google Drive, and only if you switch backup on.
   </div>
 
   <h2>1. Information Spends accesses — and why</h2>
@@ -72,11 +70,8 @@
   <h3>SMS messages (optional)</h3>
   <p>With your explicit permission, Spends reads incoming and existing SMS messages <strong>on your device</strong>
   to detect bank and credit-card transaction alerts and pre-fill an expense for you to confirm. This parsing
-  happens entirely on your phone. <strong>The content of your messages is never transmitted to us</strong>,
-  and never to any third party <em>unless</em> you switch on the optional AI helper described in section 3 —
-  which is off by default and sends a number-masked extract of that one message <em>together with the merchant
-  name as your bank wrote it</em> (see section 3 for the full list). Spends does not use SMS data for advertising
-  or marketing. You can use the entire app without granting SMS access (via manual entry), and you can revoke
+  happens entirely on your phone. <strong>The content of your messages is never transmitted to us, and never
+  to anyone else.</strong> Spends does not use SMS data for advertising or marketing. You can use the entire app without granting SMS access (via manual entry), and you can revoke
   the permission at any time in Android Settings.</p>
 
   <h3>Transactions and financial information you enter or capture</h3>
@@ -95,80 +90,17 @@
   Data is transmitted over an encrypted (HTTPS) connection. You can delete the backup at any time from within Spends
   or from your Google Drive. Backup is off by default.</p>
 
-  <h2>3. Optional AI helper (off by default, your own key)</h2>
-  <p>Spends includes an optional "AI helper" that can suggest a category for a detected transaction, and put your
-  own figures into plain English on the Analytics insight cards — a summary of the cycle you are viewing, anything
-  unusual in it, how it compares over time, and what you have committed and kept. Every figure on those cards is worked out on your phone before the AI sees it. It is <strong>off by default</strong> and does nothing until you
-  both switch it on and paste <strong>your own</strong> API key, which is stored encrypted on your device and is
-  never included in a backup. While it is on — and only for the sub-feature you enable — the following is sent over
-  HTTPS to <strong>Groq</strong>, a third-party AI provider:</p>
-  <ul>
-    <li><strong>Category suggestions:</strong> the merchant name <em>as your bank wrote it</em>; whether the
-      transaction was money in or out; the words of that one bank SMS or notification with <strong>every number
-      replaced by a single "#"</strong>; your category names; and up to 100 of your saved
-      merchant→category shortcuts (the merchant name and the category you chose for it — no amounts, no
-      dates) so a merchant you have tagged before can be recognised.</li>
-    <li><strong>Spending insights:</strong> your category totals and income/expense totals for the cycle you are
-      viewing and, in most views, the <strong>spending</strong> totals for the one before it — never its income. For the "unusual spending" cards, Spends works out <em>on your phone</em> what
-      you typically spend in a category over your last six cycles, and sends only the resulting comparison — for
-      example "Fuel: ₹12,500 this cycle, usually ₹4,100". Your older cycles are analysed on the device and are never
-      themselves sent.</li>
-  </ul>
-  <p>The masking replaces each whole number with one "#", so amounts, balances, account and card numbers, numeric
-  dates and phone numbers are removed outright — and because the digit count goes too, not even the size of an amount
-  is visible ("Rs.5,59,393.44" becomes "Rs.#"). Being straight with you about its limits: it removes <em>numbers</em>,
-  not <em>letters</em>. So a payee's name written in the message (for example "to JOHN DOE"), a month written as text
-  ("Jun"), the letters of a mixed reference ("AB12CD" becomes "AB#CD"), and a merchant name that itself contains
-  digits are all sent as-is.</p>
-  <p>Two of the insight cards — "a large charge" and "charged twice?" — are about a single payment rather than a
-  category total, so for those the <strong>amount of that one charge and its category</strong> are sent (for example
-  "a Fuel charge of ₹12,500, about 3× the usual ₹4,100"), and for "charged twice?" <strong>how many identical
-  charges there were</strong>. Never the merchant and never the date.</p>
-
-  <p>Some insight cards compare your spending over time. Every figure on them is still worked out <em>on your
-  phone</em> and only the finished comparison is sent, but that comparison contains a few things the others do not:
-  <strong>how many days into the cycle you are</strong>; <strong>the calendar month the cycle mostly falls in</strong>
-  (the word "July" on its own — never a full date); <strong>what the same stretch of the cycle came to a year
-  ago</strong>; what a single category cost per cycle earlier compared with lately; and, for the payday card, the
-  <strong>share of your spending that lands in the week after you are paid</strong>. That last one describes
-  <em>when in the month</em> you tend to spend, which is more about your habits than a total is. The months of
-  history those comparisons are worked out from, and the transactions inside them, are never themselves sent —
-  only the finished comparison. Where a card states a share, the denominator goes with it: the payday card
-  sends the share of the cycle's days that week makes up, and how many earlier cycles the share was measured
-  over, so the figure cannot be read out of proportion.</p>
-
-  <p>Two further cards were added in v1.62.0, and they send a little more again — still only finished figures,
-  never records. The <strong>"commitments"</strong> card sends the total of the monthly repeating payments already
-  running and how many of them there are, against <strong>what a cycle usually brings in</strong> — a figure
-  worked out on your phone from your finished cycles, never from the one you are looking at. The
-  <strong>"what you kept"</strong> card sends how much of <strong>this cycle's</strong> income you still have, as an amount and as a share,
-  alongside the share you had usually kept by the same point in earlier cycles. Shares, totals, counts and how many days
-  into the cycle you are — never which day any individual purchase happened on.</p>
-
-  <p>Every insight card <em>describes</em> what your money did. None of them suggests what to do with your
-  money, tells you to spend less, or offers financial advice, and the AI is explicitly instructed not to.
-  (One card does say a repeated charge is "worth a look in case one was billed twice" — that is a prompt to
-  check your own records, not advice about your spending.)</p>
-
-  <p><strong>Never sent</strong> for either sub-feature: your full unmasked message text, your account or card
-  numbers, your balances, the date of any transaction, or your transaction records themselves. The insight cards
-  never send a merchant either — only category suggestions do, and only the merchant on the single message being
-  reviewed, as described above. For the insight cards, the only date-shaped values sent are the cycle's month
-  name and your day within the cycle — never the date of anything you actually bought; a masked message can
-  still contain a month written in letters, as explained
-  above.
-  The AI helper can never add, edit or delete a transaction. The only thing it can change in your app is a
-  category, and only when you tap to accept it. Switching the helper off stops all of this immediately. What you send is then handled under Groq's own
-  privacy policy.</p>
-
-  <h2>4. Data we collect and share</h2>
+  <h2>3. Data we collect and share</h2>
   <p>We do <strong>not</strong> collect, sell, rent, or share your personal data, financial data, or messages with
-  anyone other than the optional AI helper described in section 3 — and <strong>nothing is sent to the developer at
-  all</strong>, ever. There is no server or account behind Spends, and the app contains no advertising or analytics
-  SDKs. Apart from that AI helper, the only network connection the app makes is to <em>your own</em> Google Drive,
-  and only if you enable backup.</p>
+  anyone, and <strong>nothing is sent to the developer at all</strong>, ever. There is no server or account behind
+  Spends, and the app contains no advertising or analytics SDKs. The only network connection the app makes is to
+  <em>your own</em> Google Drive, and only if you enable backup.</p>
+  <p class="callout">An optional "AI helper" existed between v1.56.0 and v1.64.0, which could send limited,
+  number-masked information to a third-party AI provider when you switched it on and supplied your own key. It was
+  <strong>removed in v1.65.0</strong>. The app no longer contains it, and any key you had saved is erased the next
+  time you open Spends.</p>
 
-  <h2>5. Data retention and deletion</h2>
+  <h2>4. Data retention and deletion</h2>
   <p>Your data remains on your device until you remove it. You can:</p>
   <ul>
     <li>Delete individual entries in the app (with a Trash/undo step), or empty the Trash to remove them permanently;</li>
@@ -176,7 +108,7 @@
     <li>Delete your Google Drive backup from within Spends or directly in Google Drive.</li>
   </ul>
 
-  <h2>6. Permissions Spends may request</h2>
+  <h2>5. Permissions Spends may request</h2>
   <table>
     <tr><th>Permission</th><th>Why</th></tr>
     <tr><td>Read / Receive SMS</td><td>Detect bank transaction alerts on-device to auto-fill expenses (optional).</td></tr>
@@ -184,23 +116,23 @@
     <tr><td>Exact alarm</td><td>Fire your daily reminder at the exact time you chose.</td></tr>
     <tr><td>Run at startup</td><td>Re-arm your reminder after the phone restarts.</td></tr>
     <tr><td>Ignore battery optimisation</td><td>Optional — keeps background SMS detection reliable on aggressive devices.</td></tr>
-    <tr><td>Internet / Network state</td><td>Your optional Google Drive backup, and the optional AI helper (section 3) if you enable it.</td></tr>
+    <tr><td>Internet / Network state</td><td>Your optional Google Drive backup — nothing else.</td></tr>
     <tr><td>Vibrate</td><td>Light haptic feedback on widget taps.</td></tr>
   </table>
 
-  <h2>7. Children</h2>
+  <h2>6. Children</h2>
   <p>Spends is a general-purpose finance tool and is not directed to children under 13.</p>
 
-  <h2>8. Security</h2>
+  <h2>7. Security</h2>
   <p>Your data is stored in your device's private app storage. Backups, if enabled, are transferred to your
   Google Drive over an encrypted HTTPS connection. No financial data or message content is transmitted to the
   developer.</p>
 
-  <h2>9. Changes to this policy</h2>
+  <h2>8. Changes to this policy</h2>
   <p>If this policy changes, we will update the date at the top of this page and, where appropriate, note the
   change in the app.</p>
 
-  <h2>10. Contact</h2>
+  <h2>9. Contact</h2>
   <p>Questions about this policy or your data? Email <a href="mailto:simpleapps108@gmail.com">simpleapps108@gmail.com</a>.</p>
 
   <footer>

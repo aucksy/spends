@@ -32,31 +32,9 @@ arrives. There is no alternative API that can read a bank's transaction SMS: the
 Consent APIs only work for one-time-password messages the app itself triggers, which does not apply to
 arbitrary bank alerts.
 
-All parsing happens locally on the device. Message content is never sent to the developer and is never
-used for advertising or marketing. The app has one optional feature, off by default, that can send a
-limited extract off the device: an "AI helper" the user must switch on and supply their own third-party
-API key for. It has two independently-switchable parts. **Category suggestions** send the merchant name,
-whether it was money in or out, the words of that one message with every run of digits replaced by "#"
-(removing amounts, balances, account and card numbers, numeric dates and phone numbers — but not a month
-written in letters), the user's category names, and up to 100 of their saved merchant→category shortcuts
-(merchant and category names only, no amounts or dates) so a merchant they have tagged before can be
-recognised. This obtains a suggested spending category, which the user still confirms manually. **Spending insights** send no message content at all — only
-figures about spending, income and the user's own recurring rules, mostly aggregates: per-category and income/expense totals for the cycle being viewed, and the spending totals for the one before it (never the previous cycle's income), what the
-user typically spends in a category, for two of the cards a single charge's amount and category (plus, for
-"charged twice?", how many identical charges there were), and for the
-cards that compare over time the day reached in the cycle, the cycle's calendar month name, the same
-stretch's total a year earlier, one category's per-cycle figures, and the share of spending falling in the
-week after payday, the share of the cycle's days that week makes up, and how many earlier cycles it was
-measured over. Two further cards send the total of the user's monthly recurring rules that have
-already started and how many there are, measured against the median income of their COMPLETED cycles (never
-this cycle's income); and how much of the cycle's income remains, as an amount and as a share, alongside
-the share the user had usually kept by the same point. (The cycle's income TOTAL is listed earlier in this
-paragraph; it is sent by the summary card, which has done so since v1.56.0, not by these two.) Every card describes
-what the user's money did, and the model is explicitly instructed not to suggest what to do with it, tell
-the user to spend less, or give financial advice, with no exceptions in the prompt. Spends' own wording on one card does say a repeated
-charge is "worth a look in case one was billed twice" — a prompt to check one's own records, written by the
-app rather than the model, and not advice about spending. No transaction dates and no transaction records are ever sent. With
-the AI helper off — its default state — no message content and no spending figures leave the device. The SMS permission itself
+All parsing happens locally on the device. Message content is never sent to the developer, is never sent to
+any third party, and is never used for advertising or marketing. Nothing derived from a message leaves the
+phone at all. The SMS permission itself
 is optional: the app is fully functional with manual entry, and prominently discloses why it needs SMS
 before requesting it.
 ```
@@ -68,8 +46,8 @@ On the SMS onboarding step, before the runtime permission prompt, Spends shows:
 > your phone, and nothing is ever sent to us."
 
 (Keep this quote in sync with `OnboardingScreen.kt` — it is the disclosure a Play reviewer will see. It
-was reworded on 2026-07-26: the previous absolute "Nothing leaves your phone" stopped being true for
-users who opt into the AI helper, which is covered separately in Settings → AI helper.)
+was reworded on 2026-07-26 to accommodate the optional AI helper; that helper was removed in v1.65.0, so
+the app once again sends nothing derived from a message anywhere.)
 
 The step is skippable, and the app works fully without the grant.
 

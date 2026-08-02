@@ -4,8 +4,13 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.64.0** — versionCode **74**, versionName **"1.64.0"**. Insight cards now name the category
-  they are about, enforced by a guard rather than by asking the model nicely.
+- **Shipped: v1.65.0** — versionCode **75**, versionName **"1.65.0"**. The AI helper is gone. Recurring
+  notifications now say what they added, a transaction can reach the rule that created it, and the category
+  screen leads with the average (with a new Yearly view).
+  APK: https://github.com/aucksy/spends/releases/download/v1.65.0/Spends-v1.65.0.apk
+- Previous: **v1.64.0** — versionCode **74**. Insight cards now name the category
+  they are about, enforced by a guard rather than by asking the model nicely. (The cards themselves were
+  removed in v1.65.0.)
   APK: https://github.com/aucksy/spends/releases/download/v1.64.0/Spends-v1.64.0.apk
 - Previous: **v1.63.4** — versionCode 73. Widget carry-forward buckets by card billing day.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.4/Spends-v1.63.4.apk
@@ -20,6 +25,72 @@ for how the project works.
 - Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+
+## v1.65.0 — the AI helper is removed; recurring notifications say what they added
+
+### 1. The "recurring added" notification names the transaction
+It used to say "1 scheduled transaction was added" and nothing else — you had to open the app and hunt for
+it to find out whether it was rent or Netflix, and whether the amount was still right. Each added
+transaction now gets its own notification carrying **the name, the note and the amount**, with **Edit**
+(opens that exact transaction) and **Dismiss** (clears the notification; the transaction stays, because
+everywhere else in Android "dismiss" means "hide", not "delete").
+
+`materializeDue` now returns the occurrences it created instead of a count, collected **per rule and merged
+only after that rule's transaction commits** — a rolled-back rule must not produce a notification whose Edit
+button opens an empty editor. Above five occurrences in one pass (the back-fill case: three months away from
+the app can create a hundred) the batch collapses to a single roll-up, because at that size there is no one
+transaction the user meant to edit. No explicit notification group: Android bundles them itself, and an
+app-managed summary outlives its children on some OEM builds.
+
+### 2. A transaction can reach the rule behind it
+Rows the scheduler created already carried `recurringRuleId`; nothing surfaced it. The editor now shows
+"Added by a repeating rule → tap to open the rule that creates it", which routes to `Routes.recurring(id)`
+and opens that rule's editor on arrival. Deliberately a **route, not a binding**: correcting this month's
+rent still edits only this month. Completes the flow *notification → Edit → transaction → the rule*.
+
+### 3. Truecaller capture: the cause was never in this app
+The debug screen's report showed `text: Sensitive notification content hidden`. That string is not in this
+codebase — it is Android's own placeholder. Since Android 15, notifications that Android System Intelligence
+classifies as carrying a one-time code are **redacted before any notification listener sees them**, unless
+the listener holds `RECEIVE_SENSITIVE_NOTIFICATIONS` (system/role only). So the parser was being handed a
+placeholder, and the old verdict — "the sender isn't a bank Spends knows" — pointed the next investigation
+at the sender allowlist, which cannot be the cause when the body never arrived.
+
+Fixed the *diagnosis*, not the capture (there is nothing to fix in capture): a new
+`REDACTED_BY_ANDROID` outcome, matched narrowly on the platform placeholder, plus a verdict line that names
+the phone setting to try. `looksRedacted` is deliberately narrow — a false positive would blame the phone
+for a real parser bug, which is the one mistake here that hides something fixable. It also joins
+`REDACTED_OUTCOMES`, because it is reached **before** any sender resolves to a bank and the report must not
+export a body that never passed that check.
+
+### 4/6. The category screen leads with the average, and gains a Yearly view
+The monthly average sat directly above the transaction list, so a 6-month average read as a label for a list
+holding **one cycle**. The average is now the headline; the cycle total is a separate block, ruled off, headed
+"SPENT IN THIS CYCLE ONLY" and carrying its own dates.
+
+A **Monthly / Yearly** toggle joins it. Monthly is unchanged (3M / 6M / All). Yearly replaces the window with
+a calendar year — every year that has data, newest first, no cap — shows the **average per month in that
+year** with the **year's total underneath**, and the list below shows **that whole year**, so figure and list
+finally describe the same stretch. Both ends of the divisor are clamped: at the category's first transaction,
+and at *now* — without the second clamp the current year would divide by twelve and read as a spending
+collapse until December.
+
+### 5. The AI helper is removed
+Deleted: `data/ai/**` (Groq client, categoriser, the insight engine/narrator/provider), the insights
+carousel, the AI settings screen, three DataStore switches, and the four DAO queries nothing else called.
+The **13 on-device insight cards went with it** — the owner chose full removal with that trade-off stated.
+What survives: the learned merchant→category memory (deterministic, on-device) still auto-fills categories.
+
+Any stored API key is **erased on the next launch**: it is a personal credential the user can no longer see
+or delete themselves, since the screen that managed it is gone. `SecureKeyStore`'s read and write paths for
+it are deleted outright — only the check and the erase remain, so nothing in the app can put a key back.
+
+**The app now sends nothing to any third party.** The full disclosure sweep was redone in the strengthening
+direction: `README.md` (two places), `docs/index.html` (section 3 deleted, sections renumbered),
+`play/DATA_SAFETY.md` (both "Shared" answers now No; SMS collects nothing), `play/PERMISSIONS_DECLARATION.md`,
+`play/listing/store-listing.md` and `play/PLAY_SUBMISSION_CHECKLIST.md`. The five `docs/AI-*.md` plans carry a
+HISTORICAL banner. ⚠ **The Play Data safety form must be re-submitted** — the filed declaration says the app
+shares financial data and SMS content with a third party, and that is no longer true.
 
 ## v1.64.0 — insight cards now say what they are about
 

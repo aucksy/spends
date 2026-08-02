@@ -28,33 +28,6 @@ data class KindSum(
     val total: Long,
 )
 
-/**
- * One charge's slice of a category — the per-transaction input to the AI insight engine (outlier and
- * duplicate detection). [merchantRaw] is used only to tell a genuine double-billing from two unrelated
- * charges of the same size, on the device; it is never carried into a finding and never leaves the phone.
- */
-data class CategorySliceRow(
-    /** The parent transaction. A split produces several rows sharing this id — the duplicate-charge
-     *  detector groups on it so one split expense is never mistaken for two identical charges. */
-    val expenseId: Long,
-    val name: String,
-    val amountMinor: Long,
-    val occurredAt: Long,
-    val merchantRaw: String?,
-)
-
-/**
- * A dated amount with nothing else attached — used by the insights savings-rate card to bucket income into
- * the cycle it landed in.
- *
- * Deliberately not [CategorySliceRow]: income needs no category join, and reusing that row would mean
- * loading a join this does not want.
- */
-data class DatedAmountRow(
-    val occurredAt: Long,
-    val amountMinor: Long,
-)
-
 /** Aggregation row: total spend per category (excludes transfers / excludeFromSpend in the query). */
 data class CategorySpend(
     val categoryId: Long,

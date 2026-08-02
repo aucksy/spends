@@ -33,6 +33,29 @@ enum class AvgWindow(val label: String, val monthsBack: Long?) {
     M3("3M", 3), M6("6M", 6), ALL("All", null)
 }
 
+/**
+ * Which shape the average takes.
+ *
+ * [MONTHLY] is unchanged: a trailing 3M / 6M / All window, with the list below showing only the selected
+ * cycle. [YEARLY] swaps the window for a calendar YEAR — and, crucially, the list below then shows that
+ * whole year, so the headline figure and the list finally describe the same stretch of time. That mismatch
+ * is the entire reason the average moved to the top of the screen.
+ */
+enum class AvgMode(val label: String) { MONTHLY("Monthly"), YEARLY("Yearly") }
+
+/**
+ * The whole average control as one value.
+ *
+ * One flow rather than three because `combine` tops out at five typed flows and this screen already uses
+ * all five; splitting these would force another layer of nesting for no gain.
+ */
+data class AvgSelection(
+    val mode: AvgMode = AvgMode.MONTHLY,
+    val window: AvgWindow = AvgWindow.M6,
+    /** null = "whichever year is newest in the data" — resolved once the rows arrive. */
+    val year: Int? = null,
+)
+
 /** One transaction row in the per-category drill-down list. */
 data class CategoryTxnRow(
     val id: Long,
@@ -51,13 +74,22 @@ data class CategoryTxnsUiState(
     val loading: Boolean = true,
     val categoryName: String = "",
     // The concrete date range of the selected cycle (#5) — shown by the selector pill as its secondary line.
+    // Monthly mode only; in Yearly mode the list is a whole calendar year and no cycle is involved.
     val cycleLabel: String = "",
+    /** What the LIST below adds up to: the selected cycle in Monthly mode, the selected year in Yearly. */
     val totalMinor: Long = 0,
     val count: Int = 0,
-    // Average spend per month over the chosen trailing window (#8: Last 3M / 6M / All), independent of the
-    // selected cycle. total-in-window ÷ months-in-window (capped at the category's own data span).
+    // Average spend per month. Monthly mode: over the chosen trailing window (#8: Last 3M / 6M / All),
+    // independent of the selected cycle. Yearly mode: over the selected calendar year. Both divide by the
+    // months that have actually elapsed, capped at the category's own first transaction, so a young
+    // category (or the current, unfinished year) isn't divided by months it never existed for.
     val monthlyAverageMinor: Long = 0,
+    val avgMode: AvgMode = AvgMode.MONTHLY,
     val avgWindow: AvgWindow = AvgWindow.M6,
+    /** Every calendar year this category has a transaction in, newest first. No cap — the owner's choice. */
+    val availableYears: List<Int> = emptyList(),
+    /** The year being shown in Yearly mode; null when there is no data at all. */
+    val selectedYear: Int? = null,
     val rows: List<CategoryTxnRow> = emptyList(),
 )
 
@@ -73,8 +105,10 @@ class CategoryTransactionsViewModel @Inject constructor(
     private val categoryId: Long = savedStateHandle[Routes.ARG_CATEGORY_ID] ?: -1L
     private val categoryName: String = savedStateHandle[Routes.ARG_CATEGORY_NAME] ?: ""
 
-    private val avgWindow = MutableStateFlow(AvgWindow.M6)
-    fun setAvgWindow(window: AvgWindow) = avgWindow.update { window }
+    private val avg = MutableStateFlow(AvgSelection())
+    fun setAvgMode(mode: AvgMode) = avg.update { it.copy(mode = mode) }
+    fun setAvgWindow(window: AvgWindow) = avg.update { it.copy(window = window) }
+    fun setYear(year: Int) = avg.update { it.copy(year = year) }
 
     // Drives the compact selector's Smart pill (the drill-down offers Smart minus the card narrowing).
     val smartCycleEnabled: StateFlow<Boolean> =
@@ -102,17 +136,29 @@ class CategoryTransactionsViewModel @Inject constructor(
         // cycle, while the monthly average is computed over the chosen trailing window (#8).
         combine(
             expenseRepository.observeByCategoryBetween(categoryId, 0L, Long.MAX_VALUE),
-            avgWindow,
+            avg,
             period,
             settingsRepository.settings,
             // Pair earliest-day with the confirmed cards (their billing days) so the Smart Cycle slice can bucket
             // each txn by its paying card — combine tops out at 5 typed flows, so nest these two.
             combine(expenseRepository.observeEarliestDay(), paymentMethodRepository.observeConfirmed()) { e, c -> e to c },
-        ) { allItems, window, sel, settings, earliestAndCards ->
+        ) { allItems, avgSel, sel, settings, earliestAndCards ->
             val earliest = earliestAndCards.first
             val cards = earliestAndCards.second
             val now = DateUtils.nowMillis()
             val today = LocalDate.now(DateUtils.ZONE)
+
+            // Every year this category has data in, newest first — the Yearly picker's whole content.
+            val availableYears = allItems
+                .map { DateUtils.toLocalDate(it.expense.occurredAt).year }
+                .distinct()
+                .sortedDescending()
+            // A year the user picked can stop existing (the last transaction in it was deleted or moved),
+            // so it is validated against the live list rather than trusted. Falling back to the newest year
+            // keeps the screen showing real data instead of an empty list under a stale heading.
+            val year = avgSel.year?.takeIf { it in availableYears } ?: availableYears.firstOrNull()
+            // Yearly with no data anywhere has no year to show; fall back so the screen still renders.
+            val mode = if (avgSel.mode == AvgMode.YEARLY && year == null) AvgMode.MONTHLY else avgSel.mode
             // Resolve the selected cycle to a concrete [start, end) window, the same way Analytics does.
             // A Smart selection anchors on the reset day (default = salary day), matching the tapped slice;
             // a stale SMART selection while the feature is off coerces to the salary cycle (like every
@@ -153,19 +199,47 @@ class CategoryTransactionsViewModel @Inject constructor(
                     it.expense.occurredAt >= resolved.startMillis && it.expense.occurredAt < resolved.endExclusiveMillis
                 }
             }
-            val rows = periodItems.map { it.toRow() }
+            // ---- The average, and the rows the list shows ----
+            //
+            // The two are computed together on purpose. In Monthly mode they deliberately DISAGREE (a 6-month
+            // average above a one-cycle list), which is exactly what used to read as one thing when the
+            // average sat next to the list; in Yearly mode they must AGREE, or the same confusion returns a
+            // year at a time.
+            val earliestAll = allItems.minOfOrNull { it.expense.occurredAt }
+            val avgStart: Long
+            val avgEndExclusive: Long
+            val listItems: List<ExpenseWithAllocations>
+            if (mode == AvgMode.YEARLY && year != null) {
+                avgStart = DateUtils.startOfDayMillis(LocalDate.of(year, 1, 1))
+                avgEndExclusive = DateUtils.startOfDayMillis(LocalDate.of(year + 1, 1, 1))
+                // The list IS the year — a plain date range, with no Smart-Cycle card bucketing, because a
+                // calendar year is not a billing cycle and there is no statement to bucket into.
+                listItems = allItems.filter { it.expense.occurredAt in avgStart until avgEndExclusive }
+            } else {
+                avgStart = avgSel.window.monthsBack
+                    ?.let { DateUtils.startOfDayMillis(today.minusMonths(it)) }
+                    ?: 0L
+                avgEndExclusive = now
+                listItems = periodItems
+            }
+            val rows = listItems.map { it.toRow() }
             val total = rows.sumOf { it.amountMinor }
 
-            // The trailing window's spend on THIS category ÷ its months. The denominator is capped at the
-            // category's own first transaction, so a young category isn't divided by the full 3/6 months.
-            val windowStart = window.monthsBack?.let {
-                DateUtils.startOfDayMillis(LocalDate.now(DateUtils.ZONE).minusMonths(it))
-            } ?: 0L
-            val windowItems = allItems.filter { it.expense.occurredAt in windowStart until now }
+            // Spend in the averaging window ÷ the months it actually covers. Both ends are clamped:
+            //  - the start at the category's own first transaction, so a young category isn't divided by
+            //    the full 3/6 months (or by a whole year it did not exist for);
+            //  - the end at now, so the CURRENT year divides by the months elapsed rather than by twelve —
+            //    without which this August would report an "average" a third under the real one, and 2026
+            //    would look like a spending collapse next to 2025 every year until December.
+            val windowItems = allItems.filter { it.expense.occurredAt in avgStart until avgEndExclusive }
             val windowTotal = windowItems.sumOf { it.allocatedToCategory() }
-            val earliestAll = allItems.minOfOrNull { it.expense.occurredAt }
-            val effectiveStart = maxOf(windowStart, earliestAll ?: now)
-            val months = if (now <= effectiveStart) 1.0 else ((now - effectiveStart).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
+            val effectiveStart = maxOf(avgStart, earliestAll ?: now)
+            val effectiveEnd = minOf(avgEndExclusive, now)
+            val months = if (effectiveEnd <= effectiveStart) {
+                1.0
+            } else {
+                ((effectiveEnd - effectiveStart).toDouble() / 86_400_000.0 / 30.44).coerceAtLeast(1.0)
+            }
 
             CategoryTxnsUiState(
                 loading = false,
@@ -174,7 +248,10 @@ class CategoryTransactionsViewModel @Inject constructor(
                 totalMinor = total,
                 count = rows.size,
                 monthlyAverageMinor = (windowTotal / months).toLong(),
-                avgWindow = window,
+                avgMode = mode,
+                avgWindow = avgSel.window,
+                availableYears = availableYears,
+                selectedYear = year,
                 rows = rows,
             )
         }

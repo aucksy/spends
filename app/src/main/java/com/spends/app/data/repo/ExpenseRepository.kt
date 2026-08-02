@@ -5,9 +5,7 @@ import com.spends.app.core.time.CycleWindow
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.entity.AllocationEntity
-import com.spends.app.data.db.entity.CategorySliceRow
 import com.spends.app.data.db.entity.CategorySpend
-import com.spends.app.data.db.entity.DatedAmountRow
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -61,24 +59,8 @@ class ExpenseRepository @Inject constructor(
     fun observeCategorySpend(startMillis: Long, endExclusiveMillis: Long): Flow<List<CategorySpend>> =
         dao.observeCategorySpend(startMillis, endExclusiveMillis)
 
-    /** One-shot per-category spend for the AI insights previous-cycle read (aggregates only). */
-    suspend fun categorySpendOnce(startMillis: Long, endExclusiveMillis: Long): List<CategorySpend> =
-        dao.categorySpendOnce(startMillis, endExclusiveMillis)
-
-    /** One-shot per-charge category slices — the transaction-level input to the AI insight engine. */
-    suspend fun categorySlicesOnce(startMillis: Long, endExclusiveMillis: Long): List<CategorySliceRow> =
-        dao.categorySlicesOnce(startMillis, endExclusiveMillis)
-
-    /** Dated income over a span — insights only; see [ExpenseDao.incomeChargesOnce] for the G2 note. */
-    suspend fun incomeChargesOnce(startMillis: Long, endExclusiveMillis: Long): List<DatedAmountRow> =
-        dao.incomeChargesOnce(startMillis, endExclusiveMillis)
-
     /** Earliest active transaction time (null if none) — lower bound for the "All" range. */
     fun observeEarliestDay(): Flow<Long?> = dao.observeEarliestOccurredAt()
-
-    /** One-shot earliest active EXPENSE time — the AI insight engine's "was spending really being logged a
-     *  year ago?" gate before it offers a year-on-year comparison. */
-    suspend fun earliestExpenseOccurredAtOnce(): Long? = dao.earliestExpenseOccurredAtOnce()
 
     /** Income timestamps — to auto-detect the Smart cycle's salary day. */
     fun observeIncomeOccurredAt(): Flow<List<Long>> = dao.observeIncomeOccurredAt()

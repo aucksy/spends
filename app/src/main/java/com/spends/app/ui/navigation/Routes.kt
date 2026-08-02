@@ -18,7 +18,6 @@ object Routes {
     const val SETTINGS_APPEARANCE = "settings_appearance"
     const val SETTINGS_BACKUP = "settings_backup"
     const val SETTINGS_DATA = "settings_data"
-    const val SETTINGS_AI = "settings_ai"
     const val CATEGORIES = "categories"
     const val RECURRING = "recurring"
     const val REVIEW = "review"
@@ -32,6 +31,17 @@ object Routes {
     const val CYCLE_BREAKDOWN = "cycle_breakdown"
     // Banks & Cards management, reached from Settings when Smart Cycle is on (#3).
     const val BANKS_CARDS = "banks_cards"
+
+    // ---- Recurring, optionally opened straight onto one rule's editor ----
+    // Used by "View the repeating rule" on a transaction that a rule created (#5), so the user lands on the
+    // rule itself rather than on a list they then have to search.
+    const val ARG_RULE_ID = "ruleId"
+    const val NO_RULE_ID = -1L
+
+    /** Route to the recurring list; [ruleId] opens that rule's editor on arrival. */
+    fun recurring(ruleId: Long? = null): String = "$RECURRING?$ARG_RULE_ID=${ruleId ?: NO_RULE_ID}"
+
+    const val RECURRING_PATTERN = "$RECURRING?$ARG_RULE_ID={$ARG_RULE_ID}"
 
     const val IMPORT = "import"
     const val ARG_FROM_ONBOARDING = "fromOnboarding"

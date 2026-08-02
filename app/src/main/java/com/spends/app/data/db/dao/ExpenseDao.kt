@@ -6,9 +6,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.spends.app.data.db.entity.AllocationEntity
-import com.spends.app.data.db.entity.CategorySliceRow
 import com.spends.app.data.db.entity.CategorySpend
-import com.spends.app.data.db.entity.DatedAmountRow
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
@@ -121,50 +119,6 @@ interface ExpenseDao {
     )
     fun observeCategorySpend(start: Long, end: Long): Flow<List<CategorySpend>>
 
-    /** One-shot per-category spend for [start, end) — the previous-cycle read for the AI insights payload
-     *  (aggregates only; no Flow needed). Same shape as [observeCategorySpend]. */
-    @Query(
-        "SELECT c.id AS categoryId, c.name AS name, c.colorHex AS colorHex, c.iconKey AS iconKey, " +
-            "SUM(a.amountMinor) AS total " +
-            "FROM allocations a " +
-            "JOIN expenses e ON e.id = a.expenseId " +
-            "JOIN categories c ON c.id = a.categoryId " +
-            "WHERE e.deletedAt IS NULL AND e.kind = 'EXPENSE' " +
-            "AND e.occurredAt >= :start AND e.occurredAt < :end " +
-            "GROUP BY c.id ORDER BY total DESC",
-    )
-    suspend fun categorySpendOnce(start: Long, end: Long): List<CategorySpend>
-
-    /**
-     * One-shot per-CHARGE category slices for [start, end) — the transaction-level input to the AI insight
-     * engine (a single outsized charge, or the same charge billed twice on one day). Same filters as
-     * [categorySpendOnce], just ungrouped.
-     */
-    @Query(
-        "SELECT e.id AS expenseId, c.name AS name, a.amountMinor AS amountMinor, " +
-            "e.occurredAt AS occurredAt, e.merchantRaw AS merchantRaw " +
-            "FROM allocations a " +
-            "JOIN expenses e ON e.id = a.expenseId " +
-            "JOIN categories c ON c.id = a.categoryId " +
-            "WHERE e.deletedAt IS NULL AND e.kind = 'EXPENSE' " +
-            "AND e.occurredAt >= :start AND e.occurredAt < :end",
-    )
-    suspend fun categorySlicesOnce(start: Long, end: Long): List<CategorySliceRow>
-
-    /**
-     * Dated income amounts over a span — the insights savings-rate card's only new read (Phase C).
-     *
-     * Read-only, and reachable **only** from `InsightsProvider`, which is itself unreachable with the AI
-     * helper's master switch off. That is what keeps G2 true: with AI off this query never runs, so the app
-     * issues exactly the queries it did before.
-     */
-    @Query(
-        "SELECT occurredAt AS occurredAt, amountMinor AS amountMinor FROM expenses " +
-            "WHERE deletedAt IS NULL AND kind = 'INCOME' " +
-            "AND occurredAt >= :start AND occurredAt < :end",
-    )
-    suspend fun incomeChargesOnce(start: Long, end: Long): List<DatedAmountRow>
-
     /** Running balance (income − expense) for everything strictly before [before] — for Carry Forward. */
     @Query(
         "SELECT COALESCE(SUM(CASE kind WHEN 'INCOME' THEN amountMinor WHEN 'EXPENSE' THEN -amountMinor ELSE 0 END), 0) " +
@@ -175,19 +129,6 @@ interface ExpenseDao {
     /** Earliest active transaction time — the lower bound for the cycle selector's "All" range. */
     @Query("SELECT MIN(occurredAt) FROM expenses WHERE deletedAt IS NULL")
     fun observeEarliestOccurredAt(): Flow<Long?>
-
-    /**
-     * How far back the **spending** records actually go. Null when nothing has been recorded.
-     *
-     * Read only by the AI insight engine, to refuse a year-on-year comparison when the year-ago window is
-     * empty because the app wasn't in use then rather than because nothing was spent.
-     *
-     * Deliberately narrower than [observeEarliestOccurredAt]: it filters to `kind = 'EXPENSE'`, because an
-     * old INCOME row or an opening-balance entry says nothing about whether *spending* was being logged a
-     * year ago, and would let the comparison run against a year in which nothing was recorded.
-     */
-    @Query("SELECT MIN(occurredAt) FROM expenses WHERE deletedAt IS NULL AND kind = 'EXPENSE'")
-    suspend fun earliestExpenseOccurredAtOnce(): Long?
 
     /** Income timestamps — used to auto-detect the salary day for the Smart cycle. */
     @Query("SELECT occurredAt FROM expenses WHERE deletedAt IS NULL AND kind = 'INCOME'")

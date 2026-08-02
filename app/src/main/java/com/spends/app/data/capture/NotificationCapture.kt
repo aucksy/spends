@@ -60,6 +60,20 @@ object NotificationCapture {
         SENDER_NOT_RECOGNISED,
 
         /**
+         * ⭐**Android replaced the message before we were handed it.** Since Android 15, notifications that
+         * Android System Intelligence classifies as carrying a one-time code are redacted for every
+         * notification listener that lacks `RECEIVE_SENSITIVE_NOTIFICATIONS` — a system/role permission no
+         * ordinary app can hold. The listener receives a rebuilt notification whose body is the placeholder
+         * matched by [looksRedacted], so the real text never reaches this app at all.
+         *
+         * This is NOT the RCS custom-layout case and NOT an unmapped sender, and it must never be reported
+         * as either: both of those point an investigation at the parser, which cannot be the cause when the
+         * parser is being handed a system placeholder. It is also not fixable in this app — it is a phone
+         * setting ("Enhanced notifications" / Android System Intelligence) or nothing.
+         */
+        REDACTED_BY_ANDROID,
+
+        /**
          * A MessagingStyle whose messages are all textless SHADOWED a perfectly readable bigText:
          * [candidates] commits to the messages branch and never tries the plain fallback. This is our
          * OWN bug, not the RCS limit — it must never be reported as "unreadable", or the investigation
@@ -89,6 +103,12 @@ object NotificationCapture {
         }
         val plainBody = (bigText?.trim()?.takeIf { it.isNotBlank() } ?: text?.trim())?.takeIf { it.isNotBlank() }
         val titleTried = title?.takeIf { it.isNotBlank() } ?: "(no title)"
+        // ⭐Checked FIRST, ahead of every sender/text branch. The redaction placeholder is perfectly readable
+        // text with an app-name title, so every branch below would classify it as "sender not recognised" —
+        // sending the next investigation to the allowlist, which is not where the message went.
+        if (looksRedacted(text) || looksRedacted(bigText) || messages.any { looksRedacted(it.text) }) {
+            return Diagnosis(Rejection.REDACTED_BY_ANDROID, emptyList())
+        }
         if (messages.isNotEmpty()) {
             // Mirrors the messages branch: a message with no text is skipped before its sender matters.
             val withText = messages.filter { !it.text.isNullOrBlank() }
@@ -112,4 +132,29 @@ object NotificationCapture {
         if (plainBody == null) return Diagnosis(Rejection.NO_READABLE_TEXT, emptyList())
         return Diagnosis(Rejection.SENDER_NOT_RECOGNISED, listOf(titleTried))
     }
+
+    /**
+     * Whether [body] is Android's own stand-in for a message it withheld, rather than a real message.
+     *
+     * Matched on the platform's user-visible placeholder ("Sensitive notification content hidden"), plus the
+     * shorter variant OEM builds use. Substring and case-insensitive, because the surrounding punctuation
+     * and capitalisation differ between builds.
+     *
+     * ⚠ Deliberately narrow. A wider match would let a REAL bank message containing the word "hidden" be
+     * written off as a platform redaction, which is the one mistake here that would hide a genuine parser
+     * bug — the opposite of what this exists to do. A miss costs the clear verdict and falls back to the old
+     * one; a false positive would blame the phone for something this app got wrong.
+     *
+     * Only ever consulted by [diagnose]. The capture path is unaffected either way: a redacted body has no
+     * amount in it, so it was already going to fail — this changes what the owner is TOLD, not what happens.
+     */
+    internal fun looksRedacted(body: String?): Boolean {
+        val t = body?.trim()?.lowercase() ?: return false
+        return REDACTION_MARKERS.any { t.contains(it) }
+    }
+
+    private val REDACTION_MARKERS = listOf(
+        "sensitive notification content hidden",
+        "sensitive content hidden",
+    )
 }

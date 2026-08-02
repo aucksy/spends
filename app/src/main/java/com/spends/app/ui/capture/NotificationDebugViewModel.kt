@@ -105,6 +105,11 @@ class NotificationDebugViewModel @Inject constructor(
             NotificationDebugLog.Outcome.NO_READABLE_TEXT,
             NotificationDebugLog.Outcome.MESSAGES_SHADOWED_BIG_TEXT,
             NotificationDebugLog.Outcome.SKIPPED_SHAPE,
+            // ⭐Belongs here on the STRUCTURAL rule, not on the guess that the body will be harmless. It is
+            // usually just Android's placeholder — but `looksRedacted` matches a substring, so a body that
+            // merely CONTAINS the placeholder still lands here carrying whatever surrounds it, and the
+            // sender was never checked against a bank on this path. Withhold it.
+            NotificationDebugLog.Outcome.REDACTED_BY_ANDROID,
         )
 
         /**
