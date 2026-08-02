@@ -39,6 +39,13 @@ class SilencedAlertsViewModel @Inject constructor(
 
     private val _local = MutableStateFlow(SilencedAlertsUiState())
 
+    init {
+        // Sweep out the pre-v1.69.0 keys that carried the amount. They can never match a lookup again and
+        // none of them had reached the threshold — that was the bug — so nothing is lost. Idempotent, and
+        // doing it here means the list is already clean the first time the owner opens this screen.
+        viewModelScope.launch { runCatching { captureRepository.purgeLegacyIgnorePatterns() } }
+    }
+
     val state: StateFlow<SilencedAlertsUiState> =
         combine(_local, captureRepository.observeSilencedAlerts()) { local, alerts ->
             local.copy(

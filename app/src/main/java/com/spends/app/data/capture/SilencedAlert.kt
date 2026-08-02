@@ -1,21 +1,24 @@
 package com.spends.app.data.capture
 
-import com.spends.app.core.money.Money
 import com.spends.app.data.db.entity.IgnoredPatternEntity
 import com.spends.app.domain.model.TxnKind
 
 /**
  * One learn-from-ignore pattern, decoded back into something a person can read (#7 follow-up).
  *
- * The stored `patternKey` is an opaque join of `header|who|amountMinor|kind` built by
+ * The stored `patternKey` is an opaque join of `header|who|kind` built by
  * `SmsCaptureRepository.ignoreKey`. Nothing could read it back, so the ignore counter was a one-way
  * door: three ignores silenced an alert **permanently** and no screen in the app could show it, let
  * alone undo it. [decode] is that door's other side — pure, so it is directly testable.
  *
- * Decoding splits from the RIGHT, not the left: `kind` and `amountMinor` are machine-written and can
- * never contain a `|`, whereas the merchant is a verbatim slice of the bank's text and one day will.
- * Splitting left-first would silently mis-assign every field after such a merchant; this way a stray
- * separator can only ever widen [who], which is the one field where that is harmless.
+ * **The key no longer carries the amount** (v1.69.0). It used to, and that made the feature dead code —
+ * see `SmsCaptureRepository.ignoreKey` for the full reasoning. A row therefore now stands for *every*
+ * alert from one source in one direction, which is a bigger thing to switch off than a single figure,
+ * so the screen has to say so rather than showing a rupee amount that no longer means anything.
+ *
+ * Decoding splits from the RIGHT, not the left: `kind` is machine-written and can never contain a `|`,
+ * whereas the merchant is a verbatim slice of the bank's text. A stray separator can then only ever
+ * widen [who], the one field where that is harmless — and `ignoreKey` strips them anyway.
  */
 data class SilencedAlert(
     val patternKey: String,
@@ -23,8 +26,6 @@ data class SilencedAlert(
     val sender: String,
     /** Merchant (or institution) as the parser saw it, lowercased at write time. Blank when unknown. */
     val who: String,
-    /** Paise. Zero when the original parse carried no amount. */
-    val amountMinor: Long,
     /** Null when the stored kind is unrecognised (e.g. written by a much older build). */
     val kind: TxnKind?,
     val ignoreCount: Int,
@@ -38,25 +39,31 @@ data class SilencedAlert(
     val ignoresUntilSilenced: Int
         get() = (SmsCaptureRepository.IGNORE_SUPPRESS_THRESHOLD - ignoreCount).coerceAtLeast(0)
 
-    /**
-     * The line the owner reads, e.g. "₹450.00 at Swiggy". Falls back through merchant → sender →
-     * a bare amount, so a row is never rendered as an empty string it cannot act on.
-     */
+    /** The line the owner reads: who the alerts come from, e.g. "Php*finreliable Digite". */
     fun title(): String {
-        val label = who.ifBlank { sender }.ifBlank { "" }
-        val money = if (amountMinor > 0) Money.formatRupees(amountMinor) else null
-        val preposition = if (kind == TxnKind.INCOME) "from" else "at"
-        return when {
-            money != null && label.isNotBlank() -> "$money $preposition ${titleCase(label)}"
-            money != null -> money
-            label.isNotBlank() -> titleCase(label)
-            else -> "Unrecognised alert"
-        }
+        val label = who.ifBlank { sender }
+        return if (label.isNotBlank()) titleCase(label) else "Unrecognised alert"
     }
 
-    /** The sender header, shown only when the headline is carrying a merchant name instead. */
-    fun senderLine(): String? =
-        sender.takeIf { it.isNotBlank() && who.isNotBlank() && !who.equals(it, ignoreCase = true) }
+    /**
+     * What is actually being silenced, in words — "Money-out alerts · from YESBNK".
+     *
+     * A row covers EVERY amount from this source now, not one figure, and the owner has to be able to
+     * tell that at a glance before tapping Reset. The direction is part of the key, so alerts for money
+     * coming in and money going out from the same bank are silenced separately and must read separately.
+     */
+    fun scopeLine(): String {
+        val direction = when (kind) {
+            TxnKind.INCOME -> "Money-in alerts"
+            TxnKind.EXPENSE -> "Money-out alerts"
+            null -> "Alerts"
+        }
+        // The sender is only worth naming when the headline is showing a MERCHANT. When there was no
+        // merchant to parse, `title()` is already the sender, and "Alerts · from garbage" under a heading
+        // reading "Garbage" says the same thing twice.
+        val from = sender.takeIf { it.isNotBlank() && who.isNotBlank() && !who.equals(it, ignoreCase = true) }
+        return if (from != null) "$direction  ·  from $from" else "$direction, any amount"
+    }
 
     companion object {
 
@@ -66,17 +73,15 @@ data class SilencedAlert(
          * that would otherwise stay stuck silencing an alert forever with no way out.
          */
         fun decode(entity: IgnoredPatternEntity): SilencedAlert {
+            // header | who… | kind — three fields, with `who` the only one free to contain more.
             val parts = entity.patternKey.split('|')
-            // header | who… | amount | kind — at least four fields, with `who` free to contain more.
             val sender = parts.firstOrNull().orEmpty()
             val kind = parts.lastOrNull()?.let { name -> TxnKind.entries.firstOrNull { it.name == name } }
-            val amount = if (parts.size >= 4) parts[parts.size - 2].toLongOrNull() ?: 0L else 0L
-            val who = if (parts.size >= 4) parts.subList(1, parts.size - 2).joinToString("|") else ""
+            val who = if (parts.size >= 3) parts.subList(1, parts.size - 1).joinToString("|") else ""
             return SilencedAlert(
                 patternKey = entity.patternKey,
                 sender = sender,
                 who = who.trim(),
-                amountMinor = amount,
                 kind = kind,
                 ignoreCount = entity.ignoreCount,
                 lastIgnoredAt = entity.updatedAt,

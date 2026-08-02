@@ -11,7 +11,7 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.68.0 — sixteen releases.** Install **v1.68.0**; it contains
+**Currently untested: v1.57.0 → v1.69.0 — seventeen releases.** Install **v1.69.0**; it contains
 every one of them.
 
 > ⚠️ **Four sections below are now DEAD and must not be worked through.** v1.60.0, v1.61.0, v1.62.0 and
@@ -25,6 +25,33 @@ every one of them.
 > silently stopped becoming transactions from **v1.58.0** onward, which matches exactly when capture
 > stopped working. The same copied line is what crashed the v1.63.0 debug screen. **The single most
 > valuable thing to check now is whether a real bank text captures again.**
+
+---
+
+## v1.69.0 — "Ignore" actually accumulates now
+
+**The bug you found.** Every ignore was recorded as a first ignore, so nothing could ever go quiet. The
+amount was part of what Spends treated as "the same alert", and a shop almost never charges you the
+identical figure three times — so ₹29,989 and ₹29,990 from the same card counted as two different
+things. It is now the **source and the direction**, not the amount.
+
+**Your existing rows are wiped on first open.** None of them had reached the threshold (that was the bug),
+so nothing is lost, and your counts start clean rather than silencing things instantly.
+
+- [ ] ⭐ Open Settings → Automatic Entries → **Silenced alerts**. The long list of near-identical
+      ₹29,xxx rows should be **gone**.
+- [ ] ⭐ Ignore **three** alerts from the same shop or bank, each a **different amount**. After the
+      third, that alert should stop prompting — this never worked before.
+- [ ] Watch the countdown as you go: "2 more Ignores" → "1 more Ignore" → it moves to
+      **"Not asking any more"**.
+- [ ] Each row now shows **who** it's from as the heading (e.g. "Php*finreliable Digite"), and underneath
+      **what it covers** — "Money-out alerts · from YESBNK". No rupee amount, because a row now covers
+      every amount.
+- [ ] ⭐ Money **in** and money **out** from the same bank are silenced **separately**. Silencing your
+      IDFC credits must NOT silence IDFC debits.
+- [ ] ⭐ A silenced alert still lands in the **review list** — open it and confirm the transaction is
+      there. Nothing is lost, you're just not interrupted.
+- [ ] **Ask me again** on a silenced row → the next alert of that kind prompts you normally.
 
 ---
 

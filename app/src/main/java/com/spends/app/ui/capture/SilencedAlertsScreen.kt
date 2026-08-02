@@ -196,13 +196,13 @@ private fun SilencedAlertRow(alert: SilencedAlert, actionLabel: String, onAction
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
             Text(alert.title(), style = MaterialTheme.typography.bodyLarge)
-            alert.senderLine()?.let { sender ->
-                Text(
-                    "From $sender",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            // What the row actually covers. Since v1.69.0 a row is EVERY amount from this source in this
+            // direction, not one figure, and that has to be visible before the owner taps Reset.
+            Text(
+                alert.scopeLine(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
                 statusLine(alert),
                 style = MaterialTheme.typography.bodySmall,

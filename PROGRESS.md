@@ -4,7 +4,10 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.68.0** — versionCode **78**, versionName **"1.68.0"**. Two fixes to v1.67.0's category screen:
+- **Shipped: v1.69.0** — versionCode **79**, versionName **"1.69.0"**. Learn-from-ignore actually works:
+  the pattern key no longer carries the AMOUNT, which had made the feature dead code. No schema change.
+  APK: https://github.com/aucksy/spends/releases/download/v1.69.0/Spends-v1.69.0.apk
+- Previous: **v1.68.0** — versionCode **78**, versionName **"1.68.0"**. Two fixes to v1.67.0's category screen:
   stepping back a cycle no longer calls it "THIS CYCLE", and Yearly gets the same hero + comparison layout,
   compared against the previous year with data. No schema change.
   APK: https://github.com/aucksy/spends/releases/download/v1.68.0/Spends-v1.68.0.apk
@@ -37,6 +40,39 @@ for how the project works.
 - Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+
+## v1.69.0 — "Ignore" accumulates now; the amount is out of the pattern key
+
+**Owner-reported, with screenshots that diagnosed it exactly:** "every ignore is registered as first ignore
+— same merchant but each sms is probably considered different". Correct. `ignoreKey` was
+`header|who|amountMinor|kind`, so the AMOUNT was part of a pattern's identity. A merchant almost never
+charges the same figure three times, so every alert minted its own row and none could reach
+`IGNORE_SUPPRESS_THRESHOLD`. His phone held eleven rows for two sources — ₹29,989 / ₹29,990 /
+₹29,995 / ₹29,996 all from YES BANK · PHP*FINRELIABLE DIGITE — every one stuck at "ignored once".
+**The feature had never once fired since it shipped.**
+
+The key is now `header|who|kind`: source and direction. What a person means by "stop asking me about this"
+is the source, not the sum.
+
+**Why this is safe to widen.** Two things must both hold, and now do: a suppressed alert still goes to the
+review queue (nothing is lost, only the interruption stops), and since v1.66.0 every silenced pattern is
+listable and reversible. Without that undo the amount was acting as an accidental safety catch on a door
+with no handle on the inside — which is the real reason it survived so long.
+
+**Legacy rows are purged, not migrated.** `IgnoredPatternDao.deleteLegacy()` drops the four-field keys, run
+from `SilencedAlertsViewModel.init` and idempotent, so it needs no "have I run yet" flag. Nothing is lost:
+*because* of the bug, not one legacy row had reached the threshold. `ignoreKey` strips the separator out of
+the merchant so a current key always has exactly two of them, which is what makes the LIKE-based cleanup
+exact.
+
+**The row had to change too.** It used to read "₹450.00 at Swiggy"; a row now covers every amount from one
+source, which is a bigger thing to switch off, so it shows the source as the heading and a `scopeLine()`
+saying what it covers — "Money-out alerts · from YESBNK". `SilencedAlert.amountMinor` is gone.
+
+`IGNORE_SUPPRESS_THRESHOLD` stays at 3. It is only now reachable at all, and the screen already warns with a
+countdown before anything goes quiet.
+
+---
 
 ## v1.68.0 — two fixes to the new category screen
 

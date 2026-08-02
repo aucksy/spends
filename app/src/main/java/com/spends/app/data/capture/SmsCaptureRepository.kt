@@ -229,12 +229,33 @@ class SmsCaptureRepository @Inject constructor(
 
     // ---- Learn from "Ignore" (#7, conservative: suppress the NAG, never lose the transaction) ----
 
-    /** A stable pattern key for an alert: sender header + merchant (or institution) + amount + kind. */
+    /**
+     * A stable pattern key for an alert: sender header + merchant (or institution) + direction.
+     *
+     * ⭐**The AMOUNT is deliberately NOT in this key, and used to be.** It made the whole feature dead
+     * code: a merchant almost never charges the identical amount three times, so every alert produced its
+     * own pattern and every one sat at "ignored once" forever. The owner's own phone had eleven separate
+     * rows for two merchants — ₹29,989, ₹29,990, ₹29,995, ₹29,996 … all YES BANK / PHP*FINRELIABLE
+     * DIGITE. Suppression could only ever have fired on an exact repeat of the same rupee figure.
+     *
+     * What a person means by "stop asking me about this" is the SOURCE, not the sum. Keyed on source and
+     * direction, those eleven rows collapse to two, which is what the feature was always for.
+     *
+     * This is only safe because two other things are true: a suppressed alert still lands in the review
+     * queue (nothing is ever lost, only the interruption stops), and since v1.66.0 the owner can see every
+     * silenced pattern and switch it back on. Without that undo, the amount was acting as an accidental
+     * safety catch on a door with no handle on the inside.
+     *
+     * `|` is stripped from [who] so a key always has exactly two separators — which is what lets the
+     * one-time cleanup below identify (and delete) the old four-field keys precisely.
+     */
     private fun ignoreKey(sender: String?, parsed: SmsParser.Parsed): String {
         val header = SenderAllowlist.headerOf(sender) ?: sender?.uppercase() ?: ""
-        val who = parsed.merchant?.lowercase()?.trim()?.takeIf { it.isNotBlank() }
-            ?: parsed.institution?.lowercase() ?: ""
-        return "$header|$who|${parsed.amountMinor ?: 0}|${parsed.kind?.name ?: ""}"
+        val who = (
+            parsed.merchant?.lowercase()?.trim()?.takeIf { it.isNotBlank() }
+                ?: parsed.institution?.lowercase() ?: ""
+            ).replace("|", " ").trim()
+        return "$header|$who|${parsed.kind?.name ?: ""}"
     }
 
     /** Record that the user ignored this exact alert; the count drives suppression (#7). */
@@ -273,6 +294,14 @@ class SmsCaptureRepository @Inject constructor(
 
     /** Un-silence everything — the "start asking me about all of them again" escape hatch. */
     suspend fun unsilenceAllAlerts() = ignoredPatternDao.deleteAll()
+
+    /**
+     * Delete the pre-v1.69.0 keys that carried the amount. They can never match a lookup again, and
+     * nothing is lost by dropping them: because the amount was in the key, not one of them had reached
+     * the suppression threshold — every single row was stuck at "ignored once" or "twice", which is the
+     * very bug being fixed. Idempotent, so it can run on every visit to the screen.
+     */
+    suspend fun purgeLegacyIgnorePatterns(): Int = ignoredPatternDao.deleteLegacy()
 
     /**
      * Silently drop a parsed SMS into the review queue (#7) — used when its alert is suppressed, so a
