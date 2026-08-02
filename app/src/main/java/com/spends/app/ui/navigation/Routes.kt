@@ -22,6 +22,8 @@ object Routes {
     const val RECURRING = "recurring"
     const val REVIEW = "review"
     const val CAPTURE = "capture"
+    // The undo for learn-from-ignore (#7): what Spends has stopped asking about, and how to reverse it.
+    const val SILENCED_ALERTS = "silenced_alerts"
     // TEMPORARY: owner-facing notification-capture diagnostic. Remove with NotificationDebugLog.
     const val NOTIFICATION_DEBUG = "notification_debug"
     // TEMPORARY: owner-facing live-SMS-capture diagnostic. Remove with SmsDebugLog.

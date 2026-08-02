@@ -59,6 +59,7 @@ import com.spends.app.service.NotificationListenerControl
 @Composable
 fun CaptureSection(
     onOpenReview: () -> Unit,
+    onOpenSilencedAlerts: () -> Unit,
     // TEMPORARY: notification-capture diagnostic. Remove with NotificationDebugLog.
     onOpenNotificationDebug: () -> Unit,
     // TEMPORARY: live-SMS-capture diagnostic. Remove with SmsDebugLog.
@@ -257,6 +258,36 @@ fun CaptureSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
             )
+        }
+
+        // ---- Silenced alerts (#7 follow-up): the undo for learn-from-ignore ----
+        // Always shown, never hidden behind "there is something to see". The defect this row exists to
+        // close is precisely that the suppression was INVISIBLE: a row that appears only once something
+        // is silenced cannot be found by anyone wondering whether something is silenced.
+        HorizontalDivider(Modifier.padding(vertical = 10.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenSilencedAlerts)
+                .padding(vertical = 12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Silenced alerts", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    if (state.silencedCount > 0) {
+                        "${state.silencedCount} alert${if (state.silencedCount == 1) "" else "s"} " +
+                            "Spends has stopped asking about — tap to switch them back on"
+                    } else {
+                        "Nothing silenced. Ignoring the same alert 3 times stops its prompts; " +
+                            "this is where you undo that."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         // TEMPORARY: the two capture diagnostics. Deliberately OUTSIDE the enabled-only blocks — the

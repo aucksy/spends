@@ -21,6 +21,30 @@ wrong number about real money, rather than something looking untidy.
 
 ---
 
+## v1.66.0 — you can undo an accidental "Ignore"
+
+Find it at **Settings → Automatic Entries → Silenced alerts** (a new row, near the bottom, above
+the two debug rows).
+
+- [ ] The **Silenced alerts** row is there, and opens.
+- [ ] With nothing silenced it says so plainly — no empty screen, no error.
+- [ ] Tap **Ignore** on the same bank alert three times (same shop, same amount). It stops alerting.
+- [ ] ⭐ That alert now appears under **"Not asking any more"**, showing the amount and the shop
+      — e.g. "₹450.00 at Swiggy" — not a code or a jumble of symbols.
+- [ ] It says how many times you ignored it and when you last did.
+- [ ] After only **one or two** ignores it appears under **"Close to being silenced"** with a
+      countdown ("1 more Ignore and Spends stops asking").
+- [ ] ⭐ Tap **Ask me again** → the row disappears, and the *next* alert of that kind prompts
+      you normally again.
+- [ ] After un-silencing, the count starts from scratch — it takes three fresh ignores to silence
+      it again, not one.
+- [ ] **Ask me about everything again** asks for confirmation first, then clears the whole list.
+- [ ] ⭐ Nothing on your timeline changes when you un-silence — no transaction is added,
+      removed or altered.
+- [ ] The **Open review list** link on that screen goes to the review queue.
+
+---
+
 ## ⭐ Highest value right now
 
 - [ ] ⭐⭐ **THE ONE THING — the SMS diagnostic** *(v1.63.0, new; this is the whole reason the release

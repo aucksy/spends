@@ -29,6 +29,8 @@ data class CaptureUiState(
     // Notification capture (Phase 4)
     val notificationEnabled: Boolean = false,
     val notificationApps: Set<String> = emptySet(),
+    // #7 follow-up: alerts that three "Ignore" taps switched off, now listable and reversible.
+    val silencedCount: Int = 0,
 )
 
 @HiltViewModel
@@ -44,7 +46,8 @@ class CaptureViewModel @Inject constructor(
             settingsRepository.settings,
             captureRepository.observePendingCount(),
             captureRepository.observeCapturedCount(),
-        ) { local, s, pending, captured ->
+            captureRepository.observeSilencedCount(),
+        ) { local, s, pending, captured, silenced ->
             local.copy(
                 enabled = s.smsCaptureEnabled,
                 hideCaptured = s.hideCapturedInLists,
@@ -52,6 +55,7 @@ class CaptureViewModel @Inject constructor(
                 capturedCount = captured,
                 notificationEnabled = s.notificationCaptureEnabled,
                 notificationApps = s.notificationCaptureApps,
+                silencedCount = silenced,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CaptureUiState())
 

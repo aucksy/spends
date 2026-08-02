@@ -4,7 +4,11 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.65.0** — versionCode **75**, versionName **"1.65.0"**. The AI helper is gone. Recurring
+- **Shipped: v1.66.0** — versionCode **76**, versionName **"1.66.0"**. An accidental "Ignore" can now be
+  undone: Settings → Automatic Entries → **Silenced alerts** lists every alert Spends has stopped asking
+  about (and every one part-way there) and switches it back on. No schema change — DB stays at v16.
+  APK: https://github.com/aucksy/spends/releases/download/v1.66.0/Spends-v1.66.0.apk
+- Previous: **v1.65.0** — versionCode **75**, versionName **"1.65.0"**. The AI helper is gone. Recurring
   notifications now say what they added, a transaction can reach the rule that created it, and the category
   screen leads with the average (with a new Yearly view).
   APK: https://github.com/aucksy/spends/releases/download/v1.65.0/Spends-v1.65.0.apk
@@ -25,6 +29,35 @@ for how the project works.
 - Previous: **v1.63.1** — versionCode 70. On-device crash trace + Robolectric render tests. The trace it
   captured is what identified the root cause above.
   APK: https://github.com/aucksy/spends/releases/download/v1.63.1/Spends-v1.63.1.apk
+
+## v1.66.0 — an accidental "Ignore" can be undone
+
+**What the owner sees.** A new **Silenced alerts** row in Settings → Automatic Entries. It lists every
+bank alert Spends has stopped asking about, in plain words ("₹450.00 at Swiggy"), with **Ask me again**
+next to each. Alerts only part-way to the threshold are listed too, with a countdown — that warning is
+the last moment the decision is still reversible by doing nothing.
+
+**Why.** Ignoring the same alert three times set `ignored_patterns.ignoreCount` past
+`IGNORE_SUPPRESS_THRESHOLD` and suppressed that alert **permanently**. The table was write-only: no DAO
+read it back, no screen showed it, and it is device-local (deliberately not in the Drive backup), so a
+reinstall was the only exit. Three mistaken taps could silence a genuine recurring alert for good.
+
+**How.** `IgnoredPatternDao` gained `observeAll` / `observeSilencedCount` / `deleteByKey` / `deleteAll`;
+`SmsCaptureRepository` exposes `observeSilencedAlerts`, `observeSilencedCount`, `unsilenceAlert`,
+`unsilenceAllAlerts`. Un-silencing **deletes** the row rather than decrementing it — decrementing to
+threshold-minus-one would re-silence on the very next ignore, which is the opposite of "ask me again".
+
+`SilencedAlert.decode` is the new pure half: it reads the opaque `header|who|amount|kind` key back into
+display fields, splitting from the **right** because `kind` and `amountMinor` are machine-written and
+can never contain a `|`, whereas the merchant is a verbatim slice of the bank's text and one day will.
+It never throws and never drops a row — a key this code cannot parse is exactly the one that would
+otherwise stay stuck silencing an alert with no way out. Covered by `SilencedAlertTest`.
+
+**Not fixed, deliberately:** the twin guard can still drop a genuine second payment. Owner's call — rare
+on his setup, he will report it if money goes missing. Full write-up, cause, and the shape of the fix:
+`docs/KNOWN-ISSUE-TWIN-GUARD.md`.
+
+---
 
 ## v1.65.0 — the AI helper is removed; recurring notifications say what they added
 

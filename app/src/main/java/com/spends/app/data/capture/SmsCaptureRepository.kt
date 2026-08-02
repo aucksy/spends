@@ -20,6 +20,7 @@ import com.spends.app.domain.model.TxnSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -251,6 +252,27 @@ class SmsCaptureRepository @Inject constructor(
         if (parsed.result != SmsParser.Result.TRANSACTION) return false
         return (ignoredPatternDao.countFor(ignoreKey(sender, parsed)) ?: 0) >= IGNORE_SUPPRESS_THRESHOLD
     }
+
+    /**
+     * Every ignore pattern on this phone, decoded for display — the ones already silenced AND the ones
+     * part-way there, because "ignored twice" is the only warning the owner will ever get before an
+     * alert goes quiet for good.
+     */
+    fun observeSilencedAlerts(): Flow<List<SilencedAlert>> =
+        ignoredPatternDao.observeAll().map { rows -> rows.map { SilencedAlert.decode(it) } }
+
+    /** Live count of alerts that have gone quiet — drives the settings row's subtitle. */
+    fun observeSilencedCount(): Flow<Int> = ignoredPatternDao.observeSilencedCount(IGNORE_SUPPRESS_THRESHOLD)
+
+    /**
+     * Un-silence one pattern: the row is DELETED rather than decremented, so the next ignore starts a
+     * fresh count of one. Decrementing to threshold-minus-one would re-silence on the very next ignore,
+     * which is the opposite of what "start asking me again" means.
+     */
+    suspend fun unsilenceAlert(patternKey: String) = ignoredPatternDao.deleteByKey(patternKey)
+
+    /** Un-silence everything — the "start asking me about all of them again" escape hatch. */
+    suspend fun unsilenceAllAlerts() = ignoredPatternDao.deleteAll()
 
     /**
      * Silently drop a parsed SMS into the review queue (#7) — used when its alert is suppressed, so a
@@ -1006,8 +1028,10 @@ class SmsCaptureRepository @Inject constructor(
             else -> "No new cards found in SMS"
         }
 
-        /** #7: after this many ignores of the SAME alert pattern, stop notifying (queue silently instead). */
-        private const val IGNORE_SUPPRESS_THRESHOLD = 3
+        /** #7: after this many ignores of the SAME alert pattern, stop notifying (queue silently instead).
+         *  Public because the "Silenced alerts" screen has to say how close a pattern is to going quiet —
+         *  a threshold only this file knows is one the owner can only discover by tripping over it. */
+        const val IGNORE_SUPPRESS_THRESHOLD = 3
 
         private val iconKeyToCategory = mapOf(
             "food" to "Food", "fastfood" to "Food", "coffee" to "Food",
