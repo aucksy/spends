@@ -1,11 +1,15 @@
-# Data safety form — click-by-click re-submission guide
+# Data safety form — click-by-click guide
 
 Companion to `DATA_SAFETY.md` (which holds the answers **and the reasoning**). This file is the
 running order: what to click, what to pick, and what to watch out for.
 
-**Why you are re-submitting:** the version currently filed says Spends **shares** financial data and
-SMS content with a third party. That was true only because of the AI helper, which was removed in
-v1.65.0. Every "shared" answer is now **No**, and SMS is not collected at all.
+**This is a first submission — nothing has been filed with Play yet, so there is nothing to correct.**
+Work straight down this page. The one thing to be careful about is that the form's defaults and its
+wording both nudge you toward over-declaring; the notes below say where.
+
+*(An earlier draft of this file was written as a "re-submission" guide, because at the time the app had
+an optional AI helper that shared data with a third party. That helper was removed in v1.65.0, before
+any Play submission. Every "shared" answer is **No**, and SMS is not collected at all.)*
 
 Play Console wording shifts occasionally. If a label differs slightly, match on meaning — the answers
 below are what matters.
@@ -48,9 +52,10 @@ A long checklist grouped by category. **Tick exactly one box in the whole list:*
 
 **Leave everything else unticked.** In particular:
 
-- **Messages → SMS or MMS** — ❌ **untick it if it is ticked.** This is the main correction. Texts are
-  read and parsed on the phone and are never transmitted anywhere, in any configuration. Under Play's
-  definition that is not collection.
+- **Messages → SMS or MMS** — ❌ **leave it unticked.** This is the one people get wrong, because the app
+  so obviously *reads* SMS. But Play's question is whether data **leaves the device**, and texts are read
+  and parsed on the phone and never transmitted anywhere, in any configuration. Under Play's definition
+  that is not collection. Ticking it would declare a data flow that does not exist.
 - **Financial info → User payment info / Purchase history / Credit score** — not touched.
 - Location, Personal info, Contacts, Photos, Calendar, Web browsing, Device or other IDs — none.
 - **App activity / App info and performance** — nothing is collected; there are no analytics or crash
@@ -73,8 +78,8 @@ Only one entry to fill in, for **Other financial info**:
 **Do not tick** Analytics, Advertising or marketing, Personalisation, Developer communications,
 Fraud prevention, or Account management. None of them apply.
 
-⚠️ **The single most important box on the whole form is "Shared".** It must be **unticked**. That is
-the thing the filed version has wrong.
+⚠️ **The single most important box on the whole form is "Shared".** It must be **unticked**. Spends
+sends nothing to anyone but the user's own Drive, and "Shared" is the box a reviewer reads first.
 
 ---
 

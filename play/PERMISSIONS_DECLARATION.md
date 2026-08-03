@@ -23,8 +23,9 @@ tracking). Do **not** claim default-SMS-handler, backup, or OTP — none apply.
 ```
 Spends is a personal expense tracker whose core feature is automatically capturing the user's own bank
 and credit-card transactions from the SMS alerts their bank sends. When a transaction SMS arrives,
-Spends parses it ON THE DEVICE to extract the amount and account and notifies the user to save the
-expense in one tap.
+Spends parses it ON THE DEVICE to extract the amount and account, then posts a notification offering
+"Review & Add" or "Ignore". "Review & Add" opens the expense pre-filled so the user checks it and saves
+it. Nothing is ever recorded without the user's explicit confirmation.
 
 READ_SMS is required to read existing bank transaction messages (e.g. to record spends made before
 install, on user request), and RECEIVE_SMS is required to detect a new transaction the moment its SMS
@@ -49,7 +50,25 @@ On the SMS onboarding step, before the runtime permission prompt, Spends shows:
 was reworded on 2026-07-26 to accommodate the optional AI helper; that helper was removed in v1.65.0, so
 the app once again sends nothing derived from a message anywhere.)
 
+⚠️ **Known wording drift, worth fixing in the app before you submit.** That on-screen line says "add it in
+one tap", but the notification's actual buttons are **Review & Add** and **Ignore**, and "Review & Add"
+opens a pre-filled entry the user then saves. The justification text above and the demo-video script below
+both describe the real two-step flow. Reword the app's onboarding line to match (then update this quote),
+so the reviewer never sees the app promise something the video doesn't show.
+
 The step is skippable, and the app works fully without the grant.
+
+---
+
+## Not part of this form, but expect questions: notification access
+Spends also ships an optional **NotificationListenerService**, because some Indian banks now send alerts
+as RCS chat or Truecaller "Business Chat" instead of SMS, which no app can read as SMS. It is **off by
+default**, reads only the messaging apps the user explicitly ticks (Google Messages, Truecaller), parses
+on-device, and — like SMS — adds nothing without confirmation.
+
+This is **not** covered by the SMS/Call Log declaration, so there is no form to fill. But notification
+access draws reviewer attention on its own, so keep the in-app explanation (shown before the user is sent
+to Android's notification-access screen) intact, and be ready to point to it in **App access** if asked.
 
 ---
 

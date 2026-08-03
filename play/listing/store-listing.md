@@ -23,7 +23,7 @@ Auto-track expenses from bank SMS. Private, offline, salary-cycle budgeting.
 Spends turns the transaction SMS your bank already sends into an effortless expense tracker — and your data stays on your phone.
 
 ▍ Automatic expense capture from SMS
-The moment your bank or credit-card SMS arrives, Spends detects the transaction and notifies you to add it in one tap — no typing the amount, no switching apps. Spends reads these messages on your device to find the amount and account; nothing is ever uploaded to us, and nothing is sent to anyone else. Prefer not to grant SMS access? Spends works fully with quick manual entry too — SMS is optional, and the app is completely usable without it.
+The moment your bank or credit-card SMS arrives, Spends detects the transaction and notifies you. Tap "Review & Add", check the entry it has already filled in, and save — no typing the amount, no switching apps. Nothing is ever added without your confirmation. Spends reads these messages on your device to find the amount and account; nothing is ever uploaded to us, and nothing is sent to anyone else. Prefer not to grant SMS access? Spends works fully with quick manual entry too — SMS is optional, and the app is completely usable without it.
 
 ▍ Budget by YOUR cycle, not the calendar
 Smart Cycle tracks your money by your real salary and card-billing cycles, so you always know what's actually left to spend before your next paycheck — not just a generic calendar month.
@@ -33,10 +33,11 @@ Smart Cycle tracks your money by your real salary and card-billing cycles, so yo
 • Split a single payment across multiple categories
 • A fast built-in calculator keypad for amounts
 • Home-screen widgets — one-tap quick-add and a private balance summary you can hide
-• Search, a clean day-by-day timeline, and swipe-to-delete with undo
+• Search, a clean day-by-day timeline, and long-press to bulk delete or re-categorise, with undo
 • Recurring entries with a daily reminder
+• Some banks now send alerts as chat messages instead of SMS — Spends can optionally read those too
 • Optional backup to YOUR OWN Google Drive — we never see it
-• Dark mode and Material You colours
+• Light, dark, or automatic dark on a schedule you set
 
 ▍ Private by design
 No account. No ads. No analytics or tracking on your financial data. Your SMS and transactions are processed and stored on your device. The only network Spends uses is your own Google Drive backup — and only if you turn it on.
@@ -68,5 +69,17 @@ Questions or feedback: simpleapps108@gmail.com
 ## Notes
 - Keep the SMS wording in the title/short description on every future update — the approved SMS
   Permissions Declaration depends on the listing continuing to foreground SMS as core functionality.
+- ⚠️ **Do not re-add these three claims.** They were in this file until 2026-08-03 and none of them is
+  true of the app. Play treats a listing that overstates the product as a policy issue, and each one is
+  trivially disprovable by a reviewer holding the phone:
+  - *"swipe-to-delete with undo"* — there is **no swipe gesture anywhere** in the app; it was removed
+    deliberately after too many accidental deletes. Deleting is tap-a-row, or long-press to multi-select.
+  - *"Material You colours"* — Material You was removed in v0.12.0. The app always uses its own brand
+    palette. (The old setting still exists only so pre-v0.12 backups still load; the theme ignores it.)
+  - *"add it in one tap"* — the notification's buttons are **Review & Add** and **Ignore**. "Review & Add"
+    opens a pre-filled entry that you then Save. It is one tap to review, one to save — never a silent add.
+    That is a selling point, not a shortfall: it is the whole "nothing is added without your confirmation"
+    promise, and it is what the SMS demo video shows.
+- Before each submission, re-verify every bullet against the running code, not against this file's history.
 - Do **not** add "bank", a bank's name, or "UPI" logos to graphics in a way that implies an official
   partnership — Play rejects impersonation. "Reads your bank's SMS" as plain text is fine.

@@ -17,6 +17,11 @@ The signed **AAB** is produced by CI on every `vX.Y.Z` tag and attached to the G
 - **[owner] Developer account type:** if this is a **personal** account created after Nov 2023, Google
   requires a **closed test with ≥ 12 testers** (may be 20) opted in for **14 continuous days** before you
   can request production access. Plan for this (step 11) — it's the long pole.
+- **[done, but re-do it each release] Verify every listing claim against the running app.** On 2026-08-03
+  a feature audit found three claims in `play/listing/store-listing.md` that the app does not do —
+  swipe-to-delete, Material You colours, and "add it in one tap". All three are now corrected, and the
+  reasons are recorded in that file's **Notes** so they don't creep back. A reviewer with the phone in
+  hand can disprove a wrong bullet in seconds, so this check is cheap insurance, not pedantry.
 
 ## 1. Create the app  **[owner]**
 Play Console → **Create app**. Name **Spends**, default language **English (India)** (or US), type **App**,
@@ -35,11 +40,14 @@ Play Console → **Create app**. Name **Spends**, default language **English (In
   store description.
 
 ## 4. Data safety  **[owner]** — answers are **[done]** in `play/DATA_SAFETY.md`
-⚠ **Re-submit this section for v1.65.0.** The AI helper was removed, so the app no longer shares anything
-with any third party. `play/DATA_SAFETY.md` now answers **collected: Yes** (Drive backup only) and
-**shared: No**, with SMS collecting nothing at all. The declaration filed for v1.56.0–v1.64.0 says the
-opposite and is now wrong. Fill the form from that file, not from memory. Everything else there still
-holds: deletion is available, and transit is encrypted.
+Fill the form from that file, not from memory. In short: **collected: Yes** (the optional Drive backup
+only), **shared: No** (nothing goes to any third party), **SMS: not collected at all** (parsed on-device,
+never transmitted), deletion available, transit encrypted. `play/DATA_SAFETY_WALKTHROUGH.md` is the
+click-by-click version if the form's wording throws you.
+
+Two boxes the form's own wording pushes you to get wrong: **Messages → SMS or MMS** stays **unticked**
+(reading on-device is not "collecting"), and **Shared** stays **unticked**. Nothing has been filed with
+Play before, so there is no earlier declaration to correct.
 
 ## 5. Content rating  **[owner]**
 Policy → App content → **Content ratings** → complete the IARC questionnaire. Spends is a finance/utility

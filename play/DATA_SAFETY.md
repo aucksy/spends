@@ -5,10 +5,14 @@ with the reasoning, so you can defend them if asked. Spends is local-first and s
 developer**, ever, and **nothing to any third party**. The only place data ever leaves the phone is the
 user's **own** Google Drive, if they switch backup on.
 
-> **Changed in v1.65.0.** The optional AI helper — the one feature that shared anything with a third
-> party (Groq) — has been **removed from the app**. Sections 1 and 2 below have been rewritten to match.
-> If you have already submitted the older declaration, **this form must be re-submitted**: it currently
-> tells Play the app shares financial data and SMS content with a third party, and that is no longer true.
+> **Status: nothing has been filed with Play yet.** This is a **first** submission — there is no earlier
+> declaration to correct. Fill the form from this file.
+>
+> *Background, so an older draft doesn't confuse you:* between v1.56.0 and v1.64.0 the app had an optional
+> AI helper — the one feature that ever shared anything with a third party (Groq). It was **removed in
+> v1.65.0**, before any Play submission. So every "shared" answer below is **No**, and SMS is not collected
+> at all. If you find a draft of this file (or of `DATA_SAFETY_WALKTHROUGH.md`) that talks about
+> *re-submitting* or *correcting* a filed declaration, it predates this note — ignore that framing.
 
 ---
 
@@ -28,9 +32,10 @@ Rationale (Play's definition of *collect* = transmitted off the device to you or
   receives this data. It is still declared, as **collected / not shared / optional**, because the data does
   leave the device.
 - No analytics/ads/third-party SDKs collect anything.
-- **There is no third-party sharing of any kind.** Between v1.56.0 and v1.64.0 an opt-in AI helper sent
-  masked message extracts and spending aggregates to Groq; that feature no longer exists in the app, and
-  any API key the user had saved is erased the next time they open Spends.
+- **There is no third-party sharing of any kind.** (Between v1.56.0 and v1.64.0 — all sideload-only
+  builds, never on Play — an opt-in AI helper sent masked message extracts and spending aggregates to
+  Groq. That feature no longer exists in the app, and any API key a user had saved is erased the next
+  time they open Spends.)
 
 **Is all of the user data collected by your app encrypted in transit?**
 → **Yes.** (The one network path — the optional Drive backup — uses HTTPS. On-device data is not in transit.)
@@ -49,10 +54,11 @@ and delete the Drive backup from within Spends or from Google Drive. (No server-
 | SMS messages | **No** | **No** | — | — | Read and parsed **on-device only**; never transmitted. |
 | Personal identifiers, contacts, location, etc. | No | No | — | — | Not accessed |
 
-> **Corrected 2026-08-02 (v1.65.0).** The two rows above previously declared third-party *sharing* of both
-> financial info and SMS content, because of the AI helper. The helper has been removed, so both "Shared"
-> answers are now No and the SMS row collects nothing at all. Re-check this table whenever a feature is added
-> that makes a network call — it is the declaration a Play reviewer holds the app to.
+> **This table is the whole declaration — nothing else gets ticked.** An earlier draft of it (written while
+> the AI helper still existed) declared third-party *sharing* of both financial info and SMS content. That
+> helper is gone, so both "Shared" answers are **No** and the SMS row collects nothing at all. Re-check this
+> table whenever a feature is added that makes a network call — it is the declaration a Play reviewer holds
+> the app to, and today the app makes exactly **one** network call: the user's own Google Drive backup.
 
 ---
 
