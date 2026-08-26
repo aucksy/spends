@@ -51,13 +51,29 @@ migration only adds empty columns, so a changed balance would mean something is 
 - [ ] ⭐ The income donut's centre figure equals the sum of its legend rows.
 - [ ] Tapping an income category (e.g. Salary) drills into that category's transactions for the cycle.
 - [ ] A cycle with income but **no** spending still charts, rather than saying "Nothing to chart yet".
+- [ ] ⭐ A month with **no income at all** (there are 16 such months in your history — e.g. Jul–Oct 2021,
+      Feb 2022, May 2024) still opens on the Income view: an empty ring, "₹0.00" in the middle, and the
+      wording "No categorised income this period." — not a crash and not "Nothing to chart yet".
+- [ ] A month whose only income is one salary credit shows a **single full ring at 100%**.
+- [ ] ⭐ **Business** and **Interest** hold both income and expenses in your ledger. Check each appears in
+      **both** donuts with its own side's figure (income and expense totals differ for both).
+- [ ] Known, and pre-existing — not new in this release: tapping one of those two categories opens a
+      drill-down whose total is income **plus** expenses for that category, so it won't equal the wedge you
+      tapped. Confirm it looks the way the note in `PROGRESS.md` describes, then decide whether you want it
+      changed.
 - [ ] The choice survives rotating the phone and coming back from a drill-down.
 
 ### Currency
 
 - [ ] Settings has a new **Currency & AI** row; it opens.
 - [ ] ⭐ Switch to **Malaysian Ringgit**. Every figure becomes `RM…` and regroups Western-style
-      (`1,234,567.89`, not `12,34,567.89`) — and **no amount changes value**.
+      (`1,234,567.89`, not `12,34,567.89`) — and **no amount changes value**. On your data the all-time
+      expense total should read `₹63,26,991.90` before and `RM6,326,991.90` after: the same digits,
+      regrouped. If any digit changes, stop and report it.
+- [ ] ⭐ Note what this does NOT do: switching currency **re-labels** your history, it does not convert it.
+      Seven years of rupee spending will read as ringgit. That is deliberate (converting 4,000 stored
+      amounts is not something to do silently) — confirm you are happy with it before relying on the
+      setting.
 - [ ] The home-screen **widget** shows the new symbol too (it may need a tap or a minute).
 - [ ] The add/edit screen's big amount, the keypad, and the recurring editor all show the new symbol.
 - [ ] A spreadsheet **export** has the new currency code in its column headings.

@@ -121,6 +121,53 @@ class SmsParserCurrencyTest {
             .isEqualTo(SmsParser.Result.IGNORED)
     }
 
+    // ---- the shapes Malaysian bank alerts actually arrive in ----
+
+    /**
+     * Real-world phrasings, not invented ones. Malaysian alerts write the amount as `RM250.00`,
+     * `RM 250.00` or `RM1,250.00`, and the digit runs straight up against the "RM" — which is exactly the
+     * case a `\b` word boundary silently fails to match, because there is no boundary between a letter and
+     * a digit. Each of these was a real miss before that guard became a negative look-ahead.
+     */
+    @Test fun the_common_ringgit_phrasings_all_capture() {
+        val cases = listOf(
+            "MAYBANK" to "RM250.00 has been debited from your account 1234 on 26/08/26",
+            "MAYBANK" to "You have spent RM 89.90 at SHELL KL on 26 Aug",
+            "CIMB" to "RM1,250.00 has been debited from your CIMB account ending 4321",
+            "PBEBANK" to "Purchase of RM75.50 at AEON BIG on card ending 9876",
+            "TNGDIGITAL" to "RM10.00 paid to GRAB via Touch n Go eWallet",
+            "HLBANK" to "Your account ending 4321 has been debited RM 2,000.00",
+        )
+        cases.forEach { (sender, body) ->
+            val p = parse(sender, body)
+            assertThat(p.result).isEqualTo(SmsParser.Result.TRANSACTION)
+            assertThat(p.currencyCode).isEqualTo("MYR")
+            assertThat(p.amountMinor).isNotNull()
+            assertThat(p.amountMinor!!).isGreaterThan(0L)
+        }
+    }
+
+    @Test fun ringgit_amounts_are_read_to_the_sen() {
+        // Thousands separators and sen must both survive — a ringgit figure read as 1.00 instead of
+        // 1,250.00 is the kind of error that only shows up as a quietly wrong balance.
+        assertThat(parse("CIMB", "RM1,250.00 has been debited from your account 4321").amountMinor)
+            .isEqualTo(125000)
+        assertThat(parse("MAYBANK", "You have spent RM 89.90 at SHELL on 26 Aug").amountMinor)
+            .isEqualTo(8990)
+        assertThat(parse("PBEBANK", "Purchase of RM75.50 at AEON on card 9876").amountMinor)
+            .isEqualTo(7550)
+    }
+
+    @Test fun a_malaysian_otp_or_promo_is_still_ignored() {
+        // Widening which AMOUNTS are readable must not widen which MESSAGES are captured.
+        assertThat(parse("MAYBANK", "123456 is your TAC. Do not share it with anyone.").result)
+            .isEqualTo(SmsParser.Result.IGNORED)
+        assertThat(parse("CIMB", "Get a pre-approved personal loan up to RM50,000 today!").result)
+            .isEqualTo(SmsParser.Result.IGNORED)
+        assertThat(parse("MAYBANK", "Your transaction of RM250.00 was declined.").result)
+            .isEqualTo(SmsParser.Result.IGNORED)
+    }
+
     @Test fun a_malaysian_bank_is_a_known_sender_and_an_unlisted_one_is_not() {
         assertThat(SenderAllowlist.lookup("MAYBANK")?.name).isEqualTo("Maybank")
         assertThat(SenderAllowlist.lookup("CIMB")?.name).isEqualTo("CIMB Bank")

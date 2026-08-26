@@ -30,8 +30,28 @@ for how the project works.
   - *Disclosure sweep done* (the app makes a third-party call again): README ×2, `docs/index.html` (new
     §3a), `play/DATA_SAFETY.md` (new §1a — why "Shared" is still No), `DATA_SAFETY_WALKTHROUGH.md`,
     `PERMISSIONS_DECLARATION.md`, `store-listing.md`.
-  - *Tests.* +60 assertions across 7 new files, including Robolectric render tests that actually OPEN the
-    new settings screen and BOTH sides of the Analytics toggle against a real in-memory Room database.
+  - *Known, PRE-EXISTING, not introduced here — the category drill-down mixes kinds.* A category can hold
+    both income and expense rows (the reference export had two: money came in under the same name it also
+    went out under). The Analytics donuts split those correctly, because both queries filter on the
+    transaction's `kind`. The drill-down does not: `CategoryTransactionsViewModel` computes
+    `total = rows.sumOf { it.amountMinor }` over the category's rows regardless of kind, so tapping a
+    ₹25,000 income wedge opens a screen totalling that plus the same category's expenses. That line is
+    unchanged since before v1.70.0 and the spending donut always had the same mismatch — but the income
+    view adds a second, more likely way to meet it. Fixing it means threading the lens's kind through the
+    drill-down route AND through its average/comparison maths, on a screen redesigned twice in v1.67–v1.68,
+    so it is left as the owner's call rather than changed unasked.
+  - *Tests.* 398 → 501 assertions across 13 new files, including Robolectric render tests that actually
+    OPEN the new settings screen and BOTH sides of the Analytics toggle against a real in-memory Room
+    database.
+  - *Validated against a real export.* The owner's full seven-year ledger (4,063 transactions, Sept 2019 →
+    Aug 2026) was replayed through the real DAO queries and the real ViewModel in a throwaway harness. The
+    all-time income (₹49,92,290.00), expense (₹63,26,991.90) and net (−₹13,34,701.90) came out identical to
+    an independently computed oracle — and the net matches the running-balance column the app itself
+    exported, across all 4,063 rows with zero mismatches. Every donut centre reconciled with its own
+    wedges on both lenses; format→parse round-tripped exactly for all 4,063 amounts in INR **and** MYR;
+    converting all 4,063 at a ringgit rate produced no overflow. The harness was deleted; what it found is
+    pinned by `AnalyticsIncomeAccuracyTest`, whose fixture is synthetic but shaped like that ledger.
+    (The export itself is personal financial data and is deliberately NOT in the repo.)
 - Previous: **v1.69.0** — versionCode **79**, versionName **"1.69.0"**. Learn-from-ignore actually works:
   the pattern key no longer carries the AMOUNT, which had made the feature dead code. No schema change.
   APK: https://github.com/aucksy/spends/releases/download/v1.69.0/Spends-v1.69.0.apk
