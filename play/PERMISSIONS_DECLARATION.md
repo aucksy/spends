@@ -34,8 +34,11 @@ Consent APIs only work for one-time-password messages the app itself triggers, w
 arbitrary bank alerts.
 
 All parsing happens locally on the device. Message content is never sent to the developer, is never sent to
-any third party, and is never used for advertising or marketing. Nothing derived from a message leaves the
-phone at all. The SMS permission itself
+any third party, and is never used for advertising or marketing. No transaction detail derived from a
+message leaves the phone. (The app has one optional feature that contacts a third party — AI currency
+conversion, which the user must enable and supply their own API key for. It transmits only a generic
+exchange-rate question such as "How many INR is 1 MYR right now?", and never an amount, a merchant, an
+account number or any message content.) The SMS permission itself
 is optional: the app is fully functional with manual entry, and prominently discloses why it needs SMS
 before requesting it.
 ```
@@ -47,8 +50,9 @@ On the SMS onboarding step, before the runtime permission prompt, Spends shows:
 > your phone, and nothing is ever sent to us."
 
 (Keep this quote in sync with `OnboardingScreen.kt` — it is the disclosure a Play reviewer will see. It
-was reworded on 2026-07-26 to accommodate the optional AI helper; that helper was removed in v1.65.0, so
-the app once again sends nothing derived from a message anywhere.)
+was reworded on 2026-07-26 to accommodate the v1.56.0–v1.64.0 AI helper, which was removed in v1.65.0. It
+remains accurate: the AI currency-conversion feature added since sends only an exchange-rate question, so
+nothing derived from a message is sent anywhere.)
 
 ⚠️ **Known wording drift, worth fixing in the app before you submit.** That on-screen line says "add it in
 one tap", but the notification's actual buttons are **Review & Add** and **Ignore**, and "Review & Add"

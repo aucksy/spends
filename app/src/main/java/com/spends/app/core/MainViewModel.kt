@@ -3,6 +3,7 @@ package com.spends.app.core
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.money.Money
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.capture.CaptureDraftStore
 import com.spends.app.data.backup.SecureKeyStore
@@ -57,6 +58,12 @@ class MainViewModel @Inject constructor(
     )
 
     val uiState: StateFlow<MainUiState> = combine(settingsRepository.settings, _demoPreparing) { settings, preparing ->
+        // Keep the process-wide display currency in step with the setting. This flow is collected eagerly
+        // for the whole app lifetime, so it is the earliest and most reliable place to do it — and it has
+        // to happen somewhere central, because widgets, notification builders and the spreadsheet exporter
+        // format money with no composition to read a CompositionLocal from. Display only: see
+        // Money.displayCurrency — no stored figure and no arithmetic depends on this assignment.
+        Money.displayCurrency = settings.baseCurrency
         MainUiState(loading = preparing, settings = settings)
     }
         .stateIn(
@@ -136,11 +143,11 @@ class MainViewModel @Inject constructor(
             runCatching { recurringRepository.materializeDue(System.currentTimeMillis()) }
             runCatching { categoryRepository.refreshAutoIcons() }
             runCatching { captureRepository.pruneLearnedOrphans() }
-            // v1.65.0: the AI helper is gone, so erase the API key it needed. It is a personal credential
-            // the user can no longer see or delete themselves — the screen that managed it does not exist
-            // any more — so leaving it encrypted on the phone forever is not an option. Guarded on
-            // presence so the overwhelming majority of launches do no write at all.
-            runCatching { if (secureKeyStore.hasApiKey()) secureKeyStore.clearApiKey() }
+            // v1.65.0 erased the key belonging to the AI helper removed in that release. That erase still
+            // runs: the new AI conversion helper stores its key under a DIFFERENT preference name, so the
+            // orphaned old credential is not adopted by it — a user told their key was deleted must not
+            // find it quietly back in use. Guarded on presence so almost every launch does no write.
+            runCatching { if (secureKeyStore.hasLegacyApiKey()) secureKeyStore.clearLegacyApiKey() }
         }
     }
 }

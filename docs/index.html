@@ -94,12 +94,32 @@
   <h2>3. Data we collect and share</h2>
   <p>We do <strong>not</strong> collect, sell, rent, or share your personal data, financial data, or messages with
   anyone, and <strong>nothing is sent to the developer at all</strong>, ever. There is no server or account behind
-  Spends, and the app contains no advertising or analytics SDKs. The only network connection the app makes is to
-  <em>your own</em> Google Drive, and only if you enable backup.</p>
-  <p class="callout">An optional "AI helper" existed between v1.56.0 and v1.64.0, which could send limited,
-  number-masked information to a third-party AI provider when you switched it on and supplied your own key. It was
-  <strong>removed in v1.65.0</strong>. The app no longer contains it, and any key you had saved is erased the next
-  time you open Spends.</p>
+  Spends, and the app contains no advertising or analytics SDKs.</p>
+  <p>Spends makes network connections in only two situations, both of which you switch on yourself:</p>
+  <ul>
+    <li><strong>Google Drive backup</strong> — to <em>your own</em> Drive, and only if you enable backup.</li>
+    <li><strong>AI currency conversion</strong> — see the callout below.</li>
+  </ul>
+
+  <h2>3a. AI currency conversion (optional, off by default)</h2>
+  <p class="callout"><strong>What it does.</strong> If you keep your books in one currency and a bank alerts you in
+  another, Spends can ask an AI provider what the exchange rate is, so the transaction is recorded in your own
+  currency instead of being logged as the wrong number. Every converted transaction shows you the original amount
+  and the rate that was used.</p>
+  <p><strong>You must turn it on and supply your own API key</strong> (Anthropic, OpenAI or Groq — your choice).
+  Until you do both, Spends makes no AI network call of any kind.</p>
+  <p><strong>What is sent.</strong> Only a currency question — for example <em>"How many INR is 1 MYR right
+  now?"</em>. <strong>No transaction amount, no merchant, no account or card number, and no message text is ever
+  sent.</strong> The provider is asked for an exchange rate and nothing else; the arithmetic happens on your phone.
+  Rates are reused for six hours, so a day's alerts from one bank typically cost a single request.</p>
+  <p><strong>Your key.</strong> It is encrypted on your device, is never included in a backup, is never shown back
+  to you once saved, and is only ever sent to the provider you selected. You can remove it at any time in
+  <em>Settings → Currency &amp; AI</em>. Your use of that provider is governed by their terms and privacy policy.</p>
+  <p><strong>Avoiding it entirely.</strong> You can pin your own exchange rate in the same settings screen, which
+  Spends uses instead — no key, and no network call.</p>
+  <p>A different, unrelated "AI helper" existed between v1.56.0 and v1.64.0 and could send number-masked
+  transaction information to a provider. It was <strong>removed in v1.65.0</strong>, is not part of the feature
+  described above, and the key it used is erased the next time you open Spends.</p>
 
   <h2>4. Data retention and deletion</h2>
   <p>Your data remains on your device until you remove it. You can:</p>
@@ -117,7 +137,7 @@
     <tr><td>Exact alarm</td><td>Fire your daily reminder at the exact time you chose.</td></tr>
     <tr><td>Run at startup</td><td>Re-arm your reminder after the phone restarts.</td></tr>
     <tr><td>Ignore battery optimisation</td><td>Optional — keeps background SMS detection reliable on aggressive devices.</td></tr>
-    <tr><td>Internet / Network state</td><td>Your optional Google Drive backup — nothing else.</td></tr>
+    <tr><td>Internet / Network state</td><td>Your optional Google Drive backup, and optional AI currency conversion if you enable it and add your own key. Nothing else.</td></tr>
     <tr><td>Vibrate</td><td>Light haptic feedback on widget taps.</td></tr>
   </table>
 
@@ -126,8 +146,9 @@
 
   <h2>7. Security</h2>
   <p>Your data is stored in your device's private app storage. Backups, if enabled, are transferred to your
-  Google Drive over an encrypted HTTPS connection. No financial data or message content is transmitted to the
-  developer.</p>
+  Google Drive over an encrypted HTTPS connection. If you enable AI currency conversion, the exchange-rate question
+  it asks is sent over an encrypted HTTPS connection to the provider you chose, and carries no transaction data.
+  No financial data or message content is transmitted to the developer.</p>
 
   <h2>8. Changes to this policy</h2>
   <p>If this policy changes, we will update the date at the top of this page and, where appropriate, note the

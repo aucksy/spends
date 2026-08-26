@@ -32,6 +32,11 @@ data class TransactionInput(
     val dedupeHash: String? = null,
     val parseConfidence: Int = 100,
     val recurringRuleId: Long? = null,
+    // Foreign-currency receipt (see ExpenseEntity's fx* fields). [amountMinor] above is ALWAYS the
+    // base-currency figure — these only record where it came from, and are null for an ordinary entry.
+    val fxCurrency: String? = null,
+    val fxAmountMinor: Long? = null,
+    val fxRateMicros: Long? = null,
 )
 
 @Singleton
@@ -58,6 +63,10 @@ class ExpenseRepository @Inject constructor(
 
     fun observeCategorySpend(startMillis: Long, endExclusiveMillis: Long): Flow<List<CategorySpend>> =
         dao.observeCategorySpend(startMillis, endExclusiveMillis)
+
+    /** Income by category for the same window — the income mirror of [observeCategorySpend]. */
+    fun observeCategoryIncome(startMillis: Long, endExclusiveMillis: Long): Flow<List<CategorySpend>> =
+        dao.observeCategoryIncome(startMillis, endExclusiveMillis)
 
     /** Earliest active transaction time (null if none) — lower bound for the "All" range. */
     fun observeEarliestDay(): Flow<Long?> = dao.observeEarliestOccurredAt()
@@ -141,6 +150,9 @@ class ExpenseRepository @Inject constructor(
                 parseConfidence = input.parseConfidence,
                 dedupeHash = input.dedupeHash,
                 recurringRuleId = input.recurringRuleId,
+                fxCurrency = input.fxCurrency,
+                fxAmountMinor = input.fxAmountMinor,
+                fxRateMicros = input.fxRateMicros,
                 createdAt = now,
                 updatedAt = now,
             ),
@@ -152,6 +164,11 @@ class ExpenseRepository @Inject constructor(
     suspend fun update(id: Long, input: TransactionInput) = db.withTransaction {
         val existing = dao.getByIdWithAllocations(id)?.expense ?: return@withTransaction
         val now = DateUtils.nowMillis()
+        // A hand-edited amount invalidates the conversion receipt: "RM 100.00 → ₹1,890.00" stops being
+        // true the moment the user overrides ₹1,890.00 with something else, and a receipt that no longer
+        // explains the figure beside it is worse than none. The rest of the edit keeps it, so correcting
+        // a merchant or a date on a converted transaction does not lose where its amount came from.
+        val amountChanged = input.amountMinor != existing.amountMinor
         dao.updateExpense(
             existing.copy(
                 amountMinor = input.amountMinor,
@@ -161,6 +178,9 @@ class ExpenseRepository @Inject constructor(
                 paymentMethodId = input.paymentMethodId,
                 kind = input.kind,
                 direction = directionFor(input.kind),
+                fxCurrency = if (amountChanged) null else existing.fxCurrency,
+                fxAmountMinor = if (amountChanged) null else existing.fxAmountMinor,
+                fxRateMicros = if (amountChanged) null else existing.fxRateMicros,
                 updatedAt = now,
             ),
         )

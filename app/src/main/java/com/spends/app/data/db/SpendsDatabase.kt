@@ -33,7 +33,7 @@ import com.spends.app.data.seed.CategorySeed
         PaymentMethodEntity::class,
         IgnoredPatternEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -299,6 +299,27 @@ abstract class SpendsDatabase : RoomDatabase() {
         val MIGRATION_15_16 = object : Migration(15, 16) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE pending_captures ADD COLUMN sourceApp TEXT")
+            }
+        }
+
+        /**
+         * v16 -> v17: multi-currency. A transaction that arrived in a currency other than the one the
+         * ledger is kept in records where its converted figure came from — the original code, the original
+         * amount in its own minor units, and the rate in micros (see `core/money/FxMath`).
+         *
+         * Purely additive and null for every existing row: `amountMinor` is untouched, so no stored figure,
+         * balance or analytic changes on upgrade. Each column is a nullable `String?`/`Long?`, so the DDL is
+         * bare `TEXT`/`INTEGER` with **no NOT NULL and no DEFAULT** — Room validates a column by name and
+         * type, and any added constraint here would fail schema validation on every upgraded install.
+         */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE expenses ADD COLUMN fxCurrency TEXT")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN fxAmountMinor INTEGER")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN fxRateMicros INTEGER")
+                db.execSQL("ALTER TABLE pending_captures ADD COLUMN fxCurrency TEXT")
+                db.execSQL("ALTER TABLE pending_captures ADD COLUMN fxAmountMinor INTEGER")
+                db.execSQL("ALTER TABLE pending_captures ADD COLUMN fxRateMicros INTEGER")
             }
         }
     }

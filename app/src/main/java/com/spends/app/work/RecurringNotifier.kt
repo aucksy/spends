@@ -119,7 +119,7 @@ object RecurringNotifier {
      */
     internal fun detailFor(txn: MaterializedTxn): String {
         val sign = if (txn.kind == TxnKind.INCOME) "+" else "-"
-        val amount = sign + Money.formatRupees(txn.amountMinor)
+        val amount = sign + Money.format(txn.amountMinor)
         val note = txn.note?.takeIf { it != titleFor(txn) }
         return if (note != null) "$amount · $note" else amount
     }

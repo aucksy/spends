@@ -246,7 +246,21 @@ private fun ReviewCard(
             Spacer(Modifier.height(4.dp))
             val color = if (row.kind == TxnKind.INCOME) semantic.income else semantic.expense
             val prefix = when (row.kind) { TxnKind.INCOME -> "+"; TxnKind.EXPENSE -> "-" }
-            Text(prefix + Money.formatRupees(row.amountMinor), style = Numerals.amountLg, color = color)
+            // amountText, not a re-format: an unconverted foreign row must render in ITS OWN currency,
+            // otherwise the card would put a rupee sign in front of a ringgit number.
+            Text(prefix + row.amountText, style = Numerals.amountLg, color = color)
+            // The conversion receipt — the whole point of converting in the open rather than silently.
+            // An unconverted row gets the same slot in the app's warning colour, so the two states read
+            // as the same kind of information rather than one being a hidden footnote.
+            row.conversionNote?.let { note ->
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (row.unconvertedForeign) MaterialTheme.colorScheme.error else semantic.review,
+                    fontWeight = if (row.unconvertedForeign) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             Text(row.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
             if (row.subtitle.isNotBlank()) {
                 Text(row.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -261,7 +275,7 @@ private fun ReviewCard(
             // Single primary action (#6) — the category is changed inside the editor it opens, so there's
             // no separate "Change category" button. It opens the editor; it does NOT add on its own.
             Button(onClick = onEdit, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                Text("Review and Add")
+                Text(if (row.unconvertedForeign) "Set the amount and add" else "Review and Add")
             }
         }
     }

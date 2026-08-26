@@ -17,6 +17,7 @@ import com.spends.app.data.db.entity.MerchantCategoryEntity
 import com.spends.app.data.db.entity.PaymentMethodEntity
 import com.spends.app.data.db.entity.RecurringRuleEntity
 import com.spends.app.data.settings.SettingsRepository
+import com.spends.app.core.money.AppCurrency
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.DefaultLanding
@@ -364,7 +365,7 @@ private fun SettingsState.toSnapshot() = SnapshotSettings(
     carryForwardEnabled, trashRetentionDays, autoBackupEnabled,
     carryForwardAnchorEpochDay, carryForwardOpeningMinor, hideCapturedInLists,
     autoDarkStartMinute, autoDarkEndMinute, autoBackupMinuteOfDay, smartCycleEnabled,
-    smartCycleResetDay,
+    smartCycleResetDay, baseCurrency.code,
 )
 
 private fun SnapshotSettings.toState() = SettingsState(
@@ -384,4 +385,6 @@ private fun SnapshotSettings.toState() = SettingsState(
     autoBackupMinuteOfDay = autoBackupMinuteOfDay,
     smartCycleEnabled = smartCycleEnabled,
     smartCycleResetDay = smartCycleResetDay,
+    // An unknown/absent code falls back to INR — the currency every pre-v6 backup was written in.
+    baseCurrency = AppCurrency.fromCodeOrDefault(baseCurrency),
 )

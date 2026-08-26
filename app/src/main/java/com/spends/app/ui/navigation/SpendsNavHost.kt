@@ -28,6 +28,7 @@ import com.spends.app.ui.settings.AppearanceSettingsScreen
 import com.spends.app.ui.settings.AutomaticSettingsScreen
 import com.spends.app.ui.settings.BackupSettingsScreen
 import com.spends.app.ui.settings.DataSettingsScreen
+import com.spends.app.ui.settings.CurrencySettingsScreen
 import com.spends.app.ui.settings.MoneySettingsScreen
 import com.spends.app.ui.settings.SettingsScreen
 import com.spends.app.ui.trash.TrashScreen
@@ -156,6 +157,7 @@ fun SpendsNavHost(
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenMoney = { navController.navigate(Routes.SETTINGS_MONEY) },
+                onOpenCurrency = { navController.navigate(Routes.SETTINGS_CURRENCY) },
                 onOpenAutomatic = { navController.navigate(Routes.SETTINGS_AUTOMATIC) },
                 onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
                 onOpenAppearance = { navController.navigate(Routes.SETTINGS_APPEARANCE) },
@@ -169,6 +171,10 @@ fun SpendsNavHost(
                 onBack = { navController.popBackStack() },
                 onOpenBanksCards = { navController.navigate(Routes.BANKS_CARDS) },
             )
+        }
+
+        composable(Routes.SETTINGS_CURRENCY) {
+            CurrencySettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.SETTINGS_AUTOMATIC) {

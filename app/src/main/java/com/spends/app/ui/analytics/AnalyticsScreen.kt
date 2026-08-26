@@ -32,6 +32,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +56,7 @@ import com.spends.app.ui.components.AutoSizeRupee
 import com.spends.app.ui.components.DonutChart
 import com.spends.app.ui.components.DonutSlice
 import com.spends.app.ui.components.PeriodSelectorBar
+import com.spends.app.ui.components.PillSegmentedControl
 import com.spends.app.ui.components.SectionLabel
 import com.spends.app.ui.components.SpendsCard
 import com.spends.app.ui.components.WeeklyBars
@@ -112,12 +116,23 @@ fun AnalyticsScreen(
             Spacer(Modifier.height(4.dp))
             SummaryCard(state)
             Spacer(Modifier.height(14.dp))
+            // ONE toggle for both charts below (see [Lens]). rememberSaveable so the choice survives a
+            // rotation and a trip into a category and back — a user analysing their income should not be
+            // dropped back into the spending view every time they drill in.
+            var lens by rememberSaveable { mutableStateOf(Lens.SPENDING) }
+            PillSegmentedControl(
+                options = Lens.entries.map { it.label },
+                selectedIndex = lens.ordinal,
+                onSelect = { lens = Lens.entries[it] },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(14.dp))
             // Inject the current cycle label (#5) so the drill-down shows which period these numbers are for.
-            CategoryDonutCard(state, semantic.dark) { catId, name, start, end ->
+            CategoryBreakdownCard(state, lens, semantic.dark) { catId, name, start, end ->
                 onOpenCategory(catId, name, cycleLabel, start, end)
             }
             Spacer(Modifier.height(14.dp))
-            SpendOverTimeCard(state)
+            OverTimeCard(state, lens)
             Spacer(Modifier.height(14.dp))
         }
 
@@ -204,30 +219,42 @@ private fun SummaryCell(
     }
 }
 
+/**
+ * The category donut + tappable legend, for whichever side of the ledger [lens] selects. One composable
+ * rather than a spending copy and an income copy: the two are the same chart over a different total, and
+ * a duplicate would be where the income view quietly stopped matching the spending view's behaviour.
+ */
 @Composable
-private fun CategoryDonutCard(
+private fun CategoryBreakdownCard(
     state: AnalyticsUiState,
+    lens: Lens,
     dark: Boolean,
     onOpenCategory: (categoryId: Long, name: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
 ) {
     fun catColor(hex: String) = parseHexColor(if (dark) ColorAssigner.darkVariant(hex) else hex)
+    val slices = state.slicesFor(lens)
+    val income = lens == Lens.INCOME
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            SectionLabel("Spending by category")
+            SectionLabel(if (income) "Income by category" else "Spending by category")
             Spacer(Modifier.height(14.dp))
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 DonutChart(
-                    slices = state.categories.map { DonutSlice(catColor(it.colorHex), it.amountMinor.toFloat()) },
+                    slices = slices.map { DonutSlice(catColor(it.colorHex), it.amountMinor.toFloat()) },
                     modifier = Modifier.size(200.dp),
                     center = {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.widthIn(max = 104.dp),
                         ) {
-                            Text("SPENT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                if (income) "EARNED" else "SPENT",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             // The categorised total so the centre figure reconciles with the wedges + legend.
                             AutoSizeRupee(
-                                minor = state.categorisedSpendMinor,
+                                minor = state.categorisedFor(lens),
                                 style = Numerals.amountLg,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.fillMaxWidth(),
@@ -237,14 +264,14 @@ private fun CategoryDonutCard(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            if (state.categories.isEmpty()) {
+            if (slices.isEmpty()) {
                 Text(
-                    "No categorised spending this period.",
+                    if (income) "No categorised income this period." else "No categorised spending this period.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                state.categories.forEachIndexed { index, c ->
+                slices.forEachIndexed { index, c ->
                     if (index > 0) Spacer(Modifier.height(8.dp))
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -264,12 +291,13 @@ private fun CategoryDonutCard(
                             Text(c.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
                             Text("${c.percent}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                Money.formatRupees(c.amountMinor),
+                                Money.format(c.amountMinor),
                                 style = Numerals.amountRow,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.widthIn(min = 70.dp),
                                 textAlign = TextAlign.End,
                             )
+
                             Icon(
                                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                 contentDescription = "Open ${c.name} transactions",
@@ -285,15 +313,18 @@ private fun CategoryDonutCard(
 }
 
 @Composable
-private fun SpendOverTimeCard(state: AnalyticsUiState) {
+private fun OverTimeCard(state: AnalyticsUiState, lens: Lens) {
+    val income = lens == Lens.INCOME
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            SectionLabel("Spend over time")
+            SectionLabel(if (income) "Income over time" else "Spend over time")
             Spacer(Modifier.height(14.dp))
-            WeeklyBars(values = state.weekly, labels = state.weekLabels)
+            WeeklyBars(values = state.barsFor(lens), labels = state.weekLabels)
             Spacer(Modifier.height(10.dp))
             Text(
-                "Shows spending only.",
+                // Both series use the SAME bucket boundaries, so the note says which one is on screen
+                // rather than implying the other is mixed in.
+                if (income) "Shows income only." else "Shows spending only.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -324,8 +355,8 @@ private fun RecurringCard(rows: List<RecurringFreqSummary>, onOpenRecurring: () 
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(row.frequency.label(), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                         Column(horizontalAlignment = Alignment.End) {
-                            if (row.outMinor > 0) Text("-" + Money.formatRupees(row.outMinor), style = Numerals.amountRow, color = semantic.expense)
-                            if (row.inMinor > 0) Text("+" + Money.formatRupees(row.inMinor), style = Numerals.amountRow, color = semantic.income)
+                            if (row.outMinor > 0) Text("-" + Money.format(row.outMinor), style = Numerals.amountRow, color = semantic.expense)
+                            if (row.inMinor > 0) Text("+" + Money.format(row.inMinor), style = Numerals.amountRow, color = semantic.income)
                         }
                     }
                 }

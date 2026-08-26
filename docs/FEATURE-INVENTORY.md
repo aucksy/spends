@@ -2,6 +2,11 @@
 
 **Version audited: v1.69.0** · **Date: 3 August 2026** · **Total features: 86**
 
+> 📌 **Amended for v1.70.0 (not a re-audit).** v1.70.0 added three marketable things this inventory does
+> not otherwise list — **income analytics**, **multi-currency (INR / MYR / USD)** and **optional AI
+> currency conversion**. They are described at the end of Section A. Everything else below is still the
+> v1.69.0 audit and has not been re-read against the code.
+
 Built for marketing use (carousel slides, store listing, feature comparisons).
 
 **How this was produced:** every screen, tab, settings page, dialog, notification, home-screen widget and
@@ -12,9 +17,13 @@ those disagreements are listed in Section C.
 > ⚠️ **The AI helper and the carousel of "insight cards" do not exist.** They were removed entirely in
 > **v1.65.0**. Five documents in this folder still describe them in detail (`AI-BUILD-PLAN.md`,
 > `AI-INSIGHTS-PLAN.md`, `AI-INSIGHTS-PHASE-B.md`, `AI-INSIGHTS-PHASE-C.md`, `AI-RESEARCH.md`), as do older
-> changelog entries. **Nothing in this inventory comes from those documents.** A full source search confirms
-> the only traces left in the app are a comment recording the removal and two stale comments in the demo-data
-> script. Do not market them.
+> changelog entries. **Nothing in this inventory comes from those documents.** Do not market them.
+>
+> ⚠️ **This is NOT the same thing as v1.70.0's AI currency conversion.** That feature converts a
+> foreign-currency bank alert and sends *only an exchange-rate question* — no amounts, no merchants, no
+> message text. The removed helper sent masked transaction data and produced insight cards; none of that
+> came back. When writing copy, never let the two blur together: the difference is exactly what makes the
+> new one defensible on the Play data-safety form.
 
 **Ranking basis:** how many users it helps × how much pain it removes × how rare it is in other expense
 apps. Not by how hard it was to build.
@@ -173,7 +182,20 @@ Counted so the total is honest. **Keep off the carousel.**
 | 83 | **Crash report copy button** | Appears after a crash, offering to copy a technical note. Contains no amounts or message text. |
 | 84 | **Salary-day auto-detector** | Code that guesses your salary day from your income history. **Fully written and unit-tested, but nothing in the app calls it — it is dead code.** Do not market it. |
 | 85 | **Old-format ignore-record cleanup** | A one-time tidy-up of records left by an earlier version of the ignore feature. Invisible. |
-| 86 | **Leftover API-key erasure** | Every launch checks for and deletes the stored key the removed AI helper used. Invisible, runs once. |
+| 86 | **Leftover API-key erasure** | Every launch checks for and deletes the stored key the **removed v1.56–v1.64 helper** used. Invisible, runs once. Still runs in v1.70.0: the new conversion feature stores its key under a different name, so a key the user was told had been deleted is never quietly adopted. |
+
+---
+
+### Added in v1.70.0 (amendment — see the note at the top of this file)
+
+| # | Feature | What it is |
+|---|---|---|
+| 87 | **Income analytics** | *Tier 1.* Analytics gains a **Spending / Income** toggle that drives the whole page: the category donut, its tappable legend and drill-down, and the over-time bars all switch sides of the ledger. Income finally has the same breakdown spending has always had — the answer to "where did it come from?", not just "where did it go?". |
+| 88 | **Multi-currency (INR / MYR / USD)** | *Tier 1.* Keep the books in rupees, ringgit or dollars. Symbol and digit grouping follow the choice (Indian `12,34,567` for rupees, `1,234,567` otherwise), across the app, the widget, notifications and spreadsheet exports. **No stored amount is ever rewritten.** Travels in the backup. |
+| 89 | **AI currency conversion (BYOK, off by default)** | *Tier 2.* A bank alert in another currency is converted on the way in and **shows its working**: `RM 100.00 → ₹1,890.00 · 1 MYR = ₹18.90`, on the review card, in the editor and on the saved transaction. Your own key (Anthropic / OpenAI / Groq), encrypted on-device, never in a backup, never shown back. Only a rate question is sent. Market it as *"shows you the rate it used"*, and say plainly that the rate is an estimate. |
+| 90 | **Pinned exchange rates** | *Tier 3.* Set your own rate for a currency pair and Spends uses it instead of asking the AI — no key, no network call. The escape hatch when an estimate has drifted. |
+| 91 | **Unconverted-amount guard** | *Tier 4 (invisible until it matters).* If a foreign amount can't be converted, it is kept in the review queue **flagged, in its original currency**, and refused by every path that commits without an editor — including "Add all". It is never logged as though it were base currency. |
+| 92 | **Malaysian sender recognition** | *Tier 3.* 13 Malaysian banks and wallets (Maybank, CIMB, Public Bank, RHB, Hong Leong, AmBank, Bank Islam, BSN, OCBC, UOB, HSBC, Touch 'n Go, Boost, GrabPay) join the 55 Indian sender IDs. |
 
 ---
 
@@ -187,8 +209,8 @@ All of the following were claims the documents made that the app does **not** do
 | **"Swipe-to-delete with instant Undo"** | README **and the Play Store listing draft** | **There is no swipe gesture anywhere.** It was deliberately removed — too many accidental deletes. Deleting is tap-a-row, or long-press → multi-select. Undo exists, on the bulk delete. ⚠️ This was in copy about to be published to Play. |
 | **"Material You colours"** | Play Store listing draft | **Material You was removed in v0.12.0.** The app always uses its own brand palette. The old setting survives only so pre-v0.12 backups still load; the theme ignores it. |
 | **"Add it in one tap" / "one-tap Add / Edit / Ignore"** | README, store listing, SMS declaration, privacy policy | The notification has **two** buttons: **Review & Add** and **Ignore**. Both it and tapping the notification open a pre-filled editor you then Save. The silent one-tap Add was deliberately removed. Honest wording: *"one tap to review, one to save."* |
-| **"~25 Indian banks, cards and wallets"** | README | The list holds **55 sender IDs covering 16 named institutions**: HDFC, ICICI, SBI, SBI Card, Axis, IDFC First, IndusInd, Yes, RBL, PNB, Amex, OneCard, CRED, Paytm, MobiKwik, L&T Finance. |
-| **AI helper and insight cards** | Five documents in this folder, plus older changelog entries and the demo-mode notes | **Confirmed absent from the code.** Only traces: a comment recording the removal, and two stale comments in the demo-data script. Nothing exists to market. Those five documents are still in the repo and are the main trap for a future session. |
+| **"~25 Indian banks, cards and wallets"** | README | The list holds **55 sender IDs covering 16 named institutions**: HDFC, ICICI, SBI, SBI Card, Axis, IDFC First, IndusInd, Yes, RBL, PNB, Amex, OneCard, CRED, Paytm, MobiKwik, L&T Finance. *(v1.70.0 adds 13 Malaysian institutions alongside these.)* |
+| **AI helper and insight cards** | Five documents in this folder, plus older changelog entries and the demo-mode notes | **Confirmed absent from the code** as of v1.69.0, and still absent in v1.70.0. Those five documents remain the main trap for a future session — and v1.70.0 adds a second trap next to it: the app now has a *different* AI feature (currency conversion), so "the AI helper is gone" and "the app makes no third-party call" are no longer interchangeable statements. The first is still true; the second is not. |
 | **"App lock"** | **The app's own Settings screen** says *"App lock arrives in an upcoming update"* | There is no app lock, fingerprint or PIN anywhere in the code. **This promise is on-screen for users today** — still outstanding: either build it or remove the line. |
 | **Data-safety files written as a re-submission** | Play data-safety answers, the click-by-click walkthrough, the submission checklist | All three told the reader to *correct a declaration already filed with Play*. **Nothing has ever been filed.** Reframed as a first submission. |
 | **Category drill-down "shows a monthly average"** | README | Out of date rather than wrong: since v1.67 the screen **leads with this cycle's total** and states the comparison in words. The 3M / 6M / all-time average is still there, as the reference bar underneath. |

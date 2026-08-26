@@ -533,7 +533,7 @@ private fun SplitSection(
                     }
                     if (row.amountMinor > 0) {
                         Text(
-                            Money.formatRupees(row.amountMinor),
+                            Money.format(row.amountMinor),
                             style = Numerals.amountRow,
                             modifier = Modifier.clickable { onEditAmount(index) }.padding(horizontal = 6.dp),
                         )
@@ -580,8 +580,8 @@ private fun SplitSection(
     }
     val remainderText = when {
         !hasTotal -> "Enter the total above to split"
-        remainder < 0L -> "Over by ${Money.formatRupees(-remainder)}"
-        remainder > 0L -> "${Money.formatRupees(remainder)} left to assign"
+        remainder < 0L -> "Over by ${Money.format(-remainder)}"
+        remainder > 0L -> "${Money.format(remainder)} left to assign"
         hasUnset -> "Set an amount for every category"
         else -> "All assigned"
     }
@@ -627,7 +627,7 @@ private fun AmountDisplay(expr: String, currentMinor: Long, kind: TxnKind, capti
             )
         }
         Text(
-            text = Money.formatRupees(currentMinor),
+            text = Money.format(currentMinor),
             style = Numerals.balanceHero,
             color = accent,
             maxLines = 1,

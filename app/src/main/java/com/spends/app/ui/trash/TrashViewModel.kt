@@ -40,7 +40,7 @@ class TrashViewModel @Inject constructor(
                 TrashRowUi(
                     id = e.expense.id,
                     title = e.expense.merchantRaw?.takeIf { it.isNotBlank() } ?: cat?.name ?: "Transaction",
-                    amountLabel = prefix + Money.formatRupees(e.expense.amountMinor),
+                    amountLabel = prefix + Money.format(e.expense.amountMinor),
                     kind = e.expense.kind,
                     iconKey = cat?.iconKey ?: "tag",
                     colorHex = cat?.colorHex ?: "#78716C",

@@ -11,6 +11,13 @@ wording both nudge you toward over-declaring; the notes below say where.
 an optional AI helper that shared data with a third party. That helper was removed in v1.65.0, before
 any Play submission. Every "shared" answer is **No**, and SMS is not collected at all.)*
 
+**The app does contact an AI provider — and every "shared" answer is still No.** The optional AI
+currency-conversion feature (off by default, needs the user's own API key) transmits one generic question
+— *"How many INR is 1 MYR right now?"* — and no user data whatsoever: no amount, merchant, account number,
+message text or identifier. Play defines collection and sharing in terms of **user data** leaving the
+device, and an exchange-rate question is identical for every user on earth. `DATA_SAFETY.md` §1a is the
+full argument; read it before answering, and quote it if a reviewer asks.
+
 Play Console wording shifts occasionally. If a label differs slightly, match on meaning — the answers
 below are what matters.
 
@@ -104,4 +111,6 @@ after review, depending on what Play asks for.
 Any future feature that makes a network call means redoing this form **and** the six-file disclosure
 sweep listed in `README.md`. The declaration is what a Play reviewer holds the app to.
 
-Today Spends makes exactly **one** network call: the user's own Google Drive backup.
+Today Spends makes exactly **two** network calls, both optional and both user-enabled: the user's own
+Google Drive backup, and the AI exchange-rate question (`DATA_SAFETY.md` §1a) — which carries no user data,
+and which the user can avoid entirely by pinning their own rate in Settings.

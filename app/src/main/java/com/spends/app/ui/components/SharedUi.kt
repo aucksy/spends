@@ -41,7 +41,9 @@ import kotlin.math.abs
 val LocalAmountsHidden = compositionLocalOf { false }
 
 /** Placeholder shown in place of a hidden balance. */
-private const val AMOUNT_MASK = "₹ ••••••"
+// The symbol is read at call time, not baked in, so a masked figure wears the same currency as an
+// unmasked one — a "₹ ••••••" on a ringgit ledger would leak the wrong currency through the mask.
+private val AMOUNT_MASK: String get() = "${Money.displayCurrency.symbol} ••••••"
 
 /** Parse a "#RRGGBB" hex into a Compose Color, falling back to neutral stone on bad input. */
 fun parseHexColor(hex: String): Color = try {
@@ -108,9 +110,9 @@ fun AnimatedRupee(
     val shown = interpolate(start.longValue, end.longValue, progress.value)
     val text = if (withSign) {
         val sign = if (shown > 0) "+" else if (shown < 0) "-" else ""
-        sign + Money.formatRupees(abs(shown), withSymbol = withSymbol)
+        sign + Money.format(abs(shown), withSymbol = withSymbol)
     } else {
-        Money.formatRupees(shown, withSymbol = withSymbol)
+        Money.format(shown, withSymbol = withSymbol)
     }
     Text(text = text, style = style, color = color, modifier = modifier, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
@@ -170,9 +172,9 @@ fun AutoSizeRupee(
         LocalAmountsHidden.current -> AMOUNT_MASK
         withSign -> {
             val sign = if (minor > 0) "+" else if (minor < 0) "-" else ""
-            sign + Money.formatRupees(abs(minor))
+            sign + Money.format(abs(minor))
         }
-        else -> Money.formatRupees(minor)
+        else -> Money.format(minor)
     }
     if (scrollable) {
         Text(
@@ -192,8 +194,8 @@ fun AutoSizeRupee(
 @Composable
 fun rupeeText(minor: Long, withSign: Boolean = false): String = when {
     LocalAmountsHidden.current -> AMOUNT_MASK
-    withSign -> (if (minor > 0) "+" else if (minor < 0) "-" else "") + Money.formatRupees(abs(minor))
-    else -> Money.formatRupees(minor)
+    withSign -> (if (minor > 0) "+" else if (minor < 0) "-" else "") + Money.format(abs(minor))
+    else -> Money.format(minor)
 }
 
 /**

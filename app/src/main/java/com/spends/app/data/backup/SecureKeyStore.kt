@@ -80,23 +80,64 @@ class SecureKeyStore @Inject constructor(
         )
     }
 
-    // ---- Leftover AI-helper API key: removed in v1.65.0, and erased on next launch ----
+    // ---- AI helper API key (BYOK) ----
 
     /**
-     * The AI helper is gone, so the API key it needed is now nothing but a personal credential sitting
-     * encrypted on the phone for no reason. It is erased on the next launch rather than left behind:
-     * an unused secret is a liability, and the user cannot delete it themselves once the screen that
-     * managed it no longer exists.
+     * The user's own AI provider key, encrypted at rest by the same hardware-keystore-wrapped cipher as
+     * the backup DEK, and never written anywhere else: not to the backup snapshot (a personal credential
+     * must not travel to another device inside a restore file), not to logs, and not to the debug report.
      *
-     * The read and write paths are deliberately deleted — only the check and the erase remain, so nothing
-     * in the app can put a key back or read one. Kept (rather than erasing blindly every launch) so the
-     * write only happens on the phones that actually have one.
+     * Stored under a NEW preference name. The v1.56.0-1.64.0 helper's key lived under
+     * [KEY_LEGACY_GROQ_BLOB]; that credential was orphaned when the feature was removed in v1.65.0 and is
+     * still erased on launch by [clearLegacyApiKey] — re-using its name would have silently resurrected a
+     * key the user was told had been deleted.
      */
-    fun hasApiKey(): Boolean = prefs.contains(KEY_API_KEY_BLOB)
+    fun setApiKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isEmpty()) {
+            clearApiKey()
+            return
+        }
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, masterKey())
+        val ct = cipher.doFinal(trimmed.toByteArray(Charsets.UTF_8))
+        val blob = cipher.iv + ct
+        prefs.edit().putString(KEY_AI_KEY_BLOB, blob.b64()).apply()
+    }
 
-    /** Erase the stored key. Safe to call when there is none. */
+    /** The stored key, or null if none is set or it can't be decrypted (fail-closed — never throws). */
+    fun apiKey(): String? {
+        val blob = prefs.getString(KEY_AI_KEY_BLOB, null)?.unb64() ?: return null
+        return runCatching {
+            val iv = blob.copyOfRange(0, IV_LEN)
+            val ct = blob.copyOfRange(IV_LEN, blob.size)
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, masterKey(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(ct), Charsets.UTF_8)
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    /** True when a key is present. Presence only — a call still fails closed if it can't be decrypted. */
+    fun hasApiKey(): Boolean = prefs.contains(KEY_AI_KEY_BLOB)
+
+    /** Remove the stored key. Safe to call when there is none. */
     fun clearApiKey() {
-        prefs.edit().remove(KEY_API_KEY_BLOB).apply()
+        prefs.edit().remove(KEY_AI_KEY_BLOB).apply()
+    }
+
+    // ---- Leftover v1.56.0-1.64.0 helper key: removed in v1.65.0, still erased on launch ----
+
+    /**
+     * The old helper is gone and its key is unreachable — no read path in this class targets
+     * [KEY_LEGACY_GROQ_BLOB] any more. It is erased rather than left behind: an unused secret is a
+     * liability, and the screen that once managed it no longer exists. Kept as a check-then-erase (rather
+     * than a blind delete every launch) so the write only happens on phones that actually have one.
+     */
+    fun hasLegacyApiKey(): Boolean = prefs.contains(KEY_LEGACY_GROQ_BLOB)
+
+    /** Erase the orphaned legacy key. Safe to call when there is none. */
+    fun clearLegacyApiKey() {
+        prefs.edit().remove(KEY_LEGACY_GROQ_BLOB).apply()
     }
 
     /** Adopt a DEK + wrap bundle recovered from a password-restore on a new device (re-arms zero-hassle). */
@@ -163,7 +204,8 @@ class SecureKeyStore @Inject constructor(
         const val IV_LEN = 12
 
         const val KEY_DEK_BLOB = "dek_blob"
-        const val KEY_API_KEY_BLOB = "groq_api_key_blob"
+        const val KEY_LEGACY_GROQ_BLOB = "groq_api_key_blob"
+        const val KEY_AI_KEY_BLOB = "ai_api_key_blob"
         const val KEY_WRAP_SALT = "wrap_salt"
         const val KEY_WRAP_IV = "wrap_iv"
         const val KEY_WRAPPED_DEK = "wrapped_dek"

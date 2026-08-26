@@ -2,6 +2,7 @@ package com.spends.app.ui.review
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.money.FxMath
 import com.spends.app.core.money.Money
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.capture.NotificationCaptureApps
@@ -37,6 +38,15 @@ data class ReviewRowUi(
     val sourceAppName: String?, // Phase 4: watched-app name for a notification capture, null for SMS rows
     val receivedAt: Long,
     val searchText: String, // #12: lowercased blob of every searchable field
+    // Multi-currency. [conversionNote] is the one-line receipt shown under the amount when this alert
+    // arrived in another currency and was converted ("RM 100.00 → ₹1,890.00 · 1 MYR = ₹18.90").
+    // [unconvertedForeign] means the opposite: the alert was foreign and could NOT be converted, so the
+    // figure on the card is still in the original currency and must not be added without a look.
+    val conversionNote: String?,
+    val unconvertedForeign: Boolean,
+    // What to render as the amount. For an unconverted foreign row this is the ORIGINAL currency's
+    // formatting, so the card never shows a ringgit figure wearing a rupee sign.
+    val amountText: String,
 )
 
 @HiltViewModel
@@ -90,9 +100,17 @@ class ReviewViewModel @Inject constructor(
         val instrument = institution?.let { inst -> last4?.let { "$inst ••$it" } ?: inst }
         val subtitle = listOfNotNull(instrument, DateUtils.formatDay(occurredAt)).joinToString(" · ")
         val sourceAppName = sourceApp?.let { NotificationCaptureApps.displayName(it) ?: it }
+        val converted = isConverted
+        val unconverted = isUnconvertedForeign
+        val amountText = if (unconverted) Money.formatCode(amountMinor, fxCurrency) else Money.format(amountMinor)
+        val conversionNote = when {
+            converted -> FxMath.describe(fxAmountMinor!!, fxCurrency!!, amountMinor, fxRateMicros!!)
+            unconverted -> "In $fxCurrency — not converted. Open it to set the amount before adding."
+            else -> null
+        }
         val searchText = listOfNotNull(
-            Money.formatRupees(amountMinor), title, subtitle, cat?.name, merchant, institution, last4, sender, rawBody,
-            sourceAppName,
+            amountText, title, subtitle, cat?.name, merchant, institution, last4, sender, rawBody,
+            sourceAppName, fxCurrency, conversionNote,
         ).joinToString(" ").lowercase()
         return ReviewRowUi(
             id = id,
@@ -109,6 +127,9 @@ class ReviewViewModel @Inject constructor(
             sourceAppName = sourceAppName,
             receivedAt = receivedAt,
             searchText = searchText,
+            conversionNote = conversionNote,
+            unconvertedForeign = unconverted,
+            amountText = amountText,
         )
     }
 }

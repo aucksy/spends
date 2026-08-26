@@ -11,7 +11,7 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.69.0 — seventeen releases.** Install **v1.69.0**; it contains
+**Currently untested: v1.57.0 → v1.70.0 — eighteen releases.** Install **v1.70.0**; it contains
 every one of them.
 
 > ⚠️ **Four sections below are now DEAD and must not be worked through.** v1.60.0, v1.61.0, v1.62.0 and
@@ -25,6 +25,69 @@ every one of them.
 > silently stopped becoming transactions from **v1.58.0** onward, which matches exactly when capture
 > stopped working. The same copied line is what crashed the v1.63.0 debug screen. **The single most
 > valuable thing to check now is whether a real bank text captures again.**
+
+---
+
+## v1.70.0 — income analytics, and multi-currency with AI conversion
+
+**⭐⭐ Read first — the one thing that must not be wrong.** This release changes the database (v16 → v17)
+and adds a path where an amount can be *rewritten* on the way in. Before anything else: open the app on
+a phone that already has real data and confirm **every existing figure is exactly what it was**. The
+migration only adds empty columns, so a changed balance would mean something is badly wrong.
+
+### Upgrading (do this before touching any new feature)
+
+- [ ] ⭐ Upgrade **in place** from v1.69.0 (do not uninstall). The app opens without crashing.
+- [ ] ⭐ The cycle balance, every transaction amount and the Analytics totals are **identical** to before.
+- [ ] ⭐ Restore a backup made by v1.69.0 (schema v5). It restores cleanly, and the currency stays ₹.
+- [ ] Make a fresh backup, then restore it. Your currency choice comes back with it.
+
+### Income analytics
+
+- [ ] Analytics shows a **Spending / Income** toggle under the summary card, starting on **Spending**.
+- [ ] The Spending view is unchanged from v1.69.0 — same donut, same legend, same bars.
+- [ ] ⭐ Tap **Income**: the donut, its centre figure ("EARNED"), the legend and the bar chart all switch
+      to income together. Nothing on screen still says "spending".
+- [ ] ⭐ The income donut's centre figure equals the sum of its legend rows.
+- [ ] Tapping an income category (e.g. Salary) drills into that category's transactions for the cycle.
+- [ ] A cycle with income but **no** spending still charts, rather than saying "Nothing to chart yet".
+- [ ] The choice survives rotating the phone and coming back from a drill-down.
+
+### Currency
+
+- [ ] Settings has a new **Currency & AI** row; it opens.
+- [ ] ⭐ Switch to **Malaysian Ringgit**. Every figure becomes `RM…` and regroups Western-style
+      (`1,234,567.89`, not `12,34,567.89`) — and **no amount changes value**.
+- [ ] The home-screen **widget** shows the new symbol too (it may need a tap or a minute).
+- [ ] The add/edit screen's big amount, the keypad, and the recurring editor all show the new symbol.
+- [ ] A spreadsheet **export** has the new currency code in its column headings.
+- [ ] Switch back to ₹. Everything returns exactly as it was.
+
+### AI currency conversion (needs your own API key)
+
+- [ ] With the switch **off**, the app behaves exactly as before and makes no AI call.
+- [ ] Turn it on, pick a provider, paste a key, tap **Test key** → "Working".
+- [ ] Paste a deliberately wrong key → it says the key was rejected, in plain words.
+- [ ] The saved key is **never shown back** to you; "Remove the saved key" works.
+- [ ] ⭐ With the ledger in ₹, get a **ringgit** SMS (or forward yourself one that reads like
+      `RM250.00 spent at ... on card ending 1234`). The review card shows the converted rupee figure
+      **and** the line `RM250.00 → ₹… · 1 MYR = ₹…`.
+- [ ] ⭐ Open it, save it, then reopen the saved transaction: the same conversion line is still shown.
+- [ ] ⭐ Edit the amount by hand and save → the conversion line disappears (it no longer explains the
+      figure). This is deliberate.
+- [ ] ⭐ **With no key set / aeroplane mode**, get a ringgit SMS. The review card shows it in **RM**, in
+      red, saying it was not converted — it must **not** appear as a rupee amount.
+- [ ] ⭐ With that unconverted row in the queue, tap **Add all**. It must be **skipped and left in the
+      queue**, not added and not deleted. Everything else in the queue is added.
+- [ ] Pin a manual rate (1 MYR = your number). A new ringgit SMS uses **your** rate, with no network call
+      (works in aeroplane mode).
+- [ ] An ordinary **rupee** SMS still captures exactly as before, with no conversion line anywhere.
+- [ ] ⭐ The live notification for a ringgit alert shows **RM**, not ₹.
+
+### Malaysian senders
+
+- [ ] An SMS from Maybank / CIMB / Public Bank / RHB / Touch 'n Go is recognised as a transaction.
+- [ ] A promotional or OTP message from those same senders is still ignored.
 
 ---
 

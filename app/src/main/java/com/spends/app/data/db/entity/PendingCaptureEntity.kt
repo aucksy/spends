@@ -38,4 +38,24 @@ data class PendingCaptureEntity(
     val rawBody: String? = null,
     val sender: String? = null,
     val sourceApp: String? = null,
-)
+    // Foreign-currency origin (DB v17) — see [ExpenseEntity]'s fx* fields. [amountMinor] is already the
+    // CONVERTED base-currency figure by the time a row is queued, so the review card can show both sides
+    // ("RM 100.00 → ₹1,890.00 · 1 MYR = ₹18.90") and the confirm path carries the receipt into the ledger.
+    val fxCurrency: String? = null,
+    val fxAmountMinor: Long? = null,
+    val fxRateMicros: Long? = null,
+) {
+    /**
+     * True when this row's amount is still in a FOREIGN currency because the conversion could not be made
+     * (no AI key, no network, an unusable rate). Such a row is safe to hold — the review queue touches no
+     * balance — but must never be committed without the user setting the amount, so every no-editor commit
+     * path (quick confirm, "Add all") refuses it and the review card flags it.
+     */
+    val isUnconvertedForeign: Boolean get() = fxCurrency != null && fxRateMicros == null
+
+    /**
+     * True when this row's amount WAS converted and carries a complete receipt: original currency,
+     * original amount and the rate that produced the stored figure.
+     */
+    val isConverted: Boolean get() = fxCurrency != null && fxAmountMinor != null && fxRateMicros != null
+}

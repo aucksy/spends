@@ -30,7 +30,7 @@ fun ImportColumnsHelpDialog(onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.height(8.dp))
                 Bullet("Date — when it happened (e.g. 2024-03-15 or 15/03/2024)")
-                Bullet("Amount — the value (₹ and commas are fine)")
+                Bullet("Amount — the value (a currency symbol and commas are fine)")
                 Bullet("Type — Income or Expense (optional; otherwise treated as expense)")
                 Bullet("Category — the category name (created if new)")
                 Bullet("Note or Merchant — the payee/description (optional)")

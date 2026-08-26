@@ -395,21 +395,21 @@ private fun DayHeader(group: DayGroupUi) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (group.expenseSubtotal > 0) {
                 Text(
-                    text = "−" + Money.formatRupees(group.expenseSubtotal),
+                    text = "−" + Money.format(group.expenseSubtotal),
                     style = Numerals.amountSmall,
                     color = semantic.expense,
                 )
             }
             if (group.incomeSubtotal > 0) {
                 Text(
-                    text = "+" + Money.formatRupees(group.incomeSubtotal),
+                    text = "+" + Money.format(group.incomeSubtotal),
                     style = Numerals.amountSmall,
                     color = semantic.income,
                 )
             }
             if (group.expenseSubtotal == 0L && group.incomeSubtotal == 0L) {
                 Text(
-                    text = Money.formatRupees(0),
+                    text = Money.format(0),
                     style = Numerals.amountSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -455,7 +455,7 @@ private fun TransactionRow(row: TransactionRowUi, selected: Boolean, onClick: ()
             // title on line 1, so it's dropped here (just "Total").
             val subtitle = buildString {
                 append("Total: ")
-                append(Money.formatRupees(row.categoryTotalMinor))
+                append(Money.format(row.categoryTotalMinor))
                 row.timeLabel?.let { append("  "); append(it) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -487,7 +487,7 @@ private fun TransactionRow(row: TransactionRowUi, selected: Boolean, onClick: ()
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = prefix + Money.formatRupees(row.amountMinor),
+                text = prefix + Money.format(row.amountMinor),
                 style = Numerals.amountRow,
                 color = amountColor,
             )

@@ -172,7 +172,7 @@ private fun CategoryHeader(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                Money.formatRupees(if (yearly) state.monthlyAverageMinor else state.totalMinor),
+                Money.format(if (yearly) state.monthlyAverageMinor else state.totalMinor),
                 style = Numerals.amountLg,
                 color = MaterialTheme.colorScheme.onPrimary,
             )
@@ -180,7 +180,7 @@ private fun CategoryHeader(
             val countPart = "${state.count} ${if (state.count == 1) "transaction" else "transactions"}"
             Text(
                 if (yearly) {
-                    "${Money.formatRupees(state.totalMinor)} in total  ·  $countPart"
+                    "${Money.format(state.totalMinor)} in total  ·  $countPart"
                 } else {
                     // The concrete dates of the selected cycle. As you step with the ‹ › arrows below, this
                     // updates — the stepper itself shows only the cycle's name.
@@ -220,14 +220,14 @@ private fun CategoryHeader(
                 Spacer(Modifier.height(10.dp))
                 ComparisonBar(
                     label = state.comparisonSelfLabel,
-                    value = Money.formatRupees(state.comparisonSelfMinor, alwaysTwoDecimals = false),
+                    value = Money.format(state.comparisonSelfMinor, alwaysTwoDecimals = false),
                     fraction = c.cycleFraction,
                     fill = MaterialTheme.colorScheme.primary,
                     onContainer = onContainer,
                 )
                 ComparisonBar(
                     label = state.comparisonRefLabel,
-                    value = Money.formatRupees(state.comparisonRefMinor, alwaysTwoDecimals = false),
+                    value = Money.format(state.comparisonRefMinor, alwaysTwoDecimals = false),
                     fraction = c.usualFraction,
                     fill = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
                     onContainer = onContainer,
@@ -430,7 +430,7 @@ private fun CategoryTxnRowItem(row: CategoryTxnRow) {
             TxnKind.EXPENSE -> "-"
         }
         Text(
-            text = prefix + Money.formatRupees(row.amountMinor),
+            text = prefix + Money.format(row.amountMinor),
             style = Numerals.amountRow,
             color = amountColor,
         )

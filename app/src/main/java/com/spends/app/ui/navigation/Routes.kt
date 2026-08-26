@@ -14,6 +14,7 @@ object Routes {
     const val SETTINGS = "settings"
     // Settings hub sub-pages (the one long settings page was split into tappable category sub-screens).
     const val SETTINGS_MONEY = "settings_money"
+    const val SETTINGS_CURRENCY = "settings_currency"
     const val SETTINGS_AUTOMATIC = "settings_automatic"
     const val SETTINGS_APPEARANCE = "settings_appearance"
     const val SETTINGS_BACKUP = "settings_backup"

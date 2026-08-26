@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,6 +40,7 @@ import com.spends.app.data.demo.DemoMode
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenMoney: () -> Unit,
+    onOpenCurrency: () -> Unit,
     onOpenAutomatic: () -> Unit,
     onOpenCategories: () -> Unit,
     onOpenAppearance: () -> Unit,
@@ -71,6 +73,12 @@ fun SettingsScreen(
                 title = "Money & Cycles",
                 subtitle = "Salary day, carry forward, Smart Cycle, banks & cards",
                 onClick = onOpenMoney,
+            )
+            SettingsHubRow(
+                icon = Icons.Filled.CurrencyExchange,
+                title = "Currency & AI",
+                subtitle = "Rupees, ringgit or dollars, and converting foreign alerts",
+                onClick = onOpenCurrency,
             )
             SettingsHubRow(
                 icon = Icons.Filled.Bolt,

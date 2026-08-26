@@ -20,9 +20,9 @@ data class Snapshot(
     companion object {
         // v2 adds `recurring`; v3 adds category `iconCustomized`; v4 adds `paymentMethods` + the
         // `smartCycleEnabled` setting; v5 adds `merchantCategories` (the learned merchant→category/note
-        // memory, so a new phone keeps the learning). Decoders use ignoreUnknownKeys + field defaults,
-        // so older backups (missing any of these) still restore cleanly.
-        const val CURRENT_SCHEMA = 5
+        // memory, so a new phone keeps the learning); v6 adds the `baseCurrency` setting. Decoders use
+        // ignoreUnknownKeys + field defaults, so older backups (missing any of these) still restore cleanly.
+        const val CURRENT_SCHEMA = 6
     }
 }
 
@@ -63,6 +63,11 @@ data class SnapshotSettings(
     // Added in v1.52.0 (Smart Cycle reset day; 0 = follow the salary day). Additive default keeps older
     // backups valid.
     val smartCycleResetDay: Int = 0,
+    // Added in v6 (multi-currency): the currency the ledger is kept in, as an ISO code. Defaulting to INR
+    // is the correct read for every pre-v6 backup — those books were rupees by construction. The AI block
+    // (key, provider, model, pinned rates) is deliberately NOT here: an API key is a personal credential
+    // that must not travel inside a restore file.
+    val baseCurrency: String = "INR",
 )
 
 @Serializable

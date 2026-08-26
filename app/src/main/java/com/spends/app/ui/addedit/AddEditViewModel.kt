@@ -3,6 +3,7 @@ package com.spends.app.ui.addedit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spends.app.core.money.FxMath
 import com.spends.app.core.money.Money
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.capture.CaptureDraft
@@ -39,7 +40,30 @@ data class AddEditInitial(
     val note: String,
     val occurredAt: Long,
     val paymentMethodId: Long? = null,
+    /**
+     * The one-line conversion receipt for a foreign-currency capture, shown above the amount field so the
+     * user can see WHY the number in front of them is what it is — or that it has not been converted at
+     * all and needs their attention. Null for the ordinary same-currency entry.
+     */
+    val conversionNote: String? = null,
+    /** True when [amountText] is still in a foreign currency, so the note is a warning, not a receipt. */
+    val unconvertedForeign: Boolean = false,
 )
+
+/**
+ * The receipt line for a capture that arrived in another currency, or null when it did not.
+ *
+ * Shared by the queued-capture and live-draft seeding paths so the two say the same thing about the same
+ * situation — the review card, the editor and the saved transaction all describe a conversion identically.
+ */
+internal fun conversionNoteFor(fxCurrency: String?, fxAmountMinor: Long?, fxRateMicros: Long?, amountMinor: Long): String? =
+    when {
+        fxCurrency != null && fxAmountMinor != null && fxRateMicros != null ->
+            FxMath.describe(fxAmountMinor, fxCurrency, amountMinor, fxRateMicros)
+        fxCurrency != null && fxRateMicros == null ->
+            "This alert was in $fxCurrency and couldn't be converted. Check the amount before saving."
+        else -> null
+    }
 
 @HiltViewModel
 class AddEditViewModel @Inject constructor(
@@ -131,6 +155,10 @@ class AddEditViewModel @Inject constructor(
                         note = e.expense.note.orEmpty(),
                         occurredAt = e.expense.occurredAt,
                         paymentMethodId = e.expense.paymentMethodId,
+                        // A saved converted transaction keeps explaining itself when reopened.
+                        conversionNote = conversionNoteFor(
+                            e.expense.fxCurrency, e.expense.fxAmountMinor, e.expense.fxRateMicros, e.expense.amountMinor,
+                        ),
                     )
                 } else {
                     newInitial()
@@ -152,6 +180,8 @@ class AddEditViewModel @Inject constructor(
                         occurredAt = p.occurredAt,
                         // Auto-match the instrument from the SMS so "Paid with" is pre-filled for review (#3).
                         paymentMethodId = paymentMethodRepository.matchInstrument(p.last4, p.institution),
+                        conversionNote = conversionNoteFor(p.fxCurrency, p.fxAmountMinor, p.fxRateMicros, p.amountMinor),
+                        unconvertedForeign = p.isUnconvertedForeign,
                     )
                 } else {
                     newInitial() // the row was confirmed/rejected elsewhere — fall back to a blank add
@@ -167,6 +197,8 @@ class AddEditViewModel @Inject constructor(
                     note = it.note.orEmpty(), // learned merchant note, pre-filled for review
                     occurredAt = it.occurredAt,
                     paymentMethodId = it.paymentMethodId,
+                    conversionNote = conversionNoteFor(it.fxCurrency, it.fxAmountMinor, it.fxRateMicros, it.amountMinor),
+                    unconvertedForeign = it.unconvertedForeign,
                 )
             }
             // A fresh manual add pre-selects the user's default instrument (#2) when Smart Cycle is on.
@@ -220,6 +252,11 @@ class AddEditViewModel @Inject constructor(
                     amountMinor, kind, categoryId, merchant, note, occurredAt, draft!!.dedupeHash, pmId,
                     relaxedHash = draft!!.relaxedHash,
                     fromNotification = draft!!.fromNotification,
+                    // Carry the conversion receipt so a saved converted transaction can still show what
+                    // it was converted from. commitDraft drops it if the user edited the amount.
+                    fx = draft!!.let {
+                        SmsCaptureRepository.Fx(it.amountMinor, it.fxCurrency, it.fxAmountMinor, it.fxRateMicros)
+                    },
                 )
                 else -> {
                     val input = TransactionInput(

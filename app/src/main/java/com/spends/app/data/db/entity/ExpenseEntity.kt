@@ -43,4 +43,17 @@ data class ExpenseEntity(
     // Set when this row was auto-created by a recurring rule — links it back to the rule so an edit can
     // optionally update all past occurrences (#5) and the occurrence cap (#8) can count them. Null otherwise.
     val recurringRuleId: Long? = null,
+    // ---- Foreign-currency origin (DB v17) ----
+    // Set ONLY when this transaction arrived in a currency other than the one the ledger is kept in, and was
+    // converted on the way in. [amountMinor] above is ALWAYS base-currency minor units — these three columns
+    // are a receipt for how that figure was reached, never an input to any sum:
+    //   fxCurrency     the original ISO code ("MYR")
+    //   fxAmountMinor  the original amount in ITS OWN minor units (sen)
+    //   fxRateMicros   base units per one foreign unit × 1_000_000 (see core/money/FxMath)
+    // All three are null together for an ordinary same-currency transaction, so every existing row and every
+    // manual entry is unaffected. Nullable Long?/String? → INTEGER/TEXT with no NOT NULL and no default,
+    // exactly matching Room's generated DDL in MIGRATION_16_17.
+    val fxCurrency: String? = null,
+    val fxAmountMinor: Long? = null,
+    val fxRateMicros: Long? = null,
 )

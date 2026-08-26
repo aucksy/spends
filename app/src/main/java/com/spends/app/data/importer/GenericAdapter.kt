@@ -106,7 +106,7 @@ object GenericAdapter {
 
     private fun amountToMinor(cell: Any?): Long? = when (cell) {
         is Number -> Math.round(cell.toDouble() * 100.0)
-        is String -> Money.parseRupeesToMinor(cell)
+        is String -> Money.parseToMinor(cell)
         else -> null
     }
 

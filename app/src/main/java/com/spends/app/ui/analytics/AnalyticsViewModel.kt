@@ -68,7 +68,13 @@ data class AnalyticsUiState(
     // Spend actually categorised in the breakdown — reconciles the donut centre with its wedges/legend.
     val categorisedSpendMinor: Long = 0,
     val categories: List<CategorySlice> = emptyList(),
+    // Income by category — the exact mirror of [categories]/[categorisedSpendMinor] for money coming IN,
+    // so the breakdown card can answer "where did it come from?" as well as "where did it go?".
+    val categorisedIncomeMinor: Long = 0,
+    val incomeCategories: List<CategorySlice> = emptyList(),
     val weekly: List<Float> = emptyList(),
+    // Income over the same buckets as [weekly], so the two charts are directly comparable.
+    val incomeWeekly: List<Float> = emptyList(),
     val weekLabels: List<String> = emptyList(),
     val recurring: List<RecurringFreqSummary> = emptyList(),
     // The selected period's epoch-millis bounds, so tapping a category drills into that exact window.
@@ -79,6 +85,28 @@ data class AnalyticsUiState(
 ) {
     val netMinor: Long get() = incomeMinor - expenseMinor
     val isEmpty: Boolean get() = !loading && expenseMinor == 0L && incomeMinor == 0L
+
+    /** The slices/total/bars for one lens, so the shared chart cards take a [Lens] instead of a branch. */
+    fun slicesFor(lens: Lens): List<CategorySlice> = if (lens == Lens.INCOME) incomeCategories else categories
+    fun categorisedFor(lens: Lens): Long = if (lens == Lens.INCOME) categorisedIncomeMinor else categorisedSpendMinor
+    fun barsFor(lens: Lens): List<Float> = if (lens == Lens.INCOME) incomeWeekly else weekly
+    fun totalFor(lens: Lens): Long = if (lens == Lens.INCOME) incomeMinor else expenseMinor
+}
+
+/**
+ * Which side of the ledger Analytics is showing.
+ *
+ * One toggle drives both the category breakdown and the over-time chart rather than each card having its
+ * own: a screen where the donut says "income" while the bars below it still say "spending" is a screen
+ * that will be misread. It also keeps the page the same length it has always been instead of doubling it.
+ */
+enum class Lens(val label: String) {
+    SPENDING("Spending"),
+    INCOME("Income"),
+    ;
+
+    /** The kind whose transactions this lens counts — used by the category drill-down. */
+    val kind: TxnKind get() = if (this == INCOME) TxnKind.INCOME else TxnKind.EXPENSE
 }
 
 /** A resolved Analytics period — [composite] is non-null for the Smart Cycle composite (Round B). */
@@ -178,14 +206,15 @@ class AnalyticsViewModel @Inject constructor(
             }
             combine(
                 expenseRepository.observeCategorySpend(resolved.startMillis, resolved.endExclusiveMillis),
+                expenseRepository.observeCategoryIncome(resolved.startMillis, resolved.endExclusiveMillis),
                 expenseRepository.observeKindSums(resolved.startMillis, resolved.endExclusiveMillis),
                 expenseRepository.observeBetween(resolved.startMillis, resolved.endExclusiveMillis),
                 recurringRepository.observeAll(),
-            ) { catSpend, kindSums, items, rules ->
+            ) { catSpend, catIncome, kindSums, items, rules ->
                 if (resolved.composite != null) {
                     buildStateComposite(resolved, items, rules)
                 } else {
-                    buildState(resolved, catSpend, kindSums, items, rules)
+                    buildState(resolved, catSpend, kindSums, items, rules, catIncome)
                 }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
@@ -263,7 +292,22 @@ class AnalyticsViewModel @Inject constructor(
     ): AnalyticsUiState {
         val composite = resolved.composite!!
         val items = boundingItems.filter { composite.contains(it.expense.occurredAt, it.expense.paymentMethodId) }
-        val catSpend = items.filter { it.expense.kind == TxnKind.EXPENSE }
+        val kindSums = listOf(
+            KindSum(TxnKind.INCOME, items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor }),
+            KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
+        )
+        return buildState(resolved, groupByCategory(items, TxnKind.EXPENSE), kindSums, items, rules, groupByCategory(items, TxnKind.INCOME))
+            .copy(isComposite = true)
+    }
+
+    /**
+     * Category totals for one kind, computed in memory. Used by the two Smart Cycle paths, which filter
+     * their items before aggregating and so cannot use the SQL GROUP BY the plain path uses. Mirrors
+     * `ExpenseDao.observeCategorySpend`/`observeCategoryIncome`: allocations, grouped by category,
+     * biggest first.
+     */
+    private fun groupByCategory(items: List<ExpenseWithAllocations>, kind: TxnKind): List<CategorySpend> =
+        items.filter { it.expense.kind == kind }
             .flatMap { it.allocations }
             .groupBy { it.category.id }
             .map { (id, allocs) ->
@@ -271,12 +315,6 @@ class AnalyticsViewModel @Inject constructor(
                 CategorySpend(categoryId = id, name = c.name, colorHex = c.colorHex, iconKey = c.iconKey, total = allocs.sumOf { it.allocation.amountMinor })
             }
             .sortedByDescending { it.total }
-        val kindSums = listOf(
-            KindSum(TxnKind.INCOME, items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor }),
-            KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
-        )
-        return buildState(resolved, catSpend, kindSums, items, rules).copy(isComposite = true)
-    }
 
     /** Card-billing-aware Smart Cycle analytics — donut, weekly + totals from the items bucketed to this cycle. */
     private fun buildStateSmartCard(
@@ -292,19 +330,11 @@ class AnalyticsViewModel @Inject constructor(
             occurredAtOf = { it.expense.occurredAt },
             billingDayOf = { ctx.cardBillingDays[it.expense.paymentMethodId] },
         )
-        val catSpend = items.filter { it.expense.kind == TxnKind.EXPENSE }
-            .flatMap { it.allocations }
-            .groupBy { it.category.id }
-            .map { (id, allocs) ->
-                val c = allocs.first().category
-                CategorySpend(categoryId = id, name = c.name, colorHex = c.colorHex, iconKey = c.iconKey, total = allocs.sumOf { it.allocation.amountMinor })
-            }
-            .sortedByDescending { it.total }
         val kindSums = listOf(
             KindSum(TxnKind.INCOME, items.filter { it.expense.kind == TxnKind.INCOME }.sumOf { it.expense.amountMinor }),
             KindSum(TxnKind.EXPENSE, items.filter { it.expense.kind == TxnKind.EXPENSE }.sumOf { it.expense.amountMinor }),
         )
-        return buildState(resolved, catSpend, kindSums, items, rules)
+        return buildState(resolved, groupByCategory(items, TxnKind.EXPENSE), kindSums, items, rules, groupByCategory(items, TxnKind.INCOME))
     }
 
     private fun buildState(
@@ -313,34 +343,20 @@ class AnalyticsViewModel @Inject constructor(
         kindSums: List<KindSum>,
         items: List<ExpenseWithAllocations>,
         rules: List<RecurringRuleEntity>,
+        catIncome: List<CategorySpend>,
     ): AnalyticsUiState {
         val expense = kindSums.firstOrNull { it.kind == TxnKind.EXPENSE }?.total ?: 0
         val income = kindSums.firstOrNull { it.kind == TxnKind.INCOME }?.total ?: 0
 
         val categorisedSpend = catSpend.sumOf { it.total }
-        val spendTotal = categorisedSpend.coerceAtLeast(1)
-        val slices = catSpend.map {
-            CategorySlice(
-                categoryId = it.categoryId,
-                name = it.name,
-                colorHex = it.colorHex,
-                iconKey = it.iconKey,
-                amountMinor = it.total,
-                percent = Math.round(it.total.toDouble() / spendTotal * 100).toInt(),
-            )
-        }
+        val categorisedIncome = catIncome.sumOf { it.total }
 
-        // Spend-over-time buckets — proportional so any range length maps onto at most 6 segments.
+        // Buckets over time — proportional so any range length maps onto at most 6 segments. Expense and
+        // income share the SAME bucket boundaries so the two views of the chart are directly comparable.
         val startDay = DateUtils.toLocalDate(resolved.startMillis)
         val endDay = DateUtils.toLocalDate(resolved.endExclusiveMillis)
         val days = (endDay.toEpochDay() - startDay.toEpochDay()).toInt().coerceAtLeast(1)
         val weeks = ceil(days / 7.0).toInt().coerceIn(1, 6)
-        val weekly = DoubleArray(weeks)
-        items.filter { it.expense.kind == TxnKind.EXPENSE }.forEach { e ->
-            val dayIndex = (DateUtils.toLocalDate(e.expense.occurredAt).toEpochDay() - startDay.toEpochDay()).toInt()
-            val w = ((dayIndex.toLong() * weeks) / days).toInt().coerceIn(0, weeks - 1)
-            e.allocations.forEach { weekly[w] += it.allocation.amountMinor.toDouble() }
-        }
 
         return AnalyticsUiState(
             loading = false,
@@ -348,13 +364,51 @@ class AnalyticsViewModel @Inject constructor(
             expenseMinor = expense,
             incomeMinor = income,
             categorisedSpendMinor = categorisedSpend,
-            categories = slices,
-            weekly = weekly.map { it.toFloat() },
+            categories = toSlices(catSpend),
+            categorisedIncomeMinor = categorisedIncome,
+            incomeCategories = toSlices(catIncome),
+            weekly = bucketByTime(items, TxnKind.EXPENSE, startDay.toEpochDay(), days, weeks),
+            incomeWeekly = bucketByTime(items, TxnKind.INCOME, startDay.toEpochDay(), days, weeks),
             weekLabels = (1..weeks).map { "W$it" },
             recurring = summariseRecurring(rules),
             windowStartMillis = resolved.startMillis,
             windowEndExclusiveMillis = resolved.endExclusiveMillis,
         )
+    }
+
+    /**
+     * Category totals → donut wedges with a percentage of the CATEGORISED total, so the wedges, the legend
+     * percentages and the figure in the middle of the donut all reconcile to the same number.
+     */
+    private fun toSlices(rows: List<CategorySpend>): List<CategorySlice> {
+        val total = rows.sumOf { it.total }.coerceAtLeast(1)
+        return rows.map {
+            CategorySlice(
+                categoryId = it.categoryId,
+                name = it.name,
+                colorHex = it.colorHex,
+                iconKey = it.iconKey,
+                amountMinor = it.total,
+                percent = Math.round(it.total.toDouble() / total * 100).toInt(),
+            )
+        }
+    }
+
+    /** Sum one kind's allocations into [weeks] proportional buckets across the window. */
+    private fun bucketByTime(
+        items: List<ExpenseWithAllocations>,
+        kind: TxnKind,
+        startEpochDay: Long,
+        days: Int,
+        weeks: Int,
+    ): List<Float> {
+        val buckets = DoubleArray(weeks)
+        items.filter { it.expense.kind == kind }.forEach { e ->
+            val dayIndex = (DateUtils.toLocalDate(e.expense.occurredAt).toEpochDay() - startEpochDay).toInt()
+            val w = ((dayIndex.toLong() * weeks) / days).toInt().coerceIn(0, weeks - 1)
+            e.allocations.forEach { buckets[w] += it.allocation.amountMinor.toDouble() }
+        }
+        return buckets.map { it.toFloat() }
     }
 
     private fun summariseRecurring(rules: List<RecurringRuleEntity>): List<RecurringFreqSummary> {

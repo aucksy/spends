@@ -6,6 +6,8 @@ import android.provider.Telephony
 import androidx.room.withTransaction
 import com.spends.app.core.category.IconAssigner
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.ai.ConversionOutcome
+import com.spends.app.data.ai.CurrencyAi
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.demo.DemoMode
 import com.spends.app.data.db.entity.IgnoredPatternEntity
@@ -45,6 +47,7 @@ class SmsCaptureRepository @Inject constructor(
     private val db: SpendsDatabase,
     private val expenseRepository: ExpenseRepository,
     private val paymentMethodRepository: PaymentMethodRepository,
+    private val currencyAi: CurrencyAi,
 ) {
     private val categoryDao = db.categoryDao()
     private val expenseDao = db.expenseDao()
@@ -88,6 +91,11 @@ class SmsCaptureRepository @Inject constructor(
         val dedupeHash: String,
         val relaxedHash: String,
         val refNumber: String?,
+        // The currency the SMS actually named, or null for the ordinary base-currency alert. [preview] is
+        // deliberately NOT suspending — it runs on the notification fast path and must never wait on a
+        // network call — so no conversion happens here. The prompt therefore shows the alert's OWN
+        // currency ("RM250.00"), which is both honest and cheap; conversion happens when the user acts.
+        val currencyCode: String? = null,
     )
 
     // ---- Live capture (notification path) ----
@@ -104,6 +112,7 @@ class SmsCaptureRepository @Inject constructor(
             dedupeHash = hashFor(parsed, occurredAt, amount, kind),
             relaxedHash = relaxedHashOf(parsed, occurredAt, amount, kind),
             refNumber = parsed.refNumber,
+            currencyCode = parsed.currencyCode,
         )
     }
 
@@ -134,11 +143,18 @@ class SmsCaptureRepository @Inject constructor(
         // fallback is deliberately confined to the review editor (#3), where the user can see + correct it,
         // so a same-bank non-card debit is never silently mis-attributed to a card here.
         val pmId = paymentMethodRepository.matchConfirmedByLast4(parsed.last4)
+        val fx = resolveFx(parsed, amount)
+        // A foreign amount we could not convert must NOT take this path. Everything else here commits
+        // straight to the ledger with no review, and committing a ringgit number into a rupee ledger is
+        // precisely the money bug multi-currency exists to prevent. Queue it for review instead, where the
+        // user sees the flag and the original amount.
+        if (fx.unconverted) return@withLock null
         // Live, user-confirmed captures are tagged NOTIFICATION (a deliberate add) — distinct from the
         // bulk historical scan (SMS) so the hide/delete-bulk controls never touch these (#11).
         createLedgerTxn(
-            amount, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION, pmId,
+            fx.minor, kind, occurredAt, parsed.merchant, categoryId, hash, TxnSource.NOTIFICATION, pmId,
             note = learnedNoteFor(parsed.merchant),
+            fx = fx,
         )
     }
 
@@ -153,8 +169,14 @@ class SmsCaptureRepository @Inject constructor(
         val amount = parsed.amountMinor ?: return null
         val kind = parsed.kind ?: return null
         val occurredAt = parsed.occurredAt ?: receivedAt
+        // Convert before the editor opens, so "Paid RM250" pre-fills as the base-currency figure rather
+        // than as 250 of whatever the books are in. When conversion isn't possible the raw foreign number
+        // is carried instead and [CaptureDraft.fxCurrency] tells the editor to say so — the user is
+        // standing in front of the amount field either way, which is why this path can afford to be
+        // lenient where the no-editor commit paths refuse outright.
+        val fx = resolveFx(parsed, amount)
         return CaptureDraft(
-            amountMinor = amount,
+            amountMinor = fx.minor,
             kind = kind,
             // Fuzzy allowed: everything here lands in the editor for the user to review before Save.
             categoryId = resolveCategory(parsed, kind, allowFuzzy = true),
@@ -167,6 +189,9 @@ class SmsCaptureRepository @Inject constructor(
             fromNotification = sourceApp != null,
             // Pre-match the instrument so the editor's "Paid with" is filled in for review (#3).
             paymentMethodId = paymentMethodRepository.matchInstrument(parsed.last4, parsed.institution),
+            fxCurrency = fx.currency,
+            fxAmountMinor = fx.originalMinor,
+            fxRateMicros = fx.rateMicros,
         )
     }
 
@@ -185,6 +210,7 @@ class SmsCaptureRepository @Inject constructor(
         paymentMethodId: Long? = null,
         relaxedHash: String? = null,
         fromNotification: Boolean = false,
+        fx: Fx? = null,
     ): Long = captureMutex.withLock {
         // Same guard the silent "Add" path has: never double-count an SMS already in the ledger (e.g. a
         // re-delivered alert, or one the user already added). Returns a sentinel; the editor only needs
@@ -212,6 +238,11 @@ class SmsCaptureRepository @Inject constructor(
                 source = TxnSource.NOTIFICATION,
                 dedupeHash = dedupeHash,
                 parseConfidence = 100,
+                // The receipt survives only if the user saved the converted figure unchanged, and only
+                // when the conversion actually completed — same rule as confirmPendingEdited.
+                fxCurrency = fx?.currency.takeIf { fx?.rateMicros != null && amountMinor == fx.minor },
+                fxAmountMinor = fx?.originalMinor.takeIf { fx?.rateMicros != null && amountMinor == fx.minor },
+                fxRateMicros = fx?.rateMicros?.takeIf { amountMinor == fx.minor },
             ),
         )
         // The user saw + saved the note field here, so their note (or a deliberate clear) is learned too.
@@ -332,9 +363,14 @@ class SmsCaptureRepository @Inject constructor(
             }
             // Fuzzy allowed: a queued row is a review surface (card + editor) before anything commits.
             val categoryId = resolveCategory(parsed, kind, allowFuzzy = true)
+            // Convert AFTER the dedupe checks, not before: the hash is built from the amount as PARSED, so
+            // the same alert hashes identically whether or not a conversion succeeded this time. Hashing
+            // the converted figure would let a rate that moved between two deliveries of one alert produce
+            // two different hashes — and therefore two review rows for one payment.
+            val fx = resolveFx(parsed, amount)
             pendingDao.insert(
                 PendingCaptureEntity(
-                    amountMinor = amount,
+                    amountMinor = fx.minor,
                     kind = kind,
                     occurredAt = occurredAt,
                     merchant = parsed.merchant?.ifBlank { null },
@@ -348,6 +384,9 @@ class SmsCaptureRepository @Inject constructor(
                     rawBody = body,
                     sender = sender,
                     sourceApp = sourceApp,
+                    fxCurrency = fx.currency,
+                    fxAmountMinor = fx.originalMinor,
+                    fxRateMicros = fx.rateMicros,
                 ),
             ).takeIf { it != -1L }
         }
@@ -490,9 +529,16 @@ class SmsCaptureRepository @Inject constructor(
                             continue
                         }
                         val categoryId = resolveCategory(parsed, kind, allowFuzzy = true, preloaded = learned)
+                        // Same conversion the live path does, and for the same reason: an inbox that
+                        // contains ringgit alerts must not queue them as if they were base-currency
+                        // amounts. Rates are cached per currency pair, so a scan of thousands of messages
+                        // costs one network call per distinct foreign currency, not one per message. The
+                        // hash above is built from the amount as PARSED, so conversion cannot affect
+                        // dedupe against rows queued on an earlier scan.
+                        val fx = resolveFx(parsed, amount)
                         val rowId = pendingDao.insert(
                             PendingCaptureEntity(
-                                amountMinor = amount,
+                                amountMinor = fx.minor,
                                 kind = kind,
                                 occurredAt = occurredAt,
                                 merchant = parsed.merchant?.ifBlank { null },
@@ -505,6 +551,9 @@ class SmsCaptureRepository @Inject constructor(
                                 createdAt = DateUtils.nowMillis(),
                                 rawBody = body, // #10/#12: keep the source SMS for View-SMS + search
                                 sender = sender,
+                                fxCurrency = fx.currency,
+                                fxAmountMinor = fx.originalMinor,
+                                fxRateMicros = fx.rateMicros,
                             ),
                         )
                         if (rowId != -1L) {
@@ -629,6 +678,10 @@ class SmsCaptureRepository @Inject constructor(
             pendingDao.deleteById(id)
             return@withLock null
         }
+        // Quick-confirm commits without an editor, so an amount still in a foreign currency has nowhere
+        // to be corrected — refuse it here and leave the row queued. The review card routes these to the
+        // full editor instead, where the user can see both currencies and set the figure themselves.
+        if (p.isUnconvertedForeign) return@withLock null
         val finalCategory = categoryId ?: p.categoryId
         // Quick-confirm (no editor) → precise last4 match only; bank-name fallback is editor-only (#3).
         val pmId = paymentMethodRepository.matchConfirmedByLast4(p.last4)
@@ -637,6 +690,7 @@ class SmsCaptureRepository @Inject constructor(
         val newId = createLedgerTxn(
             p.amountMinor, p.kind, p.occurredAt, p.merchant, finalCategory, p.dedupeHash, TxnSource.SMS, pmId,
             note = learnedNoteFor(p.merchant),
+            fx = p.toFx(),
         )
         // Learn only a DELIBERATE pick (an explicit category passed in). Recording the row's own
         // auto-guess would lock a wrong guess in as if the user chose it.
@@ -696,6 +750,12 @@ class SmsCaptureRepository @Inject constructor(
                 source = TxnSource.SMS,
                 dedupeHash = p.dedupeHash,
                 parseConfidence = 100,
+                // The receipt survives only if the user left the converted figure as it was. Once they
+                // type their own amount it no longer explains what is stored, so it is dropped — the same
+                // rule ExpenseRepository.update applies to a later edit.
+                fxCurrency = p.fxCurrency.takeIf { amountMinor == p.amountMinor && p.fxRateMicros != null },
+                fxAmountMinor = p.fxAmountMinor.takeIf { amountMinor == p.amountMinor && p.fxRateMicros != null },
+                fxRateMicros = p.fxRateMicros.takeIf { amountMinor == p.amountMinor },
             ),
         )
         // Full-editor confirm: the user saw + saved the note field, so it's learned (a clear clears).
@@ -719,6 +779,10 @@ class SmsCaptureRepository @Inject constructor(
                 .filter { it.deletedAt == null }
                 .mapTo(HashSet()) { manualKey(it.occurredAt, it.amountMinor, it.kind) }
             for (p in all) {
+                // Never bulk-commit an amount still in a foreign currency: "Add all" has no editor and no
+                // per-row confirmation, so this is the one path where a wrong figure would land in the
+                // ledger with nobody having looked at it. These rows are kept queued below.
+                if (p.isUnconvertedForeign) continue
                 val relaxed = relaxedHashOf(p)
                 val refless = p.dedupeHash == relaxed
                 val dayKey = manualKey(p.occurredAt, p.amountMinor, p.kind)
@@ -732,6 +796,7 @@ class SmsCaptureRepository @Inject constructor(
                     p.amountMinor, p.kind, p.occurredAt, p.merchant, p.categoryId, p.dedupeHash, TxnSource.SMS, pmId,
                     // Exact-match note only — this path writes straight to the ledger with no review.
                     note = learnedNoteFor(p.merchant),
+                    fx = p.toFx(),
                 )
                 committed.add(p.dedupeHash)
                 ledgerDayKeys.add(dayKey)
@@ -740,7 +805,10 @@ class SmsCaptureRepository @Inject constructor(
                 // guess as a "user choice" locks it in (learned mappings win over fresh guesses forever).
                 // Deliberate choices are learned where they happen: the review editor / an editor save.
             }
-            pendingDao.deleteAll()
+            // Everything this pass handled goes — including rows skipped as duplicates, which are stale by
+            // definition. The unconverted-foreign rows are the one exception: they were never committed, so
+            // clearing them would silently destroy real transactions the user has not seen yet.
+            all.filterNot { it.isUnconvertedForeign }.forEach { pendingDao.deleteById(it.id) }
         }
         added
     }
@@ -757,6 +825,68 @@ class SmsCaptureRepository @Inject constructor(
         count
     }
 
+    // ---- Foreign currency (multi-currency capture) ----
+
+    /**
+     * What a capture should store for its amount, plus the receipt explaining it.
+     *
+     * [minor] is ALWAYS what goes in the amount column. For the ordinary same-currency alert everything
+     * else is null and this is a no-op wrapper around the parsed number.
+     */
+    data class Fx(
+        val minor: Long,
+        val currency: String? = null,
+        val originalMinor: Long? = null,
+        val rateMicros: Long? = null,
+    ) {
+        /**
+         * A foreign amount we could NOT convert — no key, no network, an unusable rate. The digits are
+         * right but the currency is not the ledger's, so [minor] must never be treated as a final figure:
+         * the review card flags it and "Add all" refuses to bulk-commit it.
+         */
+        val unconverted: Boolean get() = currency != null && rateMicros == null
+    }
+
+    /**
+     * Resolve a parsed amount into the currency the ledger is kept in.
+     *
+     * Three outcomes, and the third is the one that matters:
+     *  - no currency token, or the alert is already in the base currency → unchanged, no receipt;
+     *  - converted → the base-currency figure plus the original amount and the rate that produced it;
+     *  - foreign but NOT convertible → the raw foreign number, flagged [Fx.unconverted].
+     *
+     * The last case deliberately keeps the capture instead of dropping it. This app's standing rule is
+     * that a detected transaction is never silently lost, and a queued row touches no balance until the
+     * user confirms it — so the safe play is to surface it, marked, rather than to discard a real payment
+     * because a network call failed.
+     */
+    /** The receipt a queued row carries, in the shape [createLedgerTxn] takes. */
+    private fun PendingCaptureEntity.toFx(): Fx =
+        Fx(minor = amountMinor, currency = fxCurrency, originalMinor = fxAmountMinor, rateMicros = fxRateMicros)
+
+    private suspend fun resolveFx(parsed: SmsParser.Parsed, amount: Long): Fx {
+        val code = parsed.currencyCode ?: return Fx(amount)
+        // A thrown exception is treated as Unavailable, not as "no currency": losing the fact that this
+        // amount is foreign is the one failure that would let it be committed as base currency.
+        val outcome = runCatching { currencyAi.convert(code, amount, DateUtils.nowMillis()) }
+            .getOrDefault(ConversionOutcome.Unavailable(code))
+        return when (outcome) {
+            // The alert names the currency the books are ALREADY kept in — an ordinary domestic capture
+            // for a ringgit or dollar user. No receipt, no flag: it is not a conversion at all.
+            is ConversionOutcome.NotNeeded -> Fx(amount)
+            is ConversionOutcome.Converted -> outcome.conversion.let {
+                Fx(
+                    minor = it.baseMinor,
+                    currency = it.foreignCode,
+                    originalMinor = it.foreignMinor,
+                    rateMicros = it.rateMicros,
+                )
+            }
+            is ConversionOutcome.Unavailable ->
+                Fx(minor = amount, currency = outcome.code, originalMinor = amount, rateMicros = null)
+        }
+    }
+
     // ---- helpers ----
 
     /** #6: merchant = the real merchant only (no bank-name fallback); [note] is the learned merchant
@@ -771,6 +901,7 @@ class SmsCaptureRepository @Inject constructor(
         source: TxnSource,
         paymentMethodId: Long? = null,
         note: String? = null,
+        fx: Fx? = null,
     ): Long = expenseRepository.create(
         TransactionInput(
             amountMinor = amount,
@@ -783,6 +914,11 @@ class SmsCaptureRepository @Inject constructor(
             source = source,
             dedupeHash = hash,
             parseConfidence = 100, // user-reviewed
+            // Only a COMPLETED conversion leaves a receipt. An unconverted foreign amount never reaches
+            // here (both commit paths refuse it), so a stored rate always explains the stored figure.
+            fxCurrency = fx?.rateMicros?.let { fx.currency },
+            fxAmountMinor = fx?.rateMicros?.let { fx.originalMinor },
+            fxRateMicros = fx?.rateMicros,
         ),
     )
 

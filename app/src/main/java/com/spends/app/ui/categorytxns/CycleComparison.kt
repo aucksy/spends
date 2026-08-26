@@ -81,7 +81,7 @@ data class CycleComparison(
             val rounded = (minor.toDouble() / step).roundToLong() * step
             // Never round a real, non-zero amount away to "₹0" — for a tiny figure, show it as it is.
             val shown = if (rounded == 0L && minor != 0L) minor else rounded
-            return Money.formatRupees(shown, alwaysTwoDecimals = false)
+            return Money.format(shown, alwaysTwoDecimals = false)
         }
     }
 }

@@ -94,6 +94,11 @@ class SummaryWidget : AppWidgetProvider() {
             try {
                 val ep = entryPoint(context)
                 val settings = ep.settingsRepository().settings.first()
+                // A widget update can run in a freshly-started process where MainViewModel was never
+                // created (a broadcast after the app was killed), so the display currency is set here too —
+                // otherwise the widget would render this cycle's figures under the DEFAULT symbol while the
+                // app itself shows the chosen one. Display only; see Money.displayCurrency.
+                Money.displayCurrency = settings.baseCurrency
                 // Mirror whatever the user last selected in the app (#6) — read one-shot from the persisted
                 // store. ALL falls back to PeriodResolver's 5-year floor since the widget doesn't fetch the
                 // earliest day.
@@ -275,7 +280,7 @@ class SummaryWidget : AppWidgetProvider() {
         eyeHidden: Boolean,
         demo: Boolean = false,
     ): RemoteViews {
-        fun money(v: Long) = if (masked) MASK else Money.formatRupees(v, alwaysTwoDecimals = false)
+        fun money(v: Long) = if (masked) MASK else Money.format(v, alwaysTwoDecimals = false)
         // Show "Name · dates" when there's a concrete date range; just the name when there isn't (e.g. the
         // Smart Cycle composite, whose instruments each have their own window — #1/#5).
         val cycleHeader = when {

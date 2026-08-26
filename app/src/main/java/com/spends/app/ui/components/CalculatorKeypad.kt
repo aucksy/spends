@@ -98,7 +98,7 @@ fun CalculatorAmountDisplay(expr: String, currentMinor: Long, accent: Color) {
                 maxLines = 1,
             )
         }
-        Text(text = Money.formatRupees(currentMinor), style = Numerals.balanceHero, color = accent, maxLines = 1)
+        Text(text = Money.format(currentMinor), style = Numerals.balanceHero, color = accent, maxLines = 1)
     }
 }
 
@@ -148,9 +148,9 @@ fun AmountKeypadSheet(
                 if (leftToAssign != null) {
                     Text(
                         text = if (leftToAssign >= 0L) {
-                            "${Money.formatRupees(leftToAssign)} left"
+                            "${Money.format(leftToAssign)} left"
                         } else {
-                            "Over by ${Money.formatRupees(-leftToAssign)}"
+                            "Over by ${Money.format(-leftToAssign)}"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,

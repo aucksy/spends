@@ -26,7 +26,16 @@ data class CaptureDraft(
     // Phase 4: true when this draft came from a watched app's notification (not an SMS) — Save then
     // additionally applies the notification-only coarse twin guard for ref-less drafts.
     val fromNotification: Boolean = false,
-)
+    // Foreign-currency origin (see ExpenseEntity's fx* fields). [amountMinor] above is already converted
+    // when [fxRateMicros] is set; when [fxCurrency] is set WITHOUT a rate, the conversion failed and
+    // [amountMinor] is still in [fxCurrency] — the editor says so and the user sets the figure.
+    val fxCurrency: String? = null,
+    val fxAmountMinor: Long? = null,
+    val fxRateMicros: Long? = null,
+) {
+    /** True when the amount is still in a foreign currency because it could not be converted. */
+    val unconvertedForeign: Boolean get() = fxCurrency != null && fxRateMicros == null
+}
 
 /**
  * Hands a [CaptureDraft] from [MainViewModel] (notification-Edit tap) to the editor's ViewModel without

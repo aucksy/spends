@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.spends.app.core.money.AppCurrency
+import com.spends.app.data.ai.AiProvider
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.SmsCaptureMode
 import com.spends.app.domain.model.ThemeMode
@@ -72,10 +74,28 @@ data class SettingsState(
     // forward to view that next cycle, it's dismissed FOR GOOD (a teaching nudge, not a persistent indicator).
     // Device-local UI state (like [widgetEyeHidden]) → deliberately NOT in the backup snapshot.
     val smartShiftBadgeSeen: Boolean = false,
-    // The "AI helper" switches (ai_enabled / ai_categorize / ai_insights) were removed in v1.65.0 along with
-    // the feature. Their DataStore keys are deliberately NOT read or written any more: they were device-local
-    // and never in the backup snapshot, so a leftover `true` on an upgraded phone turns nothing on — there is
-    // nothing left to turn on. Do not reuse those key names for anything else.
+    // The v1.56.0-1.64.0 "AI helper" switches (ai_enabled / ai_categorize / ai_insights) were removed in
+    // v1.65.0 along with that feature, and their DataStore keys are still never read or written — a leftover
+    // `true` on an upgraded phone must not switch anything on. The multi-currency helper below uses NEW key
+    // names for exactly that reason. Do not reuse the old ones.
+    //
+    // ---- Currency ----
+    // The single currency the whole ledger is kept in. Every stored `amountMinor` is minor units of THIS
+    // currency; changing it re-labels and re-groups figures, it never rewrites one (see core/money/Money).
+    // Travels in the backup snapshot — a restore onto a new phone must not silently switch the books to ₹.
+    val baseCurrency: AppCurrency = AppCurrency.DEFAULT,
+    // ---- AI currency conversion (BYOK) ----
+    // Off unless the user turns it on AND supplies their own key. With it off the app makes no third-party
+    // network call of any kind. Device-local, like every other credential-shaped setting: an API key and the
+    // provider it belongs to are meaningless on someone else's phone, so none of these are in the snapshot.
+    val aiConversionEnabled: Boolean = false,
+    val aiProvider: AiProvider = AiProvider.DEFAULT,
+    // Blank = use the provider's own default model, so a provider rotating its lineup needs no app update.
+    val aiModel: String = "",
+    // Fixed rates the user pinned, keyed "MYR:INR" → rate in micros. A pinned rate beats the AI outright:
+    // it is the user's own number and needs no call. Device-local and small; kept out of the snapshot with
+    // the rest of the AI block so the backup schema doesn't move for a preference this local.
+    val manualRates: Map<String, Long> = emptyMap(),
 ) {
     /** The day the Smart Cycle window actually anchors on: the explicit reset day, else the salary day. */
     val effectiveSmartResetDay: Int
@@ -121,6 +141,11 @@ class SettingsRepository @Inject constructor(
             notificationCaptureEnabled = prefs[Keys.NOTIFICATION_CAPTURE] ?: false,
             notificationCaptureApps = prefs[Keys.NOTIFICATION_CAPTURE_APPS] ?: emptySet(),
             smartShiftBadgeSeen = prefs[Keys.SMART_SHIFT_BADGE_SEEN] ?: false,
+            baseCurrency = AppCurrency.fromCodeOrDefault(prefs[Keys.BASE_CURRENCY]),
+            aiConversionEnabled = prefs[Keys.AI_CONVERSION] ?: false,
+            aiProvider = AiProvider.fromName(prefs[Keys.AI_PROVIDER]),
+            aiModel = prefs[Keys.AI_MODEL].orEmpty(),
+            manualRates = decodeRates(prefs[Keys.MANUAL_RATES]),
         )
     }
 
@@ -152,6 +177,24 @@ class SettingsRepository @Inject constructor(
     /** Dismiss the one-time "spends rolled to next cycle" dot FOR GOOD (first forward-tap). Device-local. */
     suspend fun setSmartShiftBadgeSeen(value: Boolean) = edit { it[Keys.SMART_SHIFT_BADGE_SEEN] = value }
     suspend fun setNotificationCaptureEnabled(value: Boolean) = edit { it[Keys.NOTIFICATION_CAPTURE] = value }
+    /**
+     * Switch the currency the books are kept in. Nothing stored is rewritten — see [SettingsState.baseCurrency].
+     * Callers refresh [com.spends.app.core.money.Money.displayCurrency] so widgets and notifications, which
+     * format outside any composition, pick the new symbol up too.
+     */
+    suspend fun setBaseCurrency(currency: AppCurrency) = edit { it[Keys.BASE_CURRENCY] = currency.code }
+    suspend fun setAiConversionEnabled(value: Boolean) = edit { it[Keys.AI_CONVERSION] = value }
+    suspend fun setAiProvider(provider: AiProvider) = edit { it[Keys.AI_PROVIDER] = provider.name }
+    suspend fun setAiModel(model: String) = edit { it[Keys.AI_MODEL] = model.trim() }
+
+    /** Pin a fixed rate for [from] → [to] (micros), or clear it by passing null. */
+    suspend fun setManualRate(from: String, to: String, rateMicros: Long?) = edit { prefs ->
+        val key = "${from.uppercase()}:${to.uppercase()}"
+        val updated = decodeRates(prefs[Keys.MANUAL_RATES]).toMutableMap()
+        if (rateMicros == null) updated.remove(key) else updated[key] = rateMicros
+        prefs[Keys.MANUAL_RATES] = encodeRates(updated)
+    }
+
     /** Replace the watched-app package set for notification capture. */
     suspend fun setNotificationCaptureApps(packages: Set<String>) = edit { it[Keys.NOTIFICATION_CAPTURE_APPS] = packages }
     /** One-time seeding marker for the watched-app list: an EMPTY set must mean "the user un-ticked
@@ -178,6 +221,7 @@ class SettingsRepository @Inject constructor(
             prefs[Keys.HIDE_CAPTURED] = state.hideCapturedInLists
             prefs[Keys.SMART_CYCLE_ENABLED] = state.smartCycleEnabled
             prefs[Keys.SMART_CYCLE_RESET_DAY] = state.smartCycleResetDay
+            prefs[Keys.BASE_CURRENCY] = state.baseCurrency.code
         }
     }
 
@@ -191,8 +235,33 @@ class SettingsRepository @Inject constructor(
     private fun String.toLanding(): DefaultLanding =
         runCatching { DefaultLanding.valueOf(this) }.getOrDefault(DefaultLanding.TRANSACTIONS)
 
+    /**
+     * Manual rates serialise as "MYR:INR=18900000;USD:INR=83250000" — a flat string rather than a
+     * `stringSetPreferencesKey`, because a Set has no defined order and this map is read and rewritten
+     * whole. Malformed or out-of-range entries are dropped rather than throwing: a corrupted preference
+     * must degrade to "no pinned rate", never take the settings flow down with it.
+     */
+    private fun decodeRates(raw: String?): Map<String, Long> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return raw.split(';').mapNotNull { entry ->
+            val parts = entry.split('=')
+            if (parts.size != 2) return@mapNotNull null
+            val pair = parts[0].trim().uppercase().takeIf { it.matches(RATE_KEY) } ?: return@mapNotNull null
+            val micros = parts[1].trim().toLongOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+            pair to micros
+        }.toMap()
+    }
+
+    private fun encodeRates(rates: Map<String, Long>): String =
+        rates.entries.joinToString(";") { "${it.key}=${it.value}" }
+
     private fun String.toCaptureMode(): SmsCaptureMode =
         runCatching { SmsCaptureMode.valueOf(this) }.getOrDefault(SmsCaptureMode.AUTO_ADD)
+
+    private companion object {
+        /** "MYR:INR" — three letters, colon, three letters. Anything else is not a currency pair. */
+        val RATE_KEY = Regex("^[A-Z]{3}:[A-Z]{3}$")
+    }
 
     private object Keys {
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
@@ -221,5 +290,10 @@ class SettingsRepository @Inject constructor(
         val NOTIFICATION_CAPTURE_APPS = stringSetPreferencesKey("notification_capture_apps")
         val NOTIFICATION_CAPTURE_SEEDED = booleanPreferencesKey("notification_capture_seeded")
         val SMART_SHIFT_BADGE_SEEN = booleanPreferencesKey("smart_shift_badge_seen")
+        val BASE_CURRENCY = stringPreferencesKey("base_currency")
+        val AI_CONVERSION = booleanPreferencesKey("ai_conversion_enabled")
+        val AI_PROVIDER = stringPreferencesKey("ai_provider")
+        val AI_MODEL = stringPreferencesKey("ai_model")
+        val MANUAL_RATES = stringPreferencesKey("manual_fx_rates")
     }
 }

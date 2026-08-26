@@ -40,7 +40,7 @@ Smart Cycle tracks your money by your real salary and card-billing cycles, so yo
 • Light, dark, or automatic dark on a schedule you set
 
 ▍ Private by design
-No account. No ads. No analytics or tracking on your financial data. Your SMS and transactions are processed and stored on your device. The only network Spends uses is your own Google Drive backup — and only if you turn it on.
+No account. No ads. No analytics or tracking on your financial data. Your SMS and transactions are processed and stored on your device. Spends uses the network in only two places, both off until you turn them on: your own Google Drive backup, and optional AI currency conversion — which asks an exchange-rate question and sends no transaction details at all.
 
 Spends requests SMS access solely to auto-detect your bank transaction alerts on your device, and it always works without it.
 

@@ -5,7 +5,8 @@ for live state. This file changes rarely; `PROGRESS.md` changes every release.
 
 ## What Spends is
 Offline-first native **Android expense tracker**. Kotlin + Jetpack Compose + Material 3
-+ Hilt + Room + DataStore + WorkManager. Money is **integer paise (`Long`)** everywhere;
++ Hilt + Room + DataStore + WorkManager. Money is **integer minor units (`Long`)** everywhere
+— paise, sen or cents depending on the one currency the ledger is kept in;
 `kind` (income / expense / transfer) drives all math. Signature feature = near-frictionless
 capture from **bank SMS + bank/UPI notifications** (review-only — captures land in a
 `pending_captures` queue and NEVER touch balance/analytics until the user confirms).
@@ -85,7 +86,20 @@ capture from **bank SMS + bank/UPI notifications** (review-only — captures lan
 - **Backup:** encrypted `.spsenc` (AES-256-GCM; DEK wrapped by both device Keystore key
   AND a PBKDF2 recovery-password KEK → same-device + new-phone restore). Drive (`drive.file`
   scope, visible "Spends Backup" folder) + local SAF file + daily auto-backup worker.
-- **Money math:** integer paise; carry-forward = opening + balanceBefore(periodStart) −
+- **Currency (v1.70.0):** the ledger is kept in ONE currency (`AppCurrency`: INR / MYR / USD), chosen in
+  Settings and stored in the backup snapshot. It is a **rendering** choice — symbol + digit grouping — and
+  rewrites nothing. `Money.displayCurrency` is a process-wide `@Volatile` on purpose: widgets, notification
+  builders and the exporter format money with no composition to read a CompositionLocal from. Set it from
+  `MainViewModel`'s settings collector AND from `SummaryWidget` (a widget can render in a process where
+  MainViewModel was never created).
+- **Foreign currency + AI (v1.70.0):** `data/ai/` — BYOK client (`AiClient`, three providers),
+  `CurrencyAi` (rate lookup, 6h cache, manual-rate override), `FxQuoteParser` (the trust boundary where
+  model text becomes a number — every rejection there is deliberate), `core/money/FxMath` (integer
+  conversion; rates are **micros**, base units per 1 foreign unit × 1e6). A converted transaction keeps its
+  receipt in `fx*` columns. **The rule that matters:** an amount that could not be converted is kept,
+  flagged, and refused by every commit path with no editor (quick-confirm, "Add all") — never logged as if
+  it were base currency. Adding a network call means redoing the six-file disclosure sweep in `README.md`.
+- **Money math:** integer minor units; carry-forward = opening + balanceBefore(periodStart) −
   balanceBefore(anchor), null when the period predates the anchor.
 
 ## The full detailed history lives in Claude's project memory

@@ -76,7 +76,7 @@ fun MoneySettingsScreen(
                 )
                 ClickableRow(
                     title = "Opening balance",
-                    value = Money.formatRupees(state.carryForwardOpeningMinor),
+                    value = Money.format(state.carryForwardOpeningMinor),
                     onClick = { showOpeningDialog = true },
                 )
                 Text(
@@ -180,7 +180,7 @@ fun MoneySettingsScreen(
                     OutlinedTextField(
                         value = amountText,
                         onValueChange = { input -> amountText = input.filter { it.isDigit() || it == '.' || it == '-' } },
-                        label = { Text("Amount (₹)") },
+                        label = { Text("Amount (${Money.displayCurrency.symbol})") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -188,7 +188,7 @@ fun MoneySettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.setCarryForwardOpening(Money.parseRupeesToMinor(amountText) ?: 0L)
+                    viewModel.setCarryForwardOpening(Money.parseToMinor(amountText) ?: 0L)
                     showOpeningDialog = false
                 }) { Text("Save") }
             },

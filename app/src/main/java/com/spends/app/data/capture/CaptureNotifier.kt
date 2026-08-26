@@ -67,7 +67,9 @@ class CaptureNotifier @Inject constructor(
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
-            .setContentTitle(kindLabel + Money.formatRupees(preview.amountMinor))
+            // formatCode, not format: a ringgit alert must not be announced with a rupee sign. A
+            // null currencyCode is the ordinary case and formats exactly as before.
+            .setContentTitle(kindLabel + Money.formatCode(preview.amountMinor, preview.currencyCode))
             .setContentText(preview.title)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)

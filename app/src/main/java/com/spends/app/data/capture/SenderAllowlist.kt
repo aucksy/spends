@@ -44,6 +44,31 @@ object SenderAllowlist {
         put("PYTMBK", Institution("Paytm", InstitutionType.WALLET))
         put("MOBIKW", Institution("MobiKwik", InstitutionType.WALLET))
         put("CREDIN", Institution("CRED", InstitutionType.PAYMENT_APP))
+        // ---- Malaysia (multi-currency) ----
+        // Malaysian senders are alphabetic short-codes rather than India's DLT header format, so they
+        // arrive intact through headerOf(). Their alerts are written in English and use "RM"/"MYR", which
+        // SmsParser's foreign-amount pass reads; conversion to the ledger's currency happens downstream.
+        put("MAYBANK", Institution("Maybank", InstitutionType.BANK))
+        put("MBBEZY", Institution("Maybank", InstitutionType.BANK))
+        put("CIMB", Institution("CIMB Bank", InstitutionType.BANK))
+        put("CIMBBANK", Institution("CIMB Bank", InstitutionType.BANK))
+        put("PBEBANK", Institution("Public Bank", InstitutionType.BANK))
+        put("PUBLICBANK", Institution("Public Bank", InstitutionType.BANK))
+        put("RHBBANK", Institution("RHB Bank", InstitutionType.BANK))
+        put("RHB", Institution("RHB Bank", InstitutionType.BANK))
+        put("HLBANK", Institution("Hong Leong Bank", InstitutionType.BANK))
+        put("HLB", Institution("Hong Leong Bank", InstitutionType.BANK))
+        put("AMBANK", Institution("AmBank", InstitutionType.BANK))
+        put("BANKISLAM", Institution("Bank Islam", InstitutionType.BANK))
+        put("BSN", Institution("BSN", InstitutionType.BANK))
+        put("OCBC", Institution("OCBC", InstitutionType.BANK))
+        put("UOB", Institution("UOB", InstitutionType.BANK))
+        put("HSBC", Institution("HSBC", InstitutionType.BANK))
+        put("STANCHART", Institution("Standard Chartered", InstitutionType.BANK))
+        put("TNGDIGITAL", Institution("Touch 'n Go eWallet", InstitutionType.WALLET))
+        put("TNG", Institution("Touch 'n Go eWallet", InstitutionType.WALLET))
+        put("BOOST", Institution("Boost", InstitutionType.WALLET))
+        put("GRABPAY", Institution("GrabPay", InstitutionType.WALLET))
     }
 
     /**
@@ -82,6 +107,24 @@ object SenderAllowlist {
         put("PAYTMPAYMENTSBANK", Institution("Paytm", InstitutionType.WALLET))
         put("MOBIKWIK", Institution("MobiKwik", InstitutionType.WALLET))
         put("CRED", Institution("CRED", InstitutionType.PAYMENT_APP))
+        // Malaysian display names, for RCS/Truecaller business chats (mirrors byHeader exactly so both
+        // sources of the same alert classify identically and their dedupe hashes line up).
+        put("MAYBANK", Institution("Maybank", InstitutionType.BANK))
+        put("MALAYANBANKING", Institution("Maybank", InstitutionType.BANK))
+        put("CIMB", Institution("CIMB Bank", InstitutionType.BANK))
+        put("PUBLICBANK", Institution("Public Bank", InstitutionType.BANK))
+        put("RHB", Institution("RHB Bank", InstitutionType.BANK))
+        put("HONGLEONG", Institution("Hong Leong Bank", InstitutionType.BANK))
+        put("AMBANK", Institution("AmBank", InstitutionType.BANK))
+        put("BANKISLAM", Institution("Bank Islam", InstitutionType.BANK))
+        put("OCBC", Institution("OCBC", InstitutionType.BANK))
+        put("UOB", Institution("UOB", InstitutionType.BANK))
+        put("HSBC", Institution("HSBC", InstitutionType.BANK))
+        put("STANDARDCHARTERED", Institution("Standard Chartered", InstitutionType.BANK))
+        put("TOUCHNGO", Institution("Touch 'n Go eWallet", InstitutionType.WALLET))
+        put("TOUCHNGOEWALLET", Institution("Touch 'n Go eWallet", InstitutionType.WALLET))
+        put("BOOST", Institution("Boost", InstitutionType.WALLET))
+        put("GRABPAY", Institution("GrabPay", InstitutionType.WALLET))
     }
 
     /** Extract the bank "header" from a sender id, or null for numeric / unrecognisable senders. */

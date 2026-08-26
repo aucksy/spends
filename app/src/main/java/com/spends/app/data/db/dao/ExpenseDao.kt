@@ -119,6 +119,24 @@ interface ExpenseDao {
     )
     fun observeCategorySpend(start: Long, end: Long): Flow<List<CategorySpend>>
 
+    /**
+     * Income by category for the Analytics income view — the exact mirror of [observeCategorySpend] with
+     * `kind = 'INCOME'`. Kept as its own query rather than a parameterised one so the two read identically
+     * and neither can drift: an income total that quietly started including transfers would be very hard
+     * to notice from the chart.
+     */
+    @Query(
+        "SELECT c.id AS categoryId, c.name AS name, c.colorHex AS colorHex, c.iconKey AS iconKey, " +
+            "SUM(a.amountMinor) AS total " +
+            "FROM allocations a " +
+            "JOIN expenses e ON e.id = a.expenseId " +
+            "JOIN categories c ON c.id = a.categoryId " +
+            "WHERE e.deletedAt IS NULL AND e.kind = 'INCOME' " +
+            "AND e.occurredAt >= :start AND e.occurredAt < :end " +
+            "GROUP BY c.id ORDER BY total DESC",
+    )
+    fun observeCategoryIncome(start: Long, end: Long): Flow<List<CategorySpend>>
+
     /** Running balance (income − expense) for everything strictly before [before] — for Carry Forward. */
     @Query(
         "SELECT COALESCE(SUM(CASE kind WHEN 'INCOME' THEN amountMinor WHEN 'EXPENSE' THEN -amountMinor ELSE 0 END), 0) " +

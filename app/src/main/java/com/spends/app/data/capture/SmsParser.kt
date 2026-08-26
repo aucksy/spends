@@ -27,6 +27,11 @@ object SmsParser {
         val confidence: Int = 0,
         val categoryHint: String? = null, // "Loan/EMI" / "Investments" or null
         val refNumber: String? = null,    // RRN / UPI ref / txn id — disambiguates same-day repeats
+        // The ISO code the amount was WRITTEN IN, when the message named a currency other than rupees
+        // ("RM 250.00", "USD 42.10"). null means the ordinary case: a rupee amount, or no currency token
+        // at all. [amountMinor] is always minor units of THAT currency — converting it to the currency the
+        // ledger is kept in happens later, in the capture layer, where the AI helper and settings live.
+        val currencyCode: String? = null,
     )
 
     private val ignored = Parsed(Result.IGNORED)
@@ -44,7 +49,8 @@ object SmsParser {
         // 2) Statements / bill-due alerts — extract nothing to log (cycle config is a later phase).
         if (isStatement(low)) return Parsed(Result.STATEMENT, institution = inst.name)
 
-        val amount = extractAmount(text) ?: return ignored
+        val money = extractMoney(text) ?: return ignored
+        val amount = money.minor
         val last4 = extractLast4(text)
         val isCard = low.contains("credit card") || low.contains("card") && !low.contains("a/c") ||
             inst.type == InstitutionType.CREDIT_CARD
@@ -67,6 +73,7 @@ object SmsParser {
             confidence = confidence,
             categoryHint = categoryHint,
             refNumber = extractRef(text),
+            currencyCode = money.code,
         )
     }
 
@@ -214,12 +221,68 @@ object SmsParser {
 
     // ---- field extraction ----
 
-    private val amountRegex = Regex("(?:rs\\.?|inr)\\s?([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", RegexOption.IGNORE_CASE)
+    private val amountRegex = Regex("(?:rs\\.?|inr|\u20b9)\\s?([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", RegexOption.IGNORE_CASE)
 
-    private fun extractAmount(text: String): Long? {
-        val m = amountRegex.find(text) ?: return null
-        val raw = m.groupValues[1].replace(",", "")
-        val value = raw.toBigDecimalOrNull() ?: return null
+    /** An amount plus the currency it was written in ([code] null = rupees / no currency token). */
+    data class ParsedMoney(val minor: Long, val code: String?)
+
+    /**
+     * The amount, and which currency it is in.
+     *
+     * Deliberately two passes, rupees FIRST. The rupee pattern is byte-for-byte the one this parser has
+     * always used, so an Indian message produces exactly the result it produced before multi-currency
+     * existed — the 56 golden fixtures are a release gate, and "we also look for dollars now" must not be
+     * able to move which number a rupee SMS yields. Only when a message names no rupee amount at all do we
+     * look for a foreign one, so the new path can add captures but never rewrite an old one.
+     */
+    private fun extractMoney(text: String): ParsedMoney? {
+        amountRegex.find(text)?.let { m ->
+            return toMinor(m.groupValues[1])?.let { ParsedMoney(it, null) }
+        }
+        val m = foreignAmountRegex.find(text) ?: return null
+        val token = m.groupValues[1].trim().uppercase()
+        val minor = toMinor(m.groupValues[2]) ?: return null
+        return ParsedMoney(minor, FOREIGN_BY_TOKEN[token])
+    }
+
+    /**
+     * Every currency token EXCEPT the rupee ones (those are pass 1's job), longest-first so "MYR" is not
+     * matched as a bare "R"-something and "US$" beats "$". Word-boundary-guarded on the alphabetic tokens
+     * so "USDT" or a merchant called "RMZ" can't be read as a currency.
+     */
+    private val FOREIGN_BY_TOKEN: Map<String, String> =
+        com.spends.app.core.money.AppCurrency.ALL_TOKENS
+            .filter { it.second != "INR" }
+            .associate { it.first.uppercase() to it.second }
+
+    private val foreignAmountRegex: Regex = run {
+        val alternation = FOREIGN_BY_TOKEN.keys
+            .sortedByDescending { it.length }
+            .joinToString("|") { token ->
+                // Escaped one character at a time rather than with Regex.escape(): that emits a \\Q...\\E
+                // quoted span, and this codebase has already lost five releases of SMS capture to a regex
+                // construct the JVM accepted and Android's ICU engine did not (see JvmOnlyRegexTest). Only
+                // "$" and "." are metacharacters among these tokens; £/€/¥ are ordinary literals.
+                val escaped = token.map { c -> if (c == '$' || c == '.') "\\" + c else c.toString() }.joinToString("")
+                // A token ending in a letter must not be followed by ANOTHER letter, so "USDT 42" is not
+                // read as USD. Spelled as a negative look-ahead rather than \b on purpose: \b asserts a
+                // word BOUNDARY, and there is none between the "M" of RM and the "2" of RM250 — both are
+                // word characters — so the boundary form silently failed to match the most common ringgit
+                // alert of all. A token ending in $/£/€ needs no guard at all.
+                if (token.last().isLetter()) escaped + "(?![A-Za-z])" else escaped
+            }
+        // The leading (?:^|[^A-Za-z]) is a consuming alternative rather than a look-behind, for the same
+        // portability reason — it keeps "CASHBACKRM100" from reading as RM 100 while staying to the plainest
+        // regex syntax both engines are known to share. The alternation is non-capturing, so the token and
+        // the number remain groups 1 and 2.
+        Regex(
+            "(?:^|[^A-Za-z])($alternation)\\s?([0-9][0-9,]*(?:\\.[0-9]{1,2})?)",
+            RegexOption.IGNORE_CASE,
+        )
+    }
+
+    private fun toMinor(raw: String): Long? {
+        val value = raw.replace(",", "").toBigDecimalOrNull() ?: return null
         return value.movePointRight(2).toDouble().roundToLong()
     }
 

@@ -16,37 +16,37 @@ class MoneyTest {
     }
 
     @Test fun formats_with_symbol_and_decimals() {
-        assertThat(Money.formatRupees(500000)).isEqualTo("₹5,000.00")
-        assertThat(Money.formatRupees(125050)).isEqualTo("₹1,250.50")
-        assertThat(Money.formatRupees(0)).isEqualTo("₹0.00")
-        assertThat(Money.formatRupees(-120000)).isEqualTo("-₹1,200.00")
-        assertThat(Money.formatRupees(500000, withSymbol = false)).isEqualTo("5,000.00")
+        assertThat(Money.format(500000)).isEqualTo("₹5,000.00")
+        assertThat(Money.format(125050)).isEqualTo("₹1,250.50")
+        assertThat(Money.format(0)).isEqualTo("₹0.00")
+        assertThat(Money.format(-120000)).isEqualTo("-₹1,200.00")
+        assertThat(Money.format(500000, withSymbol = false)).isEqualTo("5,000.00")
     }
 
     @Test fun parses_indian_formats_to_paise() {
-        assertThat(Money.parseRupeesToMinor("Rs.5,000.00")).isEqualTo(500000)
-        assertThat(Money.parseRupeesToMinor("Rs. 5000")).isEqualTo(500000)
-        assertThat(Money.parseRupeesToMinor("Rs5000")).isEqualTo(500000)
-        assertThat(Money.parseRupeesToMinor("INR 1,250.50")).isEqualTo(125050)
-        assertThat(Money.parseRupeesToMinor("INR1250")).isEqualTo(125000)
-        assertThat(Money.parseRupeesToMinor("₹240")).isEqualTo(24000)
-        assertThat(Money.parseRupeesToMinor("18,500.00/-")).isEqualTo(1850000)
-        assertThat(Money.parseRupeesToMinor("2499")).isEqualTo(249900)
+        assertThat(Money.parseToMinor("Rs.5,000.00")).isEqualTo(500000)
+        assertThat(Money.parseToMinor("Rs. 5000")).isEqualTo(500000)
+        assertThat(Money.parseToMinor("Rs5000")).isEqualTo(500000)
+        assertThat(Money.parseToMinor("INR 1,250.50")).isEqualTo(125050)
+        assertThat(Money.parseToMinor("INR1250")).isEqualTo(125000)
+        assertThat(Money.parseToMinor("₹240")).isEqualTo(24000)
+        assertThat(Money.parseToMinor("18,500.00/-")).isEqualTo(1850000)
+        assertThat(Money.parseToMinor("2499")).isEqualTo(249900)
     }
 
     @Test fun parse_rounds_to_paise_half_up() {
-        assertThat(Money.parseRupeesToMinor("100.005")).isEqualTo(10001)
-        assertThat(Money.parseRupeesToMinor("100.004")).isEqualTo(10000)
+        assertThat(Money.parseToMinor("100.005")).isEqualTo(10001)
+        assertThat(Money.parseToMinor("100.004")).isEqualTo(10000)
     }
 
     @Test fun parse_rejects_garbage() {
-        assertThat(Money.parseRupeesToMinor("")).isNull()
-        assertThat(Money.parseRupeesToMinor("abc")).isNull()
-        assertThat(Money.parseRupeesToMinor("Rs.")).isNull()
+        assertThat(Money.parseToMinor("")).isNull()
+        assertThat(Money.parseToMinor("abc")).isNull()
+        assertThat(Money.parseToMinor("Rs.")).isNull()
     }
 
     @Test fun edit_string_round_trips() {
         assertThat(Money.toEditString(500000)).isEqualTo("5000.00")
-        assertThat(Money.parseRupeesToMinor(Money.toEditString(123456))).isEqualTo(123456)
+        assertThat(Money.parseToMinor(Money.toEditString(123456))).isEqualTo(123456)
     }
 }

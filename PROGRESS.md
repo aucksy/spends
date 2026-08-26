@@ -4,7 +4,35 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Shipped: v1.69.0** — versionCode **79**, versionName **"1.69.0"**. Learn-from-ignore actually works:
+- **Built, not yet tagged: v1.70.0** — versionCode **80**, versionName **"1.70.0"**. Two features:
+  **income analytics** and **multi-currency with optional AI conversion**. **Room schema v16 → v17**
+  (`MIGRATION_16_17`: three nullable columns on each of `expenses` and `pending_captures`; additive, no
+  stored figure changes). Backup snapshot **v5 → v6** (`baseCurrency`).
+  - *Income analytics.* Analytics gains a **Spending / Income** toggle that drives BOTH the category donut
+    and the over-time chart, so income has the same breakdown, the same drill-down and the same bars that
+    spending has always had. New DAO query `observeCategoryIncome` mirrors `observeCategorySpend` exactly.
+  - *Multi-currency.* The ledger can be kept in **INR / MYR / USD**. That is a rendering choice — symbol
+    plus grouping convention (Indian vs Western) — and rewrites nothing: every stored `amountMinor` is
+    untouched. `Money.displayCurrency` is a process-wide volatile because widgets, notifications and the
+    exporter format outside any composition. Travels in the backup snapshot.
+  - *AI conversion (BYOK, off by default).* A foreign-currency alert is converted on the way in and shows
+    its receipt everywhere it appears: `RM 100.00 → ₹1,890.00 · 1 MYR = ₹18.90`. Provider is the user's
+    choice (Anthropic / OpenAI / Groq), key encrypted on-device via `SecureKeyStore` under a **new**
+    preference name — the orphaned v1.56–v1.64 key is still erased on launch, so a key the user was told
+    was deleted is never adopted. Only an exchange-rate question is sent; no amount, merchant, card number
+    or message text ever leaves the phone. Rates cached 6h; a pinned manual rate skips the network entirely.
+  - *Money-safety stance.* A foreign amount that could NOT be converted is kept, flagged, and **refused by
+    every commit path that has no editor** (quick-confirm, "Add all") rather than being logged as if it
+    were base currency — and those rows are no longer swept away by "Add all"'s final delete. The rate is
+    range-checked, and a model answering about the wrong currency pair is discarded.
+  - *Parser.* Rupee matching runs FIRST and unchanged, so all 56 golden fixtures behave exactly as before;
+    foreign detection only runs when a message names no rupee amount. 13 Malaysian senders added.
+  - *Disclosure sweep done* (the app makes a third-party call again): README ×2, `docs/index.html` (new
+    §3a), `play/DATA_SAFETY.md` (new §1a — why "Shared" is still No), `DATA_SAFETY_WALKTHROUGH.md`,
+    `PERMISSIONS_DECLARATION.md`, `store-listing.md`.
+  - *Tests.* +60 assertions across 7 new files, including Robolectric render tests that actually OPEN the
+    new settings screen and BOTH sides of the Analytics toggle against a real in-memory Room database.
+- Previous: **v1.69.0** — versionCode **79**, versionName **"1.69.0"**. Learn-from-ignore actually works:
   the pattern key no longer carries the AMOUNT, which had made the feature dead code. No schema change.
   APK: https://github.com/aucksy/spends/releases/download/v1.69.0/Spends-v1.69.0.apk
 - Previous: **v1.68.0** — versionCode **78**, versionName **"1.68.0"**. Two fixes to v1.67.0's category screen:

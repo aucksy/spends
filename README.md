@@ -31,7 +31,7 @@ When a bank or card SMS arrives, Spends spots the transaction **on-device** and 
 - **…and lets you undo that** — **Silenced alerts** lists everything Spends has gone quiet on, *and* everything one Ignore away from it, each with a one-tap **Ask me again**. An accidental Ignore is always reversible.
 - **Auto-matches the right card** by last-4 digits, and can **discover your cards** and detect each card's **statement day** from your SMS history.
 
-Parsing is a strict, rules-based engine covering **16 Indian banks, cards and wallets across 55 sender IDs** (HDFC, ICICI, SBI, SBI Card, Axis, IDFC First, IndusInd, Yes, RBL, PNB, Amex, OneCard, CRED, Paytm, MobiKwik, L&T Finance) — it never touches OTPs, promos, declined transactions, statements, future-dated mandates or EMI-conversion offers.
+Parsing is a strict, rules-based engine covering **16 Indian banks, cards and wallets across 55 sender IDs**, plus **13 Malaysian banks and wallets** (HDFC, ICICI, SBI, SBI Card, Axis, IDFC First, IndusInd, Yes, RBL, PNB, Amex, OneCard, CRED, Paytm, MobiKwik, L&T Finance) — it never touches OTPs, promos, declined transactions, statements, future-dated mandates or EMI-conversion offers.
 
 ### 💬 Notification capture — the RCS gap-closer
 Some banks now send alerts as **RCS chat messages or Truecaller "Business Chat"** rather than SMS — and *no* app can read those as SMS, so every SMS-based tracker silently misses them. Spends can optionally read transaction alerts from the messaging apps you tick (Google Messages, Truecaller) instead. Same rule as SMS: parsed on-device, and nothing is added until you confirm it. Android keeps no notification history, so this works from the moment you switch it on.
@@ -42,8 +42,22 @@ Split a single bill across categories (groceries *and* household in one go). Mul
 ### 🔍 Search — find anything fast
 Search your timeline by **merchant, note or category**. In the SMS review queue, search goes wider — amount, merchant, bank, card last-4, and even the **raw message text** — with quick Expense / Income filters.
 
-### 📊 Analytics — see where it goes
-A **category donut** with a tappable legend that drills into that category's transactions, a **spend-over-time** bar view, a **per-instrument breakdown** in Smart Cycle, and a **recurring summary**. Each category drill-down leads with what **this cycle** cost and states the comparison **in a sentence** — *"About ₹1,500 more than your usual month"* — with "usual" averaged over a trailing 3M / 6M / all-time window you choose. A **Yearly** view gives the same treatment year-on-year, compared per month so a part-finished year still compares fairly. All charts are hand-drawn in Compose — no heavyweight chart library.
+### 📊 Analytics — see where it goes, and where it came from
+A **Spending / Income toggle** runs the whole page: the **category donut** with its tappable legend and the **over-time** bar view both switch sides of the ledger, so "which categories did I earn from this cycle?" is the same question, asked the same way, as "which did I spend on?". Plus a **per-instrument breakdown** in Smart Cycle and a **recurring summary**. Each category drill-down leads with what **this cycle** cost and states the comparison **in a sentence** — *"About ₹1,500 more than your usual month"* — with "usual" averaged over a trailing 3M / 6M / all-time window you choose. A **Yearly** view gives the same treatment year-on-year, compared per month so a part-finished year still compares fairly. All charts are hand-drawn in Compose — no heavyweight chart library.
+
+### 💱 Multi-currency — rupees, ringgit or dollars
+Keep your books in **₹ INR**, **RM MYR** or **$ USD**. The choice is a rendering decision, not a rewrite: switching it changes the symbol and the digit grouping (Indian `12,34,567` for rupees, `1,234,567` for the rest) and never touches a stored figure. It travels in your backup, so restoring onto a new phone doesn't quietly put you back in rupees.
+
+The SMS parser reads foreign amounts too — `RM 250.00`, `USD 42.10`, `SGD 88.00` — and Malaysian senders (Maybank, CIMB, Public Bank, RHB, Hong Leong, AmBank, Bank Islam, OCBC, UOB, HSBC, Touch 'n Go, Boost, GrabPay) are recognised alongside the Indian ones. A rupee amount is always matched first, so nothing about an Indian alert changes.
+
+### 🤖 AI currency conversion — optional, your key, and it shows its working
+When an alert arrives in a currency you don't keep books in, Spends can convert it and **tell you exactly what it did**: every converted transaction carries `RM 100.00 → ₹1,890.00 · 1 MYR = ₹18.90` on its face.
+
+- **Bring your own key** — Anthropic (Claude), OpenAI or Groq, pasted in *Settings → Currency & AI*, encrypted on-device, never in a backup, never shown back to you, with a **Test key** button that proves it works before you rely on it.
+- **What's sent is only a rate question** — *"How many INR is 1 MYR right now?"*. No amount, no merchant, no card number, no message text. Rates are cached six hours, so a day of alerts costs one call.
+- **Or skip the AI entirely** — pin your own rate for a currency pair and Spends uses that, with no network call at all.
+- **It can't quietly get it wrong** — the rate is sanity-checked, an answer about the wrong currency pair is thrown away, and if no conversion is possible the transaction is held in the review queue **flagged and in its original currency** rather than being logged as the wrong number. "Add all" refuses to bulk-commit those.
+- **Honest about accuracy** — the rate is the model's estimate, not a live market feed. The app says so, shows the rate on every transaction, and lets you override it.
 
 ---
 
@@ -62,15 +76,15 @@ A **category donut** with a tappable legend that drills into that category's tra
 
 ## 🔒 Private by design
 
-No account. No ads. No analytics or telemetry. Your SMS and transactions are parsed and stored **on-device**, as integer paise (money never touches floating point, and rupees use Indian digit grouping — `12,34,567.00`). The only network Spends uses is **your own** Google Drive backup, and only if you turn it on.
+No account. No ads. No analytics or telemetry. Your SMS and transactions are parsed and stored **on-device**, as integer minor units (money never touches floating point; rupees use Indian digit grouping — `12,34,567.00`). Spends makes two network calls, both off by default and both switched on by you: **your own** Google Drive backup, and AI currency conversion — which sends a bare exchange-rate question and no transaction data. Pin your own rate and even that goes away.
 
 ---
 
 ## 🛠️ Under the hood
 
 - **Kotlin + Jetpack Compose + Material 3**, edge-to-edge, a hand-tuned brand palette (light/dark/system/auto).
-- **MVVM** with **Hilt**, **Room** (schema v16), **DataStore**, Coroutines/Flow, **WorkManager** + **exact AlarmManager**.
-- Fully offline — the only network call in the app is your own Google Drive backup; all money is `Long` paise end-to-end.
+- **MVVM** with **Hilt**, **Room** (schema v17), **DataStore**, Coroutines/Flow, **WorkManager** + **exact AlarmManager**.
+- Offline by default — the only network calls are your own Google Drive backup and, if you switch it on and add your own API key, AI currency conversion (which sends a bare exchange-rate question and no transaction data); all money is `Long` minor units end-to-end.
 - Correctness-critical logic — money formatting/parsing, salary/card cycle windows, the SMS parser (56 golden fixtures gate every release), largest-remainder splits — is covered by **398 JUnit tests** across 35 files under `app/src/test`.
 - Feature-first, layered architecture (`core/`, `data/`, `domain/`, `ui/`, `di/`). See `docs/PHASE_PLAN.md` and `docs/PLATFORM_NOTES.md`.
 
@@ -95,4 +109,8 @@ Grab the latest **signed APK** from the [**Releases**](https://github.com/aucksy
 
 ## 🔐 Privacy
 
-No account, no ads, no analytics, no telemetry on financial content. SMS parsing happens entirely on-device and **nothing derived from a message ever leaves the phone**; backup goes only to your own Google Drive. There is **no third-party data sharing of any kind**. (An optional AI helper existed in v1.56.0–v1.64.0 and was the one exception; it was removed in v1.65.0, and any stored API key is erased on the next launch. If you re-introduce anything that makes a network call, the disclosure sweep is: this file (two places), `docs/index.html`, `play/DATA_SAFETY.md`, `play/DATA_SAFETY_WALKTHROUGH.md`, `play/PERMISSIONS_DECLARATION.md` and `play/listing/store-listing.md`.) See the [privacy policy](https://aucksy.github.io/spends/). Never commit raw SMS exports, account numbers, or personal spreadsheet exports — see `.gitignore`.
+No account, no ads, no analytics, no telemetry on financial content. SMS parsing happens entirely on-device and **no transaction detail derived from a message ever leaves the phone**; backup goes only to your own Google Drive. **No personal or financial data is shared with any third party.**
+
+One optional feature makes a third-party call: **AI currency conversion** (off by default, needs your own API key). What it sends is a bare exchange-rate question — *"How many INR is 1 MYR right now?"* — and **never an amount, merchant, card number or message text**. Your key is encrypted on-device, excluded from backups, and only ever sent to the provider you pick. Pin your own rate instead and it makes no call at all. (A different AI helper existed in v1.56.0–v1.64.0 and *did* send number-masked transaction data; it was removed in v1.65.0 and its stored key is erased on the next launch.)
+
+If you change what leaves the phone, the disclosure sweep is: this file (two places), `docs/index.html`, `play/DATA_SAFETY.md`, `play/DATA_SAFETY_WALKTHROUGH.md`, `play/PERMISSIONS_DECLARATION.md` and `play/listing/store-listing.md`. See the [privacy policy](https://aucksy.github.io/spends/). Never commit raw SMS exports, account numbers, or personal spreadsheet exports — see `.gitignore`.

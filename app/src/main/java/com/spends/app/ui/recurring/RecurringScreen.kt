@@ -359,7 +359,7 @@ private fun RecurringRow(
             val color = if (rule.kind == TxnKind.INCOME) semantic.income else semantic.expense
             val prefix = if (rule.kind == TxnKind.INCOME) "+" else "-"
             Text(
-                text = prefix + Money.formatRupees(rule.amountMinor),
+                text = prefix + Money.format(rule.amountMinor),
                 style = com.spends.app.core.theme.Numerals.amountRow,
                 color = if (rule.active) color else MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -461,10 +461,10 @@ private fun RecurringEditor(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("₹", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(Money.displayCurrency.symbol, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        text = amountMinor?.let { Money.formatRupees(it, withSymbol = false) } ?: "Tap to enter amount",
+                        text = amountMinor?.let { Money.format(it, withSymbol = false) } ?: "Tap to enter amount",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = if (amountMinor != null) amountAccent else MaterialTheme.colorScheme.onSurfaceVariant,

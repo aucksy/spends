@@ -227,7 +227,7 @@ private fun AddEditForm(
     val visibleCategories = categories.filter { it.usage == usageFilter || it.usage == CategoryUsage.BOTH }
     val selectedCategory = visibleCategories.firstOrNull { it.id == selectedCategoryId }
 
-    val amountMinor = Money.parseRupeesToMinor(amountText)?.takeIf { it > 0 }
+    val amountMinor = Money.parseToMinor(amountText)?.takeIf { it > 0 }
     val canSave = amountMinor != null && selectedCategoryId != null && !saving
 
     Column(
@@ -278,7 +278,7 @@ private fun AddEditForm(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "₹" + amountText.ifBlank { "0" },
+                text = Money.displayCurrency.symbol + amountText.ifBlank { "0" },
                 style = Numerals.balanceHero,
                 color = if (amountText.isBlank()) {
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
@@ -287,6 +287,24 @@ private fun AddEditForm(
                 },
                 textAlign = TextAlign.Center,
                 maxLines = 1,
+            )
+        }
+
+        // The conversion receipt, directly under the figure it explains — a converted amount that appears
+        // without saying where it came from is indistinguishable from the app getting it wrong. When the
+        // conversion FAILED this is the warning instead, in the error colour, because the number above it
+        // is still in the other currency and the user has to fix it before saving.
+        initial.conversionNote?.let { fxNote ->
+            Text(
+                text = fxNote,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (initial.unconvertedForeign) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp),
             )
         }
 
@@ -411,7 +429,7 @@ private fun AddEditForm(
         // existing amount and the notification "Review & Add" flow both get the keypad, not the system
         // keyboard (#4). Seeded with the current amount; commits back as a formatted edit string.
         AmountKeypadSheet(
-            initialMinor = Money.parseRupeesToMinor(amountText) ?: 0L,
+            initialMinor = Money.parseToMinor(amountText) ?: 0L,
             accent = if (kind == TxnKind.INCOME) LocalSemanticColors.current.income else LocalSemanticColors.current.expense,
             title = "Amount",
             onConfirm = { minor -> amountText = Money.toEditString(minor) },

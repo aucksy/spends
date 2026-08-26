@@ -2,6 +2,7 @@ package com.spends.app.data.export
 
 import com.spends.app.core.export.XlsxWriter
 import com.spends.app.core.export.XlsxWriter.Cell
+import com.spends.app.core.money.Money
 import com.spends.app.core.time.DateUtils
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.entity.AllocationEntity
@@ -30,7 +31,9 @@ class ExcelExporter @Inject constructor(
     private val timeFmt = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 
     private val header = listOf(
-        "Date", "Time", "Category", "Income (₹)", "Expenses (₹)", "Balance (₹)",
+        // Headers name the currency the book is actually in, so an exported sheet is not silently mislabelled.
+        "Date", "Time", "Category", "Income (${Money.displayCurrency.code})",
+        "Expenses (${Money.displayCurrency.code})", "Balance (${Money.displayCurrency.code})",
         "Merchant / Payee", "Note", "Source", "Split details", "Created",
     )
 
@@ -119,7 +122,7 @@ class ExcelExporter @Inject constructor(
         if (allocs.size <= 1) return ""
         return allocs.joinToString("; ") { a ->
             val name = names[a.categoryId] ?: "?"
-            "$name: ₹${BigDecimal(a.amountMinor).movePointLeft(2).toPlainString()}"
+            "$name: ${Money.displayCurrency.symbol}${BigDecimal(a.amountMinor).movePointLeft(2).toPlainString()}"
         }
     }
 }
