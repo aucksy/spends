@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.spends.app.core.money.AppCurrency
 import com.spends.app.core.money.Money
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
@@ -228,7 +229,16 @@ private fun AddEditForm(
     val selectedCategory = visibleCategories.firstOrNull { it.id == selectedCategoryId }
 
     val amountMinor = Money.parseToMinor(amountText)?.takeIf { it > 0 }
-    val canSave = amountMinor != null && selectedCategoryId != null && !saving
+
+    // The editor's share of the guard every no-editor commit path already applies — see
+    // [isUntouchedForeignAmount]. The user is not blocked, only required to touch the amount before Save
+    // lights up, because the figure in the box is still ringgit.
+    val foreignAmountUntouched = isUntouchedForeignAmount(
+        unconvertedForeign = initial.unconvertedForeign,
+        seededAmountText = initial.amountText,
+        currentAmountText = amountText,
+    )
+    val canSave = amountMinor != null && selectedCategoryId != null && !saving && !foreignAmountUntouched
 
     Column(
         modifier = modifier
@@ -278,10 +288,21 @@ private fun AddEditForm(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = Money.displayCurrency.symbol + amountText.ifBlank { "0" },
+                // While an unconverted foreign amount is still untouched, the digits in the box are that
+                // FOREIGN amount, so they must carry the foreign symbol. Prepending the ledger's ₹ to them
+                // labelled a ringgit figure as rupees on the very screen warning it was not converted, and
+                // made the wrong number look already correct. The moment the user edits it, the figure is
+                // theirs and is in the ledger's currency, so the symbol goes back to ₹.
+                text = if (foreignAmountUntouched) {
+                    AppCurrency.symbolFor(initial.fxCurrency) + amountText.ifBlank { "0" }
+                } else {
+                    Money.displayCurrency.symbol + amountText.ifBlank { "0" }
+                },
                 style = Numerals.balanceHero,
                 color = if (amountText.isBlank()) {
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                } else if (foreignAmountUntouched) {
+                    MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },

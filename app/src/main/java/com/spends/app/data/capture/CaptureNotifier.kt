@@ -67,8 +67,9 @@ class CaptureNotifier @Inject constructor(
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
-            // formatCode, not format: a ringgit alert must not be announced with a rupee sign. A
-            // null currencyCode is the ordinary case and formats exactly as before.
+            // formatCode, not format: a ringgit alert must not be announced with a rupee sign. A null
+            // currencyCode is the ordinary domestic case; formatCode routes that back to the ledger's own
+            // currency, so an ordinary rupee alert still reads "₹12,34,567.89" and not "1,234,567.89".
             .setContentTitle(kindLabel + Money.formatCode(preview.amountMinor, preview.currencyCode))
             .setContentText(preview.title)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

@@ -30,12 +30,18 @@ class ExcelExporter @Inject constructor(
     // filter properly; only the short Time label stays text (#6).
     private val timeFmt = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 
-    private val header = listOf(
-        // Headers name the currency the book is actually in, so an exported sheet is not silently mislabelled.
-        "Date", "Time", "Category", "Income (${Money.displayCurrency.code})",
-        "Expenses (${Money.displayCurrency.code})", "Balance (${Money.displayCurrency.code})",
-        "Merchant / Payee", "Note", "Source", "Split details", "Created",
-    )
+    // Headers name the currency the book is actually in, so an exported sheet is not silently mislabelled.
+    //
+    // A GETTER, not a stored val: this class is a @Singleton, so a stored list would freeze whatever
+    // currency was set the first time Hilt built the exporter and never move again. The split-details
+    // column (below) reads the currency per export, so the frozen form could hand out a single file
+    // headed "Income (INR)" whose own rows printed "RM" — the exact mislabelling this line exists to stop.
+    internal val header: List<String>
+        get() = listOf(
+            "Date", "Time", "Category", "Income (${Money.displayCurrency.code})",
+            "Expenses (${Money.displayCurrency.code})", "Balance (${Money.displayCurrency.code})",
+            "Merchant / Payee", "Note", "Source", "Split details", "Created",
+        )
 
     /** Export every non-trashed transaction (all time). */
     suspend fun build(): ByteArray = build(Long.MIN_VALUE, Long.MAX_VALUE)

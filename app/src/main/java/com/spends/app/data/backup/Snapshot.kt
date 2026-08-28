@@ -104,6 +104,13 @@ data class SnapshotExpense(
     val deletedAt: Long? = null,
     // Added in v4 (links a transaction to the recurring rule that created it). Default keeps older backups valid.
     val recurringRuleId: Long? = null,
+    // Added in v6 — the conversion receipt for a transaction captured in another currency: what it arrived
+    // as, and the rate that produced the stored figure. Without these a restore kept every AMOUNT but threw
+    // the explanation away, so a converted row came back as an unexplained rupee figure. Defaults keep every
+    // older backup valid.
+    val fxCurrency: String? = null,
+    val fxAmountMinor: Long? = null,
+    val fxRateMicros: Long? = null,
 )
 
 @Serializable

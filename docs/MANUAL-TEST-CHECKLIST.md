@@ -28,6 +28,82 @@ every one of them.
 
 ---
 
+## v1.70.1 — what the pre-tag review fixed
+
+Six defects found by the two adversarial reviews of v1.70.0, which was never released. Everything in the
+v1.70.0 section below still applies — this section is only the fixes on top.
+
+### ⭐⭐ The money bug — test this one first, it is your actual use case
+
+The situation: a ringgit or dollar alert arrives while the phone has **no usable data**, so Spends cannot
+get a rate. Before this fix, opening it and tapping Save filed RM250.00 as ₹250.00 and kept no record it
+had ever been ringgit.
+
+- [ ] ⭐ Turn OFF mobile data and wifi. Send yourself a ringgit SMS (`RM250.00 spent at TESCO on card
+      ending 1234`). Open it from the notification.
+- [ ] ⭐ The big amount reads **RM250.00** — with the ringgit symbol, **in red**. It must NOT say ₹250.00.
+- [ ] ⭐ **Save is greyed out.** Tapping it does nothing.
+- [ ] ⭐ The line under the amount says the alert was for RM250.00, no rate was available, and to set the
+      amount yourself.
+- [ ] ⭐ Type the rupee figure (e.g. 4725). Save lights up. Save it.
+- [ ] ⭐ Reopen that transaction. It still says it arrived as **RM250.00**, and now says **you** set the
+      amount — not that it needs converting. The stored figure is ₹4,725.00.
+- [ ] Clear the amount box completely: Save stays greyed out (a blank amount was never saveable), and the
+      screen is not stuck — typing any figure releases it.
+
+### ⭐ The notification lost its rupee sign
+
+- [ ] ⭐ With data back ON, get an ordinary **rupee** SMS. The notification title reads
+      **₹1,25,000.00** — with the ₹, and Indian grouping. Not `125,000.00`.
+- [ ] A small rupee amount (₹450.00) also shows the ₹.
+- [ ] A **ringgit** alert's notification still shows **RM**, not ₹.
+
+### Conversion on a bad connection
+
+- [ ] ⭐ With AI conversion on and a key saved, turn data OFF and let several foreign alerts arrive. The
+      app must stay responsive — no long freeze. (Before: each message waited 20 seconds on its own.)
+- [ ] ⭐ Turn data back ON and wait ~5 minutes. A new foreign alert converts again. (The app remembers a
+      failure only briefly, so signal coming back is enough — you should not have to restart it.)
+- [ ] Run **Scan past SMS** with data off and a few foreign messages in range. It finishes rather than
+      hanging.
+
+### Old messages are no longer priced at today's rate
+
+- [ ] ⭐ Run **Scan past SMS** over a range that includes foreign alerts **older than two days**. They
+      arrive in the review queue **flagged and unconverted**, showing the original RM/USD figure — they are
+      NOT silently converted at this week's rate.
+- [ ] ⭐ Tap **Add all**. Those old foreign rows are **skipped and left in the queue**. Everything else is
+      added.
+- [ ] An alert from **today** still converts normally. This is the case that matters while travelling.
+
+### Spreadsheet export
+
+- [ ] ⭐ Export a sheet in ₹. Switch the app to RM. Export again **without restarting the app**. The second
+      sheet's headings say **(MYR)**, and any split-detail cells inside it also say RM. The two must agree.
+
+### Backup keeps the conversion receipt
+
+- [ ] ⭐ Add a converted transaction (one showing `RM250.00 → ₹4,725.00 · 1 MYR = ₹18.90`). Back up, wipe,
+      restore. Open that transaction: the same conversion line is still there.
+- [ ] ⭐ Restore a backup made by **v1.69.0 or earlier**. It restores cleanly — the new fields are optional.
+- [ ] An unconverted foreign row also survives a backup still marked as foreign.
+
+### Known and NOT fixed in this release — confirm you are happy to live with these
+
+- [ ] You can pin your own rate only for **INR / MYR / USD**. A currency Spends can *detect* but does not
+      keep books in (SGD, THB, GBP…) has no manual-rate row, so with no network those alerts can only be
+      set by hand each time.
+- [ ] Restoring a backup made **before** this version sets your currency back to ₹. If you are running a
+      ringgit ledger, re-set the currency after any old restore.
+- [ ] The AI call still waits up to 20 seconds on a slow connection. Deliberate — a shorter wait would make
+      conversion fail on exactly the patchy roaming data this feature is for.
+- [ ] Speculative, not reproduced: "RM" is also Indian banking shorthand for *Relationship Manager*. A
+      message with no rupee amount that reads "...contact your RM 9876543210" could in theory be read as a
+      ringgit amount. It needs a spend/credit word to become a capture at all, and no realistic example was
+      found — but if a nonsense RM figure ever appears in your review queue, that is why.
+
+---
+
 ## v1.70.0 — income analytics, and multi-currency with AI conversion
 
 **⭐⭐ Read first — the one thing that must not be wrong.** This release changes the database (v16 → v17)

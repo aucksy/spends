@@ -1,7 +1,9 @@
 package com.spends.app.ui.settings
 
 import android.app.Application
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.datastore.core.DataStore
@@ -57,6 +59,22 @@ class CurrencySettingsScreenRenderTest {
         viewModelWith(settingsRepository())
     }
 
+    /**
+     * Wait for a node to EXIST rather than for composition to go idle.
+     *
+     * `waitForIdle()` settles composition; it does not wait for `SettingsRepository.settings` — a DataStore
+     * flow read on Dispatchers.IO — to reach `stateIn`'s collector. Until it does, the screen renders the
+     * DEFAULT state (AI off, rupee base), so every assertion below that depends on a written setting was
+     * racing the read and could fail on a slow or loaded CI runner while passing locally. Same helper, and
+     * same reason, as AnalyticsScreenRenderTest.
+     */
+    @OptIn(ExperimentalTestApi::class)
+    private fun ComposeUiTest.awaitText(text: String) {
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     /** The default state every existing user lands in: rupees, AI off, no key. */
     @OptIn(ExperimentalTestApi::class)
     @Test
@@ -78,8 +96,7 @@ class CurrencySettingsScreenRenderTest {
         val settings = settingsRepository()
         runBlocking { settings.setAiConversionEnabled(true) }
         setContent { CurrencySettingsScreen(onBack = {}, viewModel = viewModelWith(settings)) }
-        waitForIdle()
-        onNodeWithText("Provider").assertExists()
+        awaitText("Provider")
         onNodeWithText("API key").assertExists()
         onNodeWithText("Model").assertExists()
     }
@@ -99,9 +116,8 @@ class CurrencySettingsScreenRenderTest {
             settings.setManualRate("INR", "MYR", 55_000)
         }
         setContent { CurrencySettingsScreen(onBack = {}, viewModel = viewModelWith(settings)) }
-        waitForIdle()
         // The base currency is never offered as a rate against itself; the others are.
-        onNodeWithText("1 INR =").assertExists()
+        awaitText("1 INR =")
         onNodeWithText("1 USD =").assertExists()
     }
 }

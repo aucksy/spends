@@ -108,6 +108,41 @@ class AppCurrencyTest {
         assertThat(AppCurrency.fromCodeOrDefault(null)).isEqualTo(AppCurrency.DEFAULT)
     }
 
+    // ---- the null code: the ordinary domestic case ----
+
+    @Test fun a_null_code_formats_in_the_ledgers_own_currency() {
+        // v1.70.0's CaptureNotifier passed the capture's currencyCode straight to formatCode, and that code
+        // is NULL for every ordinary rupee SMS. The generic branch treated an absent code as an unknown
+        // currency whose symbol is "" and grouped it Western-style, so the app's highest-traffic surface
+        // announced "Expense 1,25,000.00" instead of "Expense ₹12,34,567.89". No test covered it, so CI
+        // stayed green. A null code now means "no foreign currency involved", not "a currency I don't know".
+        assertThat(Money.formatCode(123_456_789, null)).isEqualTo(Money.format(123_456_789))
+        assertThat(Money.formatCode(123_456_789, null)).isEqualTo("₹12,34,567.89")
+        assertThat(Money.formatCode(45_000, null)).isEqualTo("₹450.00")
+        assertThat(Money.formatCode(-45_000, null)).isEqualTo("-₹450.00")
+    }
+
+    @Test fun a_blank_code_is_treated_the_same_as_a_null_one() {
+        // Same trap, one whitespace away: fromCode() already discards a blank, so the generic branch would
+        // have caught these too.
+        assertThat(Money.formatCode(45_000, "")).isEqualTo(Money.format(45_000))
+        assertThat(Money.formatCode(45_000, "   ")).isEqualTo(Money.format(45_000))
+    }
+
+    @Test fun a_null_code_follows_the_ledger_currency_rather_than_assuming_rupees() {
+        // The fallback must be the ledger's currency, not a hard-coded ₹ — otherwise a Malaysian user's
+        // ordinary domestic alerts would be announced in rupees, which is the same bug pointing the other way.
+        Money.displayCurrency = AppCurrency.MYR
+        assertThat(Money.formatCode(123_456_789, null)).isEqualTo("RM1,234,567.89")
+        assertThat(Money.formatCode(123_456_789, null)).isEqualTo(Money.format(123_456_789))
+    }
+
+    @Test fun a_known_foreign_code_is_still_labelled_and_grouped_as_that_currency() {
+        // The guard on the fix: the null fallback must not have swallowed the real job of formatCode.
+        assertThat(Money.formatCode(123_456_789, "MYR")).isEqualTo("RM1,234,567.89")
+        assertThat(Money.formatCode(420_000, "SGD")).isEqualTo("S$4,200.00")
+    }
+
     @Test fun currency_tokens_are_ordered_longest_first() {
         // The SMS parser relies on this ordering so "MYR" is never matched as a bare "RM"-something and
         // "US$" always beats "$". Assert the invariant rather than the list, which will grow.

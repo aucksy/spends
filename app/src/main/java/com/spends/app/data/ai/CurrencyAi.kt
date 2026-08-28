@@ -72,7 +72,17 @@ class CurrencyAi @Inject constructor(
     private val settingsRepository: SettingsRepository,
 ) {
 
-    private data class CachedRate(val rateMicros: Long, val note: String, val atMillis: Long)
+    /**
+     * A remembered answer for one currency pair. [rateMicros] is **null** when the last attempt FAILED.
+     *
+     * Failures are remembered on purpose, and for a shorter time ([FAILURE_TTL_MILLIS]). Without this,
+     * an unreachable provider — no signal, roaming data, a 5xx, a dead key — costs a fresh HTTP attempt
+     * per message, up to the client's call timeout each. A historical inbox scan runs that loop inside
+     * the capture mutex with the SMS cursor open, so a few hundred foreign alerts on a bad connection
+     * turned "Scan past SMS" into an hours-long freeze. The short TTL is what keeps a brief signal drop
+     * from disabling conversion for the rest of the day.
+     */
+    private data class CachedRate(val rateMicros: Long?, val note: String, val atMillis: Long)
 
     private val cache = mutableMapOf<String, CachedRate>()
     private val cacheMutex = Mutex()
@@ -100,9 +110,17 @@ class CurrencyAi @Inject constructor(
         if (!settings.aiConversionEnabled || !aiClient.hasKey()) return ConversionOutcome.Unavailable(from)
 
         val cached = cacheMutex.withLock {
-            cache["$from>${base.code}"]?.takeIf { nowMillis - it.atMillis < CACHE_TTL_MILLIS }
+            cache["$from>${base.code}"]?.takeIf {
+                val ttl = if (it.rateMicros == null) FAILURE_TTL_MILLIS else CACHE_TTL_MILLIS
+                nowMillis - it.atMillis < ttl
+            }
         }
-        if (cached != null) return outcome(foreignMinor, from, cached.rateMicros, cached.note, base)
+        if (cached != null) {
+            // A remembered FAILURE answers immediately with no network call — that is the whole point of
+            // caching it. The row is flagged unconverted exactly as a fresh failure would flag it.
+            val rate = cached.rateMicros ?: return ConversionOutcome.Unavailable(from)
+            return outcome(foreignMinor, from, rate, cached.note, base)
+        }
 
         val result = aiClient.chat(
             provider = settings.aiProvider,
@@ -113,7 +131,15 @@ class CurrencyAi @Inject constructor(
         val quote = when (result) {
             is AiResult.Ok -> FxQuoteParser.parse(result.content, from, base.code)
             is AiResult.Failed -> null
-        } ?: return ConversionOutcome.Unavailable(from)
+        }
+        if (quote == null) {
+            // Remember the failure BEFORE returning, so the next message in the same scan does not pay for
+            // another full timeout. Short TTL — see [CachedRate].
+            cacheMutex.withLock {
+                cache["$from>${base.code}"] = CachedRate(null, "", nowMillis)
+            }
+            return ConversionOutcome.Unavailable(from)
+        }
 
         cacheMutex.withLock {
             cache["$from>${base.code}"] = CachedRate(quote.rateMicros, quote.note, nowMillis)
@@ -150,6 +176,14 @@ class CurrencyAi @Inject constructor(
     companion object {
         /** Six hours: long enough that a day's alerts cost one call, short enough to track a real move. */
         const val CACHE_TTL_MILLIS = 6 * 60 * 60 * 1000L
+
+        /**
+         * How long a FAILED lookup is remembered. Deliberately short: a rate is worth six hours, but "the
+         * network was down five minutes ago" must not keep conversion switched off once signal returns —
+         * which is the ordinary case for the traveller this feature is for, moving between roaming, hotel
+         * wifi and no signal at all.
+         */
+        const val FAILURE_TTL_MILLIS = 5 * 60 * 1000L
 
         /**
          * Look up a user-set fixed rate for [from] → [to] in the stored "MYR:INR=18.9" style map.

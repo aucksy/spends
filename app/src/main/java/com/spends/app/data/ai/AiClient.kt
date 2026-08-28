@@ -48,7 +48,7 @@ sealed interface AiResult {
  * moment a key is saved or removed, without waiting for the next data emission.
  */
 @Singleton
-class AiClient @Inject constructor(
+open class AiClient @Inject constructor(
     private val secureKeyStore: SecureKeyStore,
 ) {
     private val client = OkHttpClient.Builder()
@@ -61,7 +61,10 @@ class AiClient @Inject constructor(
     val hasKeyFlow: StateFlow<Boolean> = _hasKey
 
     /** True when a key is present (presence only; a call still fails closed if it can't be decrypted). */
-    fun hasKey(): Boolean = secureKeyStore.hasApiKey()
+    // `open` here and on [chat] purely so a test can stand in a deterministic double. Nothing in the app
+    // subclasses AiClient; the alternative was an interface plus a Hilt binding for one call site, or a
+    // negative-rate-cache fix that shipped with no test able to see it.
+    open fun hasKey(): Boolean = secureKeyStore.hasApiKey()
 
     /** Store a key (encrypted, device-local) and update [hasKeyFlow]. Blank clears. */
     fun setKey(rawKey: String) {
@@ -76,7 +79,7 @@ class AiClient @Inject constructor(
     }
 
     /** One completion using the STORED key. */
-    suspend fun chat(
+    open suspend fun chat(
         provider: AiProvider,
         model: String,
         system: String,

@@ -146,8 +146,9 @@ class SmsCaptureRepository @Inject constructor(
         val fx = resolveFx(parsed, amount)
         // A foreign amount we could not convert must NOT take this path. Everything else here commits
         // straight to the ledger with no review, and committing a ringgit number into a rupee ledger is
-        // precisely the money bug multi-currency exists to prevent. Queue it for review instead, where the
-        // user sees the flag and the original amount.
+        // precisely the money bug multi-currency exists to prevent. Returning null DECLINES the silent add;
+        // it does not itself queue anything (the review queue is written by queueForReview / the scan), so
+        // do not read this as "queued here" — an earlier comment did, and it was wrong.
         if (fx.unconverted) return@withLock null
         // Live, user-confirmed captures are tagged NOTIFICATION (a deliberate add) — distinct from the
         // bulk historical scan (SMS) so the hide/delete-bulk controls never touch these (#11).
@@ -238,10 +239,13 @@ class SmsCaptureRepository @Inject constructor(
                 source = TxnSource.NOTIFICATION,
                 dedupeHash = dedupeHash,
                 parseConfidence = 100,
-                // The receipt survives only if the user saved the converted figure unchanged, and only
-                // when the conversion actually completed — same rule as confirmPendingEdited.
-                fxCurrency = fx?.currency.takeIf { fx?.rateMicros != null && amountMinor == fx.minor },
-                fxAmountMinor = fx?.originalMinor.takeIf { fx?.rateMicros != null && amountMinor == fx.minor },
+                // Rate = receipt, origin = fact — same split as confirmPendingEdited, and for the same
+                // reason. This is the LIVE path: notification → "Review & Add" → Save, which is the
+                // journey the whole feature exists for. Dropping the origin here meant that a ringgit
+                // alert arriving with no signal to convert it could be saved as an ordinary rupee row
+                // with nothing left on it to show it had ever been ringgit.
+                fxCurrency = fx?.currency,
+                fxAmountMinor = fx?.originalMinor,
                 fxRateMicros = fx?.rateMicros?.takeIf { amountMinor == fx.minor },
             ),
         )
@@ -750,11 +754,20 @@ class SmsCaptureRepository @Inject constructor(
                 source = TxnSource.SMS,
                 dedupeHash = p.dedupeHash,
                 parseConfidence = 100,
-                // The receipt survives only if the user left the converted figure as it was. Once they
-                // type their own amount it no longer explains what is stored, so it is dropped — the same
-                // rule ExpenseRepository.update applies to a later edit.
-                fxCurrency = p.fxCurrency.takeIf { amountMinor == p.amountMinor && p.fxRateMicros != null },
-                fxAmountMinor = p.fxAmountMinor.takeIf { amountMinor == p.amountMinor && p.fxRateMicros != null },
+                // Two different things are stored here, and conflating them lost the more important one.
+                //
+                // The RATE is a receipt: it explains how the stored figure was reached, so it survives only
+                // while the user leaves that figure alone. Type your own amount and the rate no longer
+                // explains it, so it is dropped — the same rule ExpenseRepository.update applies later.
+                //
+                // The ORIGIN (which currency the alert was in, and how much) is a FACT about the message.
+                // It is true whatever the user types, and it is the only record that this row began life as
+                // RM250 rather than ₹250. It used to be dropped alongside the rate, which meant an alert
+                // that could not be converted — no key, no signal, exactly the traveller's case — could be
+                // saved from the editor in one tap and become indistinguishable from a genuine rupee entry.
+                // It is now kept unconditionally whenever the capture had a foreign currency.
+                fxCurrency = p.fxCurrency,
+                fxAmountMinor = p.fxAmountMinor,
                 fxRateMicros = p.fxRateMicros.takeIf { amountMinor == p.amountMinor },
             ),
         )
@@ -847,28 +860,39 @@ class SmsCaptureRepository @Inject constructor(
         val unconverted: Boolean get() = currency != null && rateMicros == null
     }
 
-    /**
-     * Resolve a parsed amount into the currency the ledger is kept in.
-     *
-     * Three outcomes, and the third is the one that matters:
-     *  - no currency token, or the alert is already in the base currency → unchanged, no receipt;
-     *  - converted → the base-currency figure plus the original amount and the rate that produced it;
-     *  - foreign but NOT convertible → the raw foreign number, flagged [Fx.unconverted].
-     *
-     * The last case deliberately keeps the capture instead of dropping it. This app's standing rule is
-     * that a detected transaction is never silently lost, and a queued row touches no balance until the
-     * user confirms it — so the safe play is to surface it, marked, rather than to discard a real payment
-     * because a network call failed.
-     */
     /** The receipt a queued row carries, in the shape [createLedgerTxn] takes. */
     private fun PendingCaptureEntity.toFx(): Fx =
         Fx(minor = amountMinor, currency = fxCurrency, originalMinor = fxAmountMinor, rateMicros = fxRateMicros)
 
+    /**
+     * Resolve a parsed amount into the currency the ledger is kept in.
+     *
+     * Four outcomes, and the last two are the ones that matter:
+     *  - no currency token, or the alert is already in the base currency → unchanged, no receipt;
+     *  - converted → the base-currency figure plus the original amount and the rate that produced it;
+     *  - foreign but too OLD for a live rate → the raw foreign number, flagged [Fx.unconverted];
+     *  - foreign but NOT convertible → the raw foreign number, flagged [Fx.unconverted].
+     *
+     * The last two deliberately keep the capture instead of dropping it. This app's standing rule is
+     * that a detected transaction is never silently lost, and a queued row touches no balance until the
+     * user confirms it — so the safe play is to surface it, marked, rather than to discard a real payment
+     * because a network call failed.
+     */
     private suspend fun resolveFx(parsed: SmsParser.Parsed, amount: Long): Fx {
         val code = parsed.currencyCode ?: return Fx(amount)
+        val now = DateUtils.nowMillis()
+        // A rate is only ever asked for as "right now", so it may only be applied to a message that IS
+        // from right now. A live alert is seconds old and converts normally — the case this feature exists
+        // for. An alert dug out of the inbox by a historical scan can be years old, and pricing a 2019
+        // ringgit charge at today's rate is a knowingly wrong figure that "Add all" would then file in one
+        // tap; over seven years the ringgit moved more than a tenth. Such a row is marked unconverted
+        // instead, which every no-editor commit path already refuses, so the amount is set by a human.
+        if (isTooOldForALiveRate(parsed.occurredAt, now)) {
+            return Fx(minor = amount, currency = code, originalMinor = amount, rateMicros = null)
+        }
         // A thrown exception is treated as Unavailable, not as "no currency": losing the fact that this
         // amount is foreign is the one failure that would let it be committed as base currency.
-        val outcome = runCatching { currencyAi.convert(code, amount, DateUtils.nowMillis()) }
+        val outcome = runCatching { currencyAi.convert(code, amount, now) }
             .getOrDefault(ConversionOutcome.Unavailable(code))
         return when (outcome) {
             // The alert names the currency the books are ALREADY kept in — an ordinary domestic capture
@@ -914,10 +938,13 @@ class SmsCaptureRepository @Inject constructor(
             source = source,
             dedupeHash = hash,
             parseConfidence = 100, // user-reviewed
-            // Only a COMPLETED conversion leaves a receipt. An unconverted foreign amount never reaches
-            // here (both commit paths refuse it), so a stored rate always explains the stored figure.
-            fxCurrency = fx?.rateMicros?.let { fx.currency },
-            fxAmountMinor = fx?.rateMicros?.let { fx.originalMinor },
+            // Same split as the two editor paths: the RATE is a receipt for the stored figure, the ORIGIN
+            // is a fact about the message. An unconverted foreign amount should never reach here (every
+            // no-editor commit path refuses it), but storing the origin unconditionally means that if one
+            // ever did, it would arrive on the row FLAGGED rather than disguised as an ordinary rupee
+            // entry. The safe direction to be wrong in, on the only code path with no human in it.
+            fxCurrency = fx?.currency,
+            fxAmountMinor = fx?.originalMinor,
             fxRateMicros = fx?.rateMicros,
         ),
     )
@@ -1197,6 +1224,30 @@ class SmsCaptureRepository @Inject constructor(
          *  Public because the "Silenced alerts" screen has to say how close a pattern is to going quiet —
          *  a threshold only this file knows is one the owner can only discover by tripping over it. */
         const val IGNORE_SUPPRESS_THRESHOLD = 3
+
+        /**
+         * How old an alert may be and still be priced at today's exchange rate.
+         *
+         * The AI is only ever asked "how many rupees is 1 ringgit RIGHT NOW", so the answer is only honest
+         * about a message from around now. Two days is generous for the case this feature is for — a card
+         * alert arriving while abroad, converted within seconds — while keeping a historical inbox scan
+         * from silently repricing years of old travel at this week's rate. Anything older is queued flagged
+         * and unconverted, which every no-editor commit path refuses.
+         */
+        const val STALE_FOR_LIVE_RATE_MILLIS = 2 * 24 * 60 * 60 * 1000L
+
+        /**
+         * Whether an alert is too old to be priced at today's exchange rate.
+         *
+         * Pure and internal so the rule can be tested on its own — it decides whether a figure is
+         * converted or held back for a human, which is not something to leave only reachable through a
+         * database, a cursor and a network call.
+         *
+         * A message dated slightly in the FUTURE is treated as current, not stale: phone clocks drift and
+         * an SMS timestamped a minute ahead is plainly a live alert, not history.
+         */
+        internal fun isTooOldForALiveRate(occurredAt: Long, nowMillis: Long): Boolean =
+            nowMillis - occurredAt > STALE_FOR_LIVE_RATE_MILLIS
 
         private val iconKeyToCategory = mapOf(
             "food" to "Food", "fastfood" to "Food", "coffee" to "Food",

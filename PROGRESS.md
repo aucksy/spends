@@ -4,7 +4,50 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Built, not yet tagged: v1.70.0** — versionCode **80**, versionName **"1.70.0"**. Two features:
+- **Tagged: v1.70.1** — versionCode **81**, versionName **"1.70.1"**. The pre-tag adversarial review of
+  v1.70.0 found one money bug and five real defects; all are fixed here. No schema change (still Room v17,
+  snapshot v6), so everything in the v1.70.0 entry below still describes what ships.
+  - **The money bug — an unconvertible foreign alert could be saved as a base-currency amount.** Three of
+    the four commit paths refused such a row; the full editor did not. It opened with the FOREIGN figure
+    pre-filled, Save enabled, and on save discarded every column recording the row had ever been ringgit —
+    so one tap on the most likely button on the screen filed RM250.00 as ₹250.00, indistinguishable
+    afterwards from a genuine rupee entry. This is exactly the owner's stated use case (a card alert
+    abroad) in exactly the conditions that make conversion fail (no signal). Now: Save is held until the
+    amount is touched, the amount is headed with the FOREIGN symbol in the error colour while it is, and
+    the origin (`fxCurrency`/`fxAmountMinor`) is stored unconditionally on **every** commit path — the rate
+    is a receipt for the stored figure and still drops on an edit, but which currency it arrived in is a
+    fact about the message and is kept. Pinned by `UnconvertedForeignGuardTest`.
+  - **Every ordinary rupee capture notification had lost its ₹.** `CaptureNotifier` passed the capture's
+    `currencyCode` to `Money.formatCode`, and that code is null for every rupee SMS — which the generic
+    branch read as "an unknown currency whose symbol is the empty string", grouping Western. "Expense
+    ₹12,34,567.89" shipped as "Expense 1,234,567.89" on the app's highest-traffic surface, with no test
+    covering it. `formatCode` now treats a null/blank code as "no foreign currency involved" and renders in
+    the ledger's own currency. Pinned by four cases in `AppCurrencyTest`.
+  - **A failed rate lookup was never cached**, so an unreachable provider cost one HTTP attempt per foreign
+    message at up to 20s each — inside the scan's capture mutex with the SMS cursor open. Failures are now
+    remembered for 5 minutes (against 6 hours for a rate), so a brief signal drop cannot disable conversion
+    for the day. Pinned by `CurrencyAiFailureCacheTest`, which counts calls against a stand-in client.
+  - **A historical scan priced years-old alerts at today's rate.** The model is only ever asked "what is
+    the rate RIGHT NOW", and a *converted* row is bulk-committable by "Add all" with no review. Anything
+    older than two days is now queued flagged and unconverted instead. A live alert — the case the feature
+    exists for — is unaffected. Pinned by `LiveRateFreshnessTest`.
+  - **The spreadsheet export could contradict itself.** `ExcelExporter` is a `@Singleton` and its header
+    was a stored `val`, freezing the currency at first construction while the split-details column read it
+    per export: one file headed "Income (INR)" with "RM" inside it. Now a getter. Pinned by
+    `ExcelHeaderCurrencyTest`.
+  - **Backup threw away every conversion receipt.** Snapshot v6 added `baseCurrency` to the settings but
+    never added the three `fx*` columns to `SnapshotExpense`. Amounts were always safe; the explanation was
+    not. Added with null defaults (so every existing backup still restores) and mapped both ways. Pinned by
+    `SnapshotFxTest`.
+  - *Also:* two new render tests were racing an async DataStore read and could have gone red on a loaded CI
+    runner — they now wait for the node rather than for composition to idle; a KDoc block was bound to the
+    wrong function; two comments described behaviour the code did not have; `Money.RUPEE` was unreferenced.
+  - *Reviewed but deliberately NOT changed:* the AI call timeout stays at 20s (the negative cache was the
+    real fix, and a shorter timeout would make conversion fail on the slow roaming data this feature is for);
+    a manual rate can still only be pinned for INR/MYR/USD, not for a detectable-but-not-base currency like
+    SGD; `parseToMinor` still strips currency tokens unanchored; and restoring a pre-v6 backup still forces
+    the base currency back to INR.
+- **Superseded: v1.70.0** — versionCode **80**, versionName **"1.70.0"**. Never tagged. Two features:
   **income analytics** and **multi-currency with optional AI conversion**. **Room schema v16 → v17**
   (`MIGRATION_16_17`: three nullable columns on each of `expenses` and `pending_captures`; additive, no
   stored figure changes). Backup snapshot **v5 → v6** (`baseCurrency`).

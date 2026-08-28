@@ -16,7 +16,6 @@ import kotlin.math.abs
  */
 object Money {
 
-    const val RUPEE = "₹"
     private const val MINOR_PER_UNIT = 100L
 
     /**
@@ -60,8 +59,16 @@ object Money {
      * Format minor units of an arbitrary currency CODE — including one Spends doesn't keep books in
      * (the original side of a converted transaction: "SGD 42.00"). Unknown codes group Western-style
      * and are labelled with the bare code.
+     *
+     * A **null or blank** code means "no foreign currency involved" — the ordinary domestic case — and
+     * renders in the ledger's own currency, identically to [format]. That fallback is here rather than at
+     * the call site because the null case is the overwhelmingly common one: `CaptureNotifier` shipped a
+     * v1.70.0 build where every ordinary rupee alert announced itself as "Expense 1,25,000.00" with no ₹
+     * and Western grouping, because the generic branch below treats an absent code as an unknown currency
+     * whose symbol is the empty string. Any future caller that formats a nullable code gets it right now.
      */
     fun formatCode(minor: Long, code: String?, withSymbol: Boolean = true): String {
+        if (code.isNullOrBlank()) return format(minor, displayCurrency, withSymbol)
         AppCurrency.fromCode(code)?.let { return format(minor, it, withSymbol) }
         val negative = minor < 0
         val absMinor = abs(minor)

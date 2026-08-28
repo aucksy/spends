@@ -48,6 +48,13 @@ data class AddEditInitial(
     val conversionNote: String? = null,
     /** True when [amountText] is still in a foreign currency, so the note is a warning, not a receipt. */
     val unconvertedForeign: Boolean = false,
+    /**
+     * The currency code the alert arrived in ("MYR"), or null for an ordinary same-currency entry. The
+     * editor needs it separately from [conversionNote] so it can label the amount field with the right
+     * symbol while [unconvertedForeign] holds — the digits in that box are still ringgit, and heading them
+     * with the ledger's ₹ made a foreign figure look like an already-correct rupee one.
+     */
+    val fxCurrency: String? = null,
 )
 
 /**
@@ -60,10 +67,48 @@ internal fun conversionNoteFor(fxCurrency: String?, fxAmountMinor: Long?, fxRate
     when {
         fxCurrency != null && fxAmountMinor != null && fxRateMicros != null ->
             FxMath.describe(fxAmountMinor, fxCurrency, amountMinor, fxRateMicros)
+        // No rate, but we know what the alert arrived as. Two very different situations share that shape,
+        // and telling them apart is the difference between a warning and a note:
+        //
+        //  - the amount on screen is STILL the foreign one (it equals the original) → nothing has been
+        //    converted and nothing has been decided; this is the dangerous state, and it says so;
+        //  - the amount differs → the user has already put in what it was worth. The origin is kept as a
+        //    record of where the row came from, but warning them about a figure they chose themselves
+        //    would be nonsense, so it reads as a fact instead.
+        //
+        // Worded as standing facts rather than "…before saving", because this same line appears on the
+        // review card, in the editor, AND on the transaction long after it was saved.
+        fxCurrency != null && fxAmountMinor != null && fxRateMicros == null ->
+            if (amountMinor == fxAmountMinor) {
+                "This alert was for ${Money.formatCode(fxAmountMinor, fxCurrency)} and no rate was " +
+                    "available. The amount below is not converted — set it yourself."
+            } else {
+                "This alert was for ${Money.formatCode(fxAmountMinor, fxCurrency)}. " +
+                    "You set the amount below yourself; no rate was used."
+            }
         fxCurrency != null && fxRateMicros == null ->
-            "This alert was in $fxCurrency and couldn't be converted. Check the amount before saving."
+            "This alert was in $fxCurrency and couldn't be converted. The amount below is not converted."
         else -> null
     }
+
+/**
+ * True while the editor is still showing a foreign amount the app could not convert, untouched.
+ *
+ * This is the editor's share of the guard every no-editor commit path already applies. An alert that
+ * could not be converted opens with the FOREIGN figure pre-filled — RM250 sitting where a rupee amount
+ * belongs — so the single most likely action on the screen (open the notification, tap Save) filed RM250
+ * as ₹250. A pure function rather than a line inside the composable so the rule can be tested directly;
+ * it is the kind of guard that must not be able to quietly stop holding.
+ *
+ * Comparing against the SEEDED text, not tracking an "edited" flag, is deliberate: clearing the box and
+ * typing the same digits back means the user has looked at the number and stands behind it, and a blank
+ * box is already refused by the amount check. Only an untouched foreign figure is blocked.
+ */
+internal fun isUntouchedForeignAmount(
+    unconvertedForeign: Boolean,
+    seededAmountText: String,
+    currentAmountText: String,
+): Boolean = unconvertedForeign && currentAmountText == seededAmountText
 
 @HiltViewModel
 class AddEditViewModel @Inject constructor(
@@ -159,6 +204,10 @@ class AddEditViewModel @Inject constructor(
                         conversionNote = conversionNoteFor(
                             e.expense.fxCurrency, e.expense.fxAmountMinor, e.expense.fxRateMicros, e.expense.amountMinor,
                         ),
+                        // A SAVED row is never treated as an untouched foreign amount: whatever is stored
+                        // is the figure the user accepted, in the ledger's currency. Only the origin is
+                        // carried through, so the row can still say what it arrived as.
+                        fxCurrency = e.expense.fxCurrency,
                     )
                 } else {
                     newInitial()
@@ -182,6 +231,7 @@ class AddEditViewModel @Inject constructor(
                         paymentMethodId = paymentMethodRepository.matchInstrument(p.last4, p.institution),
                         conversionNote = conversionNoteFor(p.fxCurrency, p.fxAmountMinor, p.fxRateMicros, p.amountMinor),
                         unconvertedForeign = p.isUnconvertedForeign,
+                        fxCurrency = p.fxCurrency,
                     )
                 } else {
                     newInitial() // the row was confirmed/rejected elsewhere — fall back to a blank add
@@ -199,6 +249,7 @@ class AddEditViewModel @Inject constructor(
                     paymentMethodId = it.paymentMethodId,
                     conversionNote = conversionNoteFor(it.fxCurrency, it.fxAmountMinor, it.fxRateMicros, it.amountMinor),
                     unconvertedForeign = it.unconvertedForeign,
+                    fxCurrency = it.fxCurrency,
                 )
             }
             // A fresh manual add pre-selects the user's default instrument (#2) when Smart Cycle is on.
