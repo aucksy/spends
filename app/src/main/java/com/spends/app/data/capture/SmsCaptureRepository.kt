@@ -143,7 +143,7 @@ class SmsCaptureRepository @Inject constructor(
         // fallback is deliberately confined to the review editor (#3), where the user can see + correct it,
         // so a same-bank non-card debit is never silently mis-attributed to a card here.
         val pmId = paymentMethodRepository.matchConfirmedByLast4(parsed.last4)
-        val fx = resolveFx(parsed, amount)
+        val fx = resolveFx(parsed, amount, occurredAt)
         // A foreign amount we could not convert must NOT take this path. Everything else here commits
         // straight to the ledger with no review, and committing a ringgit number into a rupee ledger is
         // precisely the money bug multi-currency exists to prevent. Returning null DECLINES the silent add;
@@ -175,7 +175,7 @@ class SmsCaptureRepository @Inject constructor(
         // is carried instead and [CaptureDraft.fxCurrency] tells the editor to say so — the user is
         // standing in front of the amount field either way, which is why this path can afford to be
         // lenient where the no-editor commit paths refuse outright.
-        val fx = resolveFx(parsed, amount)
+        val fx = resolveFx(parsed, amount, occurredAt)
         return CaptureDraft(
             amountMinor = fx.minor,
             kind = kind,
@@ -371,7 +371,7 @@ class SmsCaptureRepository @Inject constructor(
             // the same alert hashes identically whether or not a conversion succeeded this time. Hashing
             // the converted figure would let a rate that moved between two deliveries of one alert produce
             // two different hashes — and therefore two review rows for one payment.
-            val fx = resolveFx(parsed, amount)
+            val fx = resolveFx(parsed, amount, occurredAt)
             pendingDao.insert(
                 PendingCaptureEntity(
                     amountMinor = fx.minor,
@@ -539,7 +539,7 @@ class SmsCaptureRepository @Inject constructor(
                         // costs one network call per distinct foreign currency, not one per message. The
                         // hash above is built from the amount as PARSED, so conversion cannot affect
                         // dedupe against rows queued on an earlier scan.
-                        val fx = resolveFx(parsed, amount)
+                        val fx = resolveFx(parsed, amount, occurredAt)
                         val rowId = pendingDao.insert(
                             PendingCaptureEntity(
                                 amountMinor = fx.minor,
@@ -873,12 +873,16 @@ class SmsCaptureRepository @Inject constructor(
      *  - foreign but too OLD for a live rate → the raw foreign number, flagged [Fx.unconverted];
      *  - foreign but NOT convertible → the raw foreign number, flagged [Fx.unconverted].
      *
+     * [occurredAt] is the caller's RESOLVED date, not `parsed.occurredAt` — the parser returns null when a
+     * message carries no readable date, and every caller has already fallen back to when it was received.
+     * Passing the nullable one straight through is what broke the first build of this fix.
+     *
      * The last two deliberately keep the capture instead of dropping it. This app's standing rule is
      * that a detected transaction is never silently lost, and a queued row touches no balance until the
      * user confirms it — so the safe play is to surface it, marked, rather than to discard a real payment
      * because a network call failed.
      */
-    private suspend fun resolveFx(parsed: SmsParser.Parsed, amount: Long): Fx {
+    private suspend fun resolveFx(parsed: SmsParser.Parsed, amount: Long, occurredAt: Long): Fx {
         val code = parsed.currencyCode ?: return Fx(amount)
         val now = DateUtils.nowMillis()
         // A rate is only ever asked for as "right now", so it may only be applied to a message that IS
@@ -887,7 +891,7 @@ class SmsCaptureRepository @Inject constructor(
         // ringgit charge at today's rate is a knowingly wrong figure that "Add all" would then file in one
         // tap; over seven years the ringgit moved more than a tenth. Such a row is marked unconverted
         // instead, which every no-editor commit path already refuses, so the amount is set by a human.
-        if (isTooOldForALiveRate(parsed.occurredAt, now)) {
+        if (isTooOldForALiveRate(occurredAt, now)) {
             return Fx(minor = amount, currency = code, originalMinor = amount, rateMicros = null)
         }
         // A thrown exception is treated as Unavailable, not as "no currency": losing the fact that this
