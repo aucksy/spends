@@ -28,6 +28,28 @@ every one of them.
 
 ---
 
+## v1.71.0 — the category drill-down now matches the wedge you tapped
+
+Your **Business** and **Interest** categories hold both income and expenses. Tapping either used to open a
+screen that added both together, so its total never matched the wedge.
+
+- [ ] ⭐ Analytics → **Income** → tap **Business**. The big number equals the wedge you tapped. It does NOT
+      include Business spending.
+- [ ] ⭐ Go back → switch to **Spending** → tap **Business**. Now the number is the spending only, and it is
+      a different figure.
+- [ ] ⭐ The app bar says **Money in** on the first and **Money out** on the second, under the category name.
+      Without that the two screens look identical while showing different numbers.
+- [ ] The list under each shows only that direction — no expense rows on the income screen.
+- [ ] The "usual month" sentence and the bar beneath the headline also changed between the two. They are
+      computed from the same list, so they must move together with it.
+- [ ] Do the same for **Interest**.
+- [ ] An ordinary one-direction category (Food, Salary) behaves exactly as it did before.
+- [ ] Change the cycle with the arrows, and switch Monthly / Yearly. Both keep the same side of the ledger.
+- [ ] Go into a category and press Back — Analytics is still on the toggle you left it on.
+- [ ] A long category name still fits the app bar on your phone without pushing the "Money in" line out.
+
+---
+
 ## v1.70.1 — what the pre-tag review fixed
 
 Six defects found by the two adversarial reviews of v1.70.0, which was never released. Everything in the

@@ -1,5 +1,6 @@
 package com.spends.app.ui.navigation
 
+import com.spends.app.domain.model.TxnKind
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -97,17 +98,40 @@ object Routes {
     const val ARG_CYCLE_LABEL = "cycleLabel"
 
     /**
+     * Which side of the ledger the drill-down should total — the kind of the Analytics lens that opened it.
+     *
+     * A category can hold BOTH income and expense rows (money can come in under the same name it also goes
+     * out under). The Analytics donuts always split those correctly, because both DAO queries filter on
+     * kind; the drill-down did not, so tapping a ₹25,000 income wedge opened a screen totalling that income
+     * PLUS the same category's spending. Carrying the lens through the route is what lets the screen total
+     * the same rows the wedge was drawn from.
+     *
+     * A query param with a default, not a path segment, so any existing back-stack entry or deep link
+     * without it still resolves — to EXPENSE, which is what every such link meant before this existed.
+     */
+    const val ARG_KIND = "kind"
+
+    /**
      * Route to the per-category transaction list for one Analytics period. [name] and [cycleLabel] are
      * URL-encoded so spaces / symbols (e.g. "Food & Drink", "17 Jun – 16 Jul") survive path/arg parsing.
      */
-    fun categoryTxns(categoryId: Long, name: String, cycleLabel: String, startMillis: Long, endExclusiveMillis: Long): String {
+    fun categoryTxns(
+        categoryId: Long,
+        name: String,
+        cycleLabel: String,
+        startMillis: Long,
+        endExclusiveMillis: Long,
+        kind: TxnKind,
+    ): String {
         // URLEncoder emits '+' for spaces, but the nav path decoder (Uri.decode) only turns '%20'
         // back into a space — swap so the text renders cleanly.
         val encoded = URLEncoder.encode(name, StandardCharsets.UTF_8.name()).replace("+", "%20")
         val encodedCycle = URLEncoder.encode(cycleLabel, StandardCharsets.UTF_8.name()).replace("+", "%20")
-        return "$CATEGORY_TXNS/$categoryId/$encoded/$startMillis/$endExclusiveMillis?$ARG_CYCLE_LABEL=$encodedCycle"
+        return "$CATEGORY_TXNS/$categoryId/$encoded/$startMillis/$endExclusiveMillis" +
+            "?$ARG_CYCLE_LABEL=$encodedCycle&$ARG_KIND=${kind.name}"
     }
 
     const val CATEGORY_TXNS_PATTERN =
-        "$CATEGORY_TXNS/{$ARG_CATEGORY_ID}/{$ARG_CATEGORY_NAME}/{$ARG_PERIOD_START}/{$ARG_PERIOD_END}?$ARG_CYCLE_LABEL={$ARG_CYCLE_LABEL}"
+        "$CATEGORY_TXNS/{$ARG_CATEGORY_ID}/{$ARG_CATEGORY_NAME}/{$ARG_PERIOD_START}/{$ARG_PERIOD_END}" +
+            "?$ARG_CYCLE_LABEL={$ARG_CYCLE_LABEL}&$ARG_KIND={$ARG_KIND}"
 }

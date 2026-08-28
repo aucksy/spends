@@ -52,6 +52,7 @@ import com.spends.app.core.money.Money
 import com.spends.app.core.period.PeriodType
 import com.spends.app.core.theme.LocalSemanticColors
 import com.spends.app.core.theme.Numerals
+import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.components.AutoSizeRupee
 import com.spends.app.ui.components.DonutChart
 import com.spends.app.ui.components.DonutSlice
@@ -67,7 +68,14 @@ import com.spends.app.ui.components.rupeeText
 @Composable
 fun AnalyticsScreen(
     onOpenRecurring: () -> Unit,
-    onOpenCategory: (categoryId: Long, name: String, cycleLabel: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+    onOpenCategory: (
+        categoryId: Long,
+        name: String,
+        cycleLabel: String,
+        startMillis: Long,
+        endExclusiveMillis: Long,
+        kind: TxnKind,
+    ) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBreakdown: () -> Unit = {},
     viewModel: AnalyticsViewModel = hiltViewModel(),
@@ -128,8 +136,11 @@ fun AnalyticsScreen(
             )
             Spacer(Modifier.height(14.dp))
             // Inject the current cycle label (#5) so the drill-down shows which period these numbers are for.
+            // The LENS travels with the tap. A category can hold both income and expense rows, and the
+            // wedge the user just touched was drawn from only one side — so the screen it opens has to
+            // total that same side, or the two disagree on what the category is worth.
             CategoryBreakdownCard(state, lens, semantic.dark) { catId, name, start, end ->
-                onOpenCategory(catId, name, cycleLabel, start, end)
+                onOpenCategory(catId, name, cycleLabel, start, end, lens.kind)
             }
             Spacer(Modifier.height(14.dp))
             OverTimeCard(state, lens)

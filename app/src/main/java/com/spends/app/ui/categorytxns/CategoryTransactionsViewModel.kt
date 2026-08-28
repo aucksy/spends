@@ -80,6 +80,14 @@ data class CategoryTxnRow(
 data class CategoryTxnsUiState(
     val loading: Boolean = true,
     val categoryName: String = "",
+    /**
+     * Which side of the ledger this screen is totalling.
+     *
+     * Shown in the app bar, because a category that holds both income and expense rows now opens TWO
+     * different screens under the same name — and without a label they are indistinguishable while
+     * showing different numbers, which is a worse confusion than the one this change fixes.
+     */
+    val lensKind: TxnKind = TxnKind.EXPENSE,
     // The concrete date range of the selected cycle (#5) — shown by the selector pill as its secondary line.
     // Monthly mode only; in Yearly mode the list is a whole calendar year and no cycle is involved.
     val cycleLabel: String = "",
@@ -128,6 +136,27 @@ class CategoryTransactionsViewModel @Inject constructor(
     private val categoryId: Long = savedStateHandle[Routes.ARG_CATEGORY_ID] ?: -1L
     private val categoryName: String = savedStateHandle[Routes.ARG_CATEGORY_NAME] ?: ""
 
+    /**
+     * Which side of the ledger this screen totals — the kind of the Analytics lens that opened it.
+     *
+     * Two of the owner's categories (Business, Interest) hold BOTH income and expense rows: money comes in
+     * under the same name it also goes out under. The Analytics donuts always split those correctly,
+     * because `observeCategorySpend` and `observeCategoryIncome` both filter on kind. This screen did not
+     * — it totalled every row in the category regardless of direction, so tapping a ₹25,000 income wedge
+     * opened a page whose headline was that income MINUS nothing and PLUS the same category's spending.
+     * The number on the wedge and the number on the screen it opened disagreed.
+     *
+     * Reading it from the route rather than from a shared store is deliberate: the drill-down must total
+     * the lens the user actually TAPPED, and it must keep totalling that lens if they later flip the
+     * toggle on the screen behind it.
+     *
+     * An unparseable or absent value falls back to EXPENSE, which is what every link minted before this
+     * argument existed meant.
+     */
+    private val lensKind: TxnKind = savedStateHandle.get<String>(Routes.ARG_KIND)
+        ?.let { code -> TxnKind.entries.firstOrNull { it.name == code } }
+        ?: TxnKind.EXPENSE
+
     private val avg = MutableStateFlow(AvgSelection())
     fun setAvgMode(mode: AvgMode) = avg.update { it.copy(mode = mode) }
     fun setAvgWindow(window: AvgWindow) = avg.update { it.copy(window = window) }
@@ -165,7 +194,12 @@ class CategoryTransactionsViewModel @Inject constructor(
             // Pair earliest-day with the confirmed cards (their billing days) so the Smart Cycle slice can bucket
             // each txn by its paying card — combine tops out at 5 typed flows, so nest these two.
             combine(expenseRepository.observeEarliestDay(), paymentMethodRepository.observeConfirmed()) { e, c -> e to c },
-        ) { allItems, avgSel, sel, settings, earliestAndCards ->
+        ) { allRows, avgSel, sel, settings, earliestAndCards ->
+            // ONE filter, at the source. The list, the cycle total, the monthly average, the year picker
+            // and the previous-year comparison are all derived from `allItems` further down, so narrowing
+            // it here is what makes every one of them agree with the wedge that was tapped — rather than
+            // five separate places each needing to remember the lens.
+            val allItems = allRows.filter { it.expense.kind == lensKind }
             val earliest = earliestAndCards.first
             val cards = earliestAndCards.second
             val now = DateUtils.nowMillis()
@@ -314,6 +348,7 @@ class CategoryTransactionsViewModel @Inject constructor(
             CategoryTxnsUiState(
                 loading = false,
                 categoryName = categoryName,
+                lensKind = lensKind,
                 cycleLabel = resolved.label,
                 totalMinor = total,
                 count = rows.size,

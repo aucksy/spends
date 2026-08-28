@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.rememberCoroutineScope
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.DefaultLanding
+import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.analytics.AnalyticsScreen
 import com.spends.app.ui.components.LocalAmountsHidden
 import com.spends.app.ui.quickadd.QuickAddSheet
@@ -56,7 +57,14 @@ fun HomeScreen(
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenRecurring: () -> Unit,
-    onOpenCategory: (categoryId: Long, name: String, cycleLabel: String, startMillis: Long, endExclusiveMillis: Long) -> Unit,
+    onOpenCategory: (
+        categoryId: Long,
+        name: String,
+        cycleLabel: String,
+        startMillis: Long,
+        endExclusiveMillis: Long,
+        kind: TxnKind,
+    ) -> Unit,
     onOpenBreakdown: () -> Unit = {},
     openQuickAddSignal: Boolean = false,
     onQuickAddConsumed: () -> Unit = {},

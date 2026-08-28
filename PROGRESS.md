@@ -4,7 +4,33 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Tagged: v1.70.1** — versionCode **81**, versionName **"1.70.1"**. The pre-tag adversarial review of
+- **Tagged: v1.71.0** — versionCode **82**, versionName **"1.71.0"**. The category drill-down now totals
+  the SIDE OF THE LEDGER that was tapped. No schema change (Room v17, snapshot v6).
+  - *The bug, which predates v1.70.0.* A category can hold both income and expense rows — the owner has
+    two (Business, Interest) where money comes in under the same name it also goes out under. The Analytics
+    donuts always split those correctly, because `observeCategorySpend` and `observeCategoryIncome` each
+    filter on `kind`. The drill-down did not: `CategoryTransactionsViewModel` summed the category's rows
+    regardless of direction, so tapping a ₹25,000 income wedge opened a screen headed with that income PLUS
+    the same category's spending. The wedge and the page it opened disagreed, with nothing on either to say
+    why. v1.70.0's income donut did not cause this — it added a second, much likelier way to meet it.
+  - *The fix.* The lens travels with the tap: `Lens.kind` (which already existed and was dead code) is now
+    carried on the route as an optional `kind` query argument, and the ViewModel filters `allItems` ONCE at
+    the source. Everything downstream — the list, the cycle total, the monthly average, the year picker and
+    the previous-year comparison — is derived from that list, so all five agree with the wedge without five
+    separate places having to remember the lens.
+  - *And the screen says which side it is.* A category with both directions now opens two screens under the
+    same name showing different totals; unlabelled, that is a worse confusion than the original bug. The app
+    bar gained a second line reading **"Money in"** or **"Money out"** (titleMedium + capped to one line each,
+    so a long category name still fits a 64dp bar).
+  - *Backward compatible.* The route argument defaults to EXPENSE, so a back-stack entry or deep link minted
+    before it existed still resolves — and resolves to what it used to mean. An unreadable value falls back
+    the same way rather than throwing.
+  - *Tests.* `CategoryDrillDownKindTest` drives the real ViewModel against a real in-memory Room database
+    with one category holding ₹30,000 of income and ₹5,000 of spending — the unfiltered sum (₹35,000) matches
+    neither side, so a filter that silently did nothing cannot pass by coincidence. It pins both lenses, the
+    missing-argument fallback, the unreadable-value fallback, and that the monthly average narrowed with the
+    list. The period is pinned to ALL so the file can only fail for one reason.
+- Previous: **v1.70.1** — versionCode **81**, versionName **"1.70.1"**. The pre-tag adversarial review of
   v1.70.0 found one money bug and five real defects; all are fixed here. No schema change (still Room v17,
   snapshot v6), so everything in the v1.70.0 entry below still describes what ships.
   - **The money bug — an unconvertible foreign alert could be saved as a base-currency amount.** Three of

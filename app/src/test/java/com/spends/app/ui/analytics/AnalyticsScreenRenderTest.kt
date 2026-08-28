@@ -156,7 +156,7 @@ class AnalyticsScreenRenderTest {
         try {
             setContent {
                 AnalyticsScreen(
-                    onOpenRecurring = {}, onOpenCategory = { _, _, _, _, _ -> }, onOpenSettings = {},
+                    onOpenRecurring = {}, onOpenCategory = { _, _, _, _, _, _ -> }, onOpenSettings = {},
                     viewModel = viewModelWith(db),
                 )
             }
@@ -179,7 +179,7 @@ class AnalyticsScreenRenderTest {
         try {
             setContent {
                 AnalyticsScreen(
-                    onOpenRecurring = {}, onOpenCategory = { _, _, _, _, _ -> }, onOpenSettings = {},
+                    onOpenRecurring = {}, onOpenCategory = { _, _, _, _, _, _ -> }, onOpenSettings = {},
                     viewModel = viewModelWith(db),
                 )
             }
@@ -207,7 +207,7 @@ class AnalyticsScreenRenderTest {
         try {
             setContent {
                 AnalyticsScreen(
-                    onOpenRecurring = {}, onOpenCategory = { _, _, _, _, _ -> }, onOpenSettings = {},
+                    onOpenRecurring = {}, onOpenCategory = { _, _, _, _, _, _ -> }, onOpenSettings = {},
                     viewModel = viewModelWith(db),
                 )
             }

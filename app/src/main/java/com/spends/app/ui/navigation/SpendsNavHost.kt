@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.spends.app.data.settings.SettingsState
+import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.addedit.AddEditScreen
 import com.spends.app.ui.backup.OnboardingRestoreScreen
 import com.spends.app.ui.breakdown.CycleBreakdownScreen
@@ -104,8 +105,8 @@ fun SpendsNavHost(
                 onOpenTrash = { navController.navigate(Routes.TRASH) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenRecurring = { navController.navigate(Routes.recurring()) },
-                onOpenCategory = { categoryId, name, cycleLabel, start, end ->
-                    navController.navigate(Routes.categoryTxns(categoryId, name, cycleLabel, start, end))
+                onOpenCategory = { categoryId, name, cycleLabel, start, end, kind ->
+                    navController.navigate(Routes.categoryTxns(categoryId, name, cycleLabel, start, end, kind))
                 },
                 onOpenBreakdown = { navController.navigate(Routes.CYCLE_BREAKDOWN) },
                 openQuickAddSignal = pendingQuickAdd,
@@ -144,6 +145,9 @@ fun SpendsNavHost(
                 navArgument(Routes.ARG_PERIOD_START) { type = NavType.LongType },
                 navArgument(Routes.ARG_PERIOD_END) { type = NavType.LongType },
                 navArgument(Routes.ARG_CYCLE_LABEL) { type = NavType.StringType; defaultValue = "" },
+                // Defaults to EXPENSE so a back-stack entry or deep link minted before this argument
+                // existed still resolves, and resolves to what it used to mean.
+                navArgument(Routes.ARG_KIND) { type = NavType.StringType; defaultValue = TxnKind.EXPENSE.name },
             ),
         ) {
             CategoryTransactionsScreen(onBack = { navController.popBackStack() })

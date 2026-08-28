@@ -62,7 +62,28 @@ fun CategoryTransactionsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.categoryName.ifBlank { "Category" }) },
+                title = {
+                    // titleMedium, not the slot's default titleLarge: two stacked lines have to fit a
+                    // 64dp app bar, and a long category name on a small phone would otherwise push the
+                    // label out of the bar entirely. Both lines are capped at one line for the same reason.
+                    Column {
+                        Text(
+                            text = state.categoryName.ifBlank { "Category" },
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        // A category can hold both sides of the ledger, and this screen now shows only the
+                        // one that was tapped. Saying which keeps two same-named screens with different
+                        // totals from looking like the same screen disagreeing with itself.
+                        Text(
+                            text = if (state.lensKind == TxnKind.INCOME) "Money in" else "Money out",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
