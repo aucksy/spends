@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
@@ -79,6 +78,11 @@ class CategoryDrillDownKindTest {
         // An unconfined test dispatcher makes it run inline. Same reason as AnalyticsIncomeAccuracyTest.
         Dispatchers.setMain(UnconfinedTestDispatcher())
         periodStore = PeriodSelectionStore(ApplicationProvider.getApplicationContext<Application>())
+        // Pin the window to ALL time on the STORE, before any ViewModel exists, because each one seeds its
+        // own period flow from the store at construction. These tests are about KIND and nothing else —
+        // leaving the default cycle in place would make them depend on where today falls relative to the
+        // salary day, so a correct filter could still go red in the last week of a month.
+        periodStore.set(PeriodSelection(type = PeriodType.MONTH, range = PeriodRange.ALL))
         seed()
     }
 
@@ -157,20 +161,19 @@ class CategoryDrillDownKindTest {
     }
 
     /**
-     * Read the settled state over an ALL-time window.
+     * Read the settled state for one lens.
      *
-     * The period is pinned deliberately. These tests are about KIND and nothing else — leaving the default
-     * cycle in place would make them depend on where today falls relative to the salary day, so a correct
-     * filter could still go red in the last week of a month. Period slicing has its own coverage; this
-     * file must be able to fail for exactly one reason.
+     * `runBlocking`, NOT `runTest` — and that is the whole reason this file is stable. `runTest` installs
+     * and tears down its own Main dispatcher, which fought the `setMain`/`resetMain` pair above: two tests
+     * went red on one runner and green on the next with an IllegalStateException from TestMainDispatcher,
+     * pointing at the teardown rather than at anything they asserted. The passing precedent in this repo,
+     * `AnalyticsIncomeAccuracyTest`, drives a real ViewModel the same way, so this file now matches it.
      */
-    private suspend fun stateFor(kind: String?): CategoryTxnsUiState {
-        val vm = viewModelFor(kind)
-        vm.setPeriod(PeriodSelection(type = PeriodType.MONTH, range = PeriodRange.ALL))
-        return vm.state.first { !it.loading }
+    private fun stateFor(kind: String?): CategoryTxnsUiState = runBlocking {
+        viewModelFor(kind).state.first { !it.loading }
     }
 
-    @Test fun opening_from_the_income_wedge_totals_only_income() = runTest {
+    @Test fun opening_from_the_income_wedge_totals_only_income() {
         val state = stateFor(TxnKind.INCOME.name)
 
         // 25,000 + 5,000. NOT 35,000, which is what the screen used to show.
@@ -179,7 +182,7 @@ class CategoryDrillDownKindTest {
         assertThat(state.rows.map { it.kind }.toSet()).containsExactly(TxnKind.INCOME)
     }
 
-    @Test fun opening_from_the_spending_wedge_totals_only_spending() = runTest {
+    @Test fun opening_from_the_spending_wedge_totals_only_spending() {
         val state = stateFor(TxnKind.EXPENSE.name)
 
         assertThat(state.totalMinor).isEqualTo(5_000_00)
@@ -187,7 +190,7 @@ class CategoryDrillDownKindTest {
         assertThat(state.rows.map { it.kind }.toSet()).containsExactly(TxnKind.EXPENSE)
     }
 
-    @Test fun the_two_sides_never_add_up_to_the_old_mixed_total() = runTest {
+    @Test fun the_two_sides_never_add_up_to_the_old_mixed_total() {
         val income = stateFor(TxnKind.INCOME.name).totalMinor
         val expense = stateFor(TxnKind.EXPENSE.name).totalMinor
 
@@ -197,7 +200,7 @@ class CategoryDrillDownKindTest {
         assertThat(expense).isLessThan(35_000_00)
     }
 
-    @Test fun a_link_with_no_kind_still_works_and_means_spending() = runTest {
+    @Test fun a_link_with_no_kind_still_works_and_means_spending() {
         // Back-stack entries and any deep link minted before this argument existed carry no kind. They
         // must resolve, and resolve to what they used to mean, rather than crashing or showing income.
         val state = stateFor(null)
@@ -206,21 +209,21 @@ class CategoryDrillDownKindTest {
         assertThat(state.lensKind).isEqualTo(TxnKind.EXPENSE)
     }
 
-    @Test fun an_unreadable_kind_falls_back_to_spending_rather_than_crashing() = runTest {
+    @Test fun an_unreadable_kind_falls_back_to_spending_rather_than_crashing() {
         val state = stateFor("NONSENSE")
 
         assertThat(state.totalMinor).isEqualTo(5_000_00)
         assertThat(state.lensKind).isEqualTo(TxnKind.EXPENSE)
     }
 
-    @Test fun the_screen_carries_the_side_it_is_showing_so_it_can_say_so() = runTest {
+    @Test fun the_screen_carries_the_side_it_is_showing_so_it_can_say_so() {
         // Two same-named screens with different totals are a worse confusion than the original bug unless
         // each says which side it is. The app bar renders this.
         assertThat(stateFor(TxnKind.INCOME.name).lensKind).isEqualTo(TxnKind.INCOME)
         assertThat(stateFor(TxnKind.EXPENSE.name).lensKind).isEqualTo(TxnKind.EXPENSE)
     }
 
-    @Test fun the_monthly_average_follows_the_lens_too() = runTest {
+    @Test fun the_monthly_average_follows_the_lens_too() {
         // The average is computed from the same list, so it must have narrowed with it. If it had not,
         // the headline and the bar beneath it would be measuring different things — which is the exact
         // confusion the v1.67.0 redesign of this screen existed to remove.
