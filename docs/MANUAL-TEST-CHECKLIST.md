@@ -28,6 +28,24 @@ every one of them.
 
 ---
 
+## v1.71.1 — ⭐⭐ the credit limit is no longer captured as the amount
+
+Your Yes Bank card alert ends with what is LEFT on the card. On a foreign purchase that was the only
+rupee figure in the message, so the app grabbed it. RM87.48 was queued as ₹1,00,334.07.
+
+- [ ] ⭐ Make a real card purchase in Malaysia (or forward yourself the exact text of one). The review
+      card shows **RM87.48**, not the Avl Lmt figure.
+- [ ] ⭐ Same for a **USD** charge — shows the dollar amount, not the limit.
+- [ ] ⭐ An ordinary **rupee** purchase on the same card is unchanged: it shows what you spent, and the
+      Avl Lmt figure is ignored exactly as before.
+- [ ] Check the queue for any rows already captured wrongly at the old limit figure and delete them.
+- [ ] ⭐ **With no AI key saved**, the foreign alert arrives flagged: the amount shows in **RM/USD in red**
+      and Save stays greyed out until you type the rupee figure. That is deliberate. Save one and check
+      the saved transaction still records what it arrived as.
+- [ ] Once you save an AI key, a new foreign alert converts on its own and shows the rate line.
+
+---
+
 ## v1.71.0 — the category drill-down now matches the wedge you tapped
 
 Your **Business** and **Interest** categories hold both income and expenses. Tapping either used to open a

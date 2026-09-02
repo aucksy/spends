@@ -4,7 +4,36 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Tagged: v1.71.0** — versionCode **82**, versionName **"1.71.0"**. The category drill-down now totals
+- **Tagged: v1.71.1** — versionCode **83**, versionName **"1.71.1"**. **A foreign-currency card alert was
+  being captured as the remaining CREDIT LIMIT.** Owner-reported, with two screenshots from his own phone.
+  No schema change.
+  - *What happened.* Yes Bank writes every card alert the same way: what you spent, then what is left
+    — "MYR 87.48 spent on YES BANK Card X2664 @AIRASIA… **Avl Lmt INR 100,334.07**". On a rupee purchase
+    that trailing figure is harmless, because the spend is written FIRST and `amountRegex.find` returns the
+    first match. On a FOREIGN purchase there is no rupee spend amount at all — the only rupee figure in the
+    message is the remaining limit. So the rupee-first pass matched it, returned happily, and the foreign
+    pass never ran. His RM87.48 flight was queued as a ₹1,00,334.07 expense; his USD 19.50 eSIM as
+    ₹94,018.55. Not a rounding error: a credit limit filed as a purchase.
+  - *The fix.* Both passes now run over text with every balance/limit clause blanked out. One pattern
+    anchored on the limit/balance WORD covers every spelling in the corpus — "Avl Lmt", "Avl Limit",
+    "Avl Bal", "New Bal", "Available balance", "Balance Limit", "Total Lmt" — and only fires when a
+    number directly follows, so a merchant whose name contains one of those words is untouched.
+  - *Proven against the corpus before shipping, not after.* The parser cannot be compiled on this machine,
+    so the two passes and the proposed mask were reimplemented and run over all **77** committed fixture
+    strings lifted out of `SmsParserTest` and `SmsParserCurrencyTest`. Exactly **one** extracted amount
+    moves: `sbi_limit_alert`, whose only figure IS a limit — and that message is rejected by `isLimitAlert`
+    in step 1 of `parse`, long before any amount is read, so its asserted result does not move. Every one
+    of the new tests' expected values was verified the same way first; one invented fixture was wrong and
+    was corrected before it cost a build.
+  - *Tests.* Both of the owner's real alerts are now committed fixtures, verbatim. Plus: a rupee spend
+    still beats its own limit, all five leftover-figure spellings, a merchant named "BALANCE COFFEE",
+    a limit-only message capturing nothing, and the mask's deliberate narrowness written down so nobody
+    widens it into eating the amount beside the clause.
+  - **Consequence the owner needs to know:** these alerts now arrive as MYR/USD and go through conversion.
+    With no AI key set they land FLAGGED and unconverted, and the editor requires him to type the rupee
+    figure before Save lights up. That is the v1.70.1 money guard doing its job — a correct manual number
+    instead of a silent wrong one — but it is manual until a key is saved.
+- Previous: **v1.71.0** — versionCode **82**, versionName **"1.71.0"**. The category drill-down now totals
   the SIDE OF THE LEDGER that was tapped. No schema change (Room v17, snapshot v6).
   - *The bug, which predates v1.70.0.* A category can hold both income and expense rows — the owner has
     two (Business, Interest) where money comes in under the same name it also goes out under. The Analytics

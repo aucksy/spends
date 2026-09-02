@@ -168,6 +168,93 @@ class SmsParserCurrencyTest {
             .isEqualTo(SmsParser.Result.IGNORED)
     }
 
+    // ---- the available limit is not the amount you spent ----
+
+    @Test fun the_owners_real_ringgit_alert_reads_the_spend_not_the_limit() {
+        // Verbatim from the owner's phone, 2 Sept 2026. Before this was fixed the app captured it as a
+        // Rs 1,00,334.07 EXPENSE - the remaining credit limit, filed as a purchase. The message names no
+        // rupee SPEND at all, so the rupee-first pass matched the only rupee figure present, returned
+        // happily, and the foreign pass never ran.
+        val p = parse(
+            "JD-YESBNK",
+            "MYR 87.48 spent on YES BANK Card X2664 @AIRASIA-AKRB-FLT-MYR 02-09-2026 02:14:29 am. " +
+                "Avl Lmt INR 100,334.07. SMS BLKCC 2664 to 9840909000 if not you",
+        )
+        assertThat(p.result).isEqualTo(SmsParser.Result.TRANSACTION)
+        assertThat(p.amountMinor).isEqualTo(8748)
+        assertThat(p.currencyCode).isEqualTo("MYR")
+        assertThat(p.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(p.last4).isEqualTo("2664")
+    }
+
+    @Test fun the_owners_real_dollar_alert_reads_the_spend_not_the_limit() {
+        // The same card, the same shape, a different currency - verbatim from 1 Sept 2026.
+        val p = parse(
+            "JD-YESBNK",
+            "USD 19.50 spent on YES BANK Card X2664 @AIRALO 01-09-2026 10:35:27 pm. " +
+                "Avl Lmt INR 94,018.55. SMS BLKCC 2664 to 9840909000 if not you",
+        )
+        assertThat(p.result).isEqualTo(SmsParser.Result.TRANSACTION)
+        assertThat(p.amountMinor).isEqualTo(1950)
+        assertThat(p.currencyCode).isEqualTo("USD")
+        assertThat(p.kind).isEqualTo(TxnKind.EXPENSE)
+    }
+
+    @Test fun a_rupee_spend_still_beats_its_own_available_limit() {
+        // The guard on the fix. A rupee purchase names TWO rupee figures - what you spent, then what is
+        // left. The spend is written first, so this always worked; it must still work, because masking
+        // the limit clause must not be able to reach the amount beside it.
+        val p = parse(
+            "JD-YESBNK",
+            "INR 780.00 spent on YES BANK Card X1234 @STORE 21-06-26 18:22:05 pm. Avl Lmt INR 40,000.00.",
+        )
+        assertThat(p.amountMinor).isEqualTo(78000)
+        assertThat(p.currencyCode).isNull()
+    }
+
+    @Test fun every_way_a_bank_writes_the_leftover_figure_is_ignored() {
+        // One pattern covers the lot because it anchors on the limit/balance WORD, not the prefix. Each
+        // of these is a real spelling from the committed fixtures.
+        fun spendOf(body: String) = parse("JD-YESBNK", body).amountMinor
+        assertThat(spendOf("INR 500.00 spent on YES BANK Card X1234 @STORE. Avl Lmt INR 40,000.00.")).isEqualTo(50000)
+        assertThat(spendOf("INR 500.00 spent on YES BANK Card X1234 @STORE. Avl Limit: INR 60,000.00.")).isEqualTo(50000)
+        assertThat(spendOf("INR 500.00 spent on YES BANK Card X1234 @STORE. Avl Bal Rs.100.00")).isEqualTo(50000)
+        assertThat(spendOf("INR 500.00 spent on YES BANK Card X1234 @STORE. New Bal :INR 12,400.50")).isEqualTo(50000)
+        assertThat(spendOf("INR 500.00 spent on YES BANK Card X1234 @STORE. Available balance Rs. 9,000.00.")).isEqualTo(50000)
+    }
+
+    @Test fun a_merchant_whose_name_contains_a_balance_word_is_untouched() {
+        // The mask only fires when a NUMBER follows the word, so a shop called "Limit" or "Balance" does
+        // not swallow the amount printed after it.
+        val p = parse("JD-YESBNK", "INR 640.00 spent on YES BANK Card X1234 @BALANCE COFFEE 21-06-26.")
+        assertThat(p.amountMinor).isEqualTo(64000)
+    }
+
+    @Test fun a_message_whose_only_figure_is_a_limit_captures_nothing() {
+        // The deliberate behaviour change. What is LEFT on a card is never what was just spent, so a
+        // message offering no other figure must produce no transaction rather than a wrong one.
+        assertThat(parse("JD-YESBNK", "Avl Lmt INR 40,000.00 on YES BANK Card X1234.").result)
+            .isEqualTo(SmsParser.Result.IGNORED)
+        assertThat(parse("JD-YESBNK", "Your available limit is INR 40,000.00.").result)
+            .isEqualTo(SmsParser.Result.IGNORED)
+    }
+
+    @Test fun a_wording_the_mask_does_not_cover_still_reads_the_spend_correctly() {
+        // The mask deliberately fires only when the figure follows the word directly. Letting words sit
+        // between the two is how a mask starts eating the amount NEXT to the clause rather than the one
+        // inside it - silently, and about money - so the narrow rule stays.
+        //
+        // A rupee alert does not depend on the mask anyway: what you SPENT is written before what is
+        // left, and the first match wins. This asserts that safety net, so an uncovered spelling costs
+        // nothing on the overwhelmingly common path.
+        val p = parse(
+            "JD-YESBNK",
+            "INR 500.00 spent on YES BANK Card X1234 @STORE. Avl Lmt on this card is INR 40,000.00.",
+        )
+        assertThat(p.amountMinor).isEqualTo(50000)
+        assertThat(p.currencyCode).isNull()
+    }
+
     @Test fun a_malaysian_bank_is_a_known_sender_and_an_unlisted_one_is_not() {
         assertThat(SenderAllowlist.lookup("MAYBANK")?.name).isEqualTo("Maybank")
         assertThat(SenderAllowlist.lookup("CIMB")?.name).isEqualTo("CIMB Bank")

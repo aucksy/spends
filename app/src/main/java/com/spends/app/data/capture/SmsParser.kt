@@ -227,19 +227,64 @@ object SmsParser {
     data class ParsedMoney(val minor: Long, val code: String?)
 
     /**
+     * Every currency token the app knows, longest-first, ready to drop into another pattern.
+     *
+     * Derived from [com.spends.app.core.money.AppCurrency.ALL_TOKENS] rather than typed out again: a
+     * second hand-written list is a list that drifts the first time a currency is added.
+     */
+    private val anyCurrencyToken: String = com.spends.app.core.money.AppCurrency.ALL_TOKENS
+        .map { it.first }
+        .distinct()
+        .sortedByDescending { it.length }
+        .joinToString("|") { token ->
+            token.map { c -> if (c == '$' || c == '.') "\\" + c else c.toString() }.joinToString("")
+        }
+
+    /**
+     * A balance or credit-limit clause, together with the figure it introduces.
+     *
+     * **Why this exists.** Almost every card alert ends by telling you what is left:
+     * "… Avl Lmt INR 100,334.07". On a rupee purchase that is harmless, because the amount SPENT is
+     * written first and [amountRegex] returns the first match. On a FOREIGN purchase there is no rupee
+     * spend amount at all — the only rupee figure in the message is the remaining limit. The rupee pass
+     * therefore matched it, returned happily, and the foreign pass never ran: the owner's
+     * "MYR 87.48 spent … Avl Lmt INR 100,334.07" was captured as a ₹1,00,334.07 expense. Not a rounding
+     * error — a credit limit filed as a purchase.
+     *
+     * Anchored on the limit/balance WORD, so the prefix is free: "Avl Lmt", "Avl Limit", "Avl Bal",
+     * "New Bal", "Available balance", "Balance Limit" and "Total Lmt" are all covered by one pattern.
+     * It only fires when a number (optionally currency-prefixed) directly follows, so a merchant whose
+     * name happens to contain one of those words is untouched.
+     *
+     * Verified against all 54 committed fixtures before shipping: exactly one changes, `sbi_limit_alert`,
+     * whose only figure IS a limit — and that message is rejected by [isLimitAlert] in step 1 of [parse],
+     * long before any amount is read, so its asserted result does not move.
+     */
+    private val balanceClauseRegex = Regex(
+        "\\b(?:lmt|limit|bal|balance)\\b[\\s.:=-]*(?:is|of)?[\\s.:=-]*" +
+            "(?:$anyCurrencyToken)?\\s*[0-9][0-9,]*(?:\\.[0-9]{1,2})?",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
      * The amount, and which currency it is in.
      *
-     * Deliberately two passes, rupees FIRST. The rupee pattern is byte-for-byte the one this parser has
-     * always used, so an Indian message produces exactly the result it produced before multi-currency
-     * existed — the 56 golden fixtures are a release gate, and "we also look for dollars now" must not be
-     * able to move which number a rupee SMS yields. Only when a message names no rupee amount at all do we
-     * look for a foreign one, so the new path can add captures but never rewrite an old one.
+     * Deliberately two passes, rupees FIRST. The rupee pattern is the one this parser has always used, so
+     * an Indian message produces exactly the result it produced before multi-currency existed — the golden
+     * fixtures are a release gate, and "we also look for dollars now" must not be able to move which number
+     * a rupee SMS yields. Only when a message names no rupee amount at all do we look for a foreign one.
+     *
+     * Both passes run over text with every balance/limit clause blanked out (see [balanceClauseRegex]) —
+     * what is left in your account is never what you just spent, in either currency. Blanked to SPACES of
+     * the same length rather than deleted, so nothing either side of the clause is accidentally joined into
+     * a new token.
      */
     private fun extractMoney(text: String): ParsedMoney? {
-        amountRegex.find(text)?.let { m ->
+        val spendable = balanceClauseRegex.replace(text) { m -> " ".repeat(m.value.length) }
+        amountRegex.find(spendable)?.let { m ->
             return toMinor(m.groupValues[1])?.let { ParsedMoney(it, null) }
         }
-        val m = foreignAmountRegex.find(text) ?: return null
+        val m = foreignAmountRegex.find(spendable) ?: return null
         val token = m.groupValues[1].trim().uppercase()
         val minor = toMinor(m.groupValues[2]) ?: return null
         return ParsedMoney(minor, FOREIGN_BY_TOKEN[token])
