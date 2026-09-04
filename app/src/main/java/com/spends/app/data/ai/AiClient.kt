@@ -15,8 +15,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -159,7 +162,7 @@ open class AiClient @Inject constructor(
             }
         }.getOrElse { e ->
             if (e is CancellationException) throw e // never swallow structured cancellation
-            AiResult.Failed(e.message ?: "Network error")
+            AiResult.Failed(compactReason(e))
         }
     }
 
@@ -201,9 +204,16 @@ open class AiClient @Inject constructor(
      *
      * **No `temperature`, deliberately.** The obvious thing to send is 0 — one right answer, quote it the
      * same way every time — and it is the wrong thing here: Google's own Gemini 3 guidance is to leave
-     * temperature at its default of 1.0, because these models reason across the sampled tokens and a
-     * pinned-down temperature can send them looping or degrade the answer. Determinism is not lost by
-     * much anyway: [CurrencyAi] caches a rate for six hours, so a day of alerts asks once.
+     * temperature at its default, because these models reason across the sampled tokens and pinning it
+     * down can send them looping or degrade the answer.
+     *
+     * What that costs is real and worth naming: each lookup is one SAMPLE, and [CurrencyAi]'s cache does
+     * not average samples — it repeats whichever one it drew, and it is in-memory, so a background
+     * capture in a cold process draws again. Two alerts a day apart can therefore sit in the ledger at
+     * slightly different rates. That is acceptable only because of what surrounds it: every rate is
+     * checked against [com.spends.app.core.money.FxMath.isSaneRate], printed on the face of the
+     * transaction, labelled an estimate, and overridable by a rate the user pins themselves. A looping
+     * or degraded answer would not be caught by any of that.
      *
      * [maxTokens] stays, as the same generous ceiling the other providers get and for the same reason —
      * on a model that thinks, the thinking is drawn from this budget before any answer text appears.
@@ -276,6 +286,25 @@ open class AiClient @Inject constructor(
             sb.append(part.optString("text"))
         }
         return sb.toString().takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * A short, safe description of a thrown failure — never the exception's own message.
+     *
+     * The [AiResult.Failed] built from an unsuccessful HTTP status is already careful never to carry the
+     * response body. The thrown path was not: a 2xx that is not JSON — a hotel wifi captive portal's
+     * login page, which is precisely this feature's traveller — makes `org.json` throw with the WHOLE
+     * input appended to its message, and that string is rendered verbatim on the settings screen. Same
+     * rule for both paths now: say what kind of thing went wrong, never what came back.
+     */
+    private fun compactReason(e: Throwable): String = when (e) {
+        is JSONException -> "Unreadable reply"
+        is InterruptedIOException -> "Timed out"
+        is UnknownHostException -> "No connection"
+        // A model id that cannot be put in a URL — only reachable on the one provider that puts it there.
+        is IllegalArgumentException -> "That model name can't be used"
+        is IOException -> "Network error"
+        else -> "Network error"
     }
 
     /** Suspend on an OkHttp call, aborting it if the coroutine is cancelled. */

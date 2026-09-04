@@ -24,7 +24,11 @@ for how the project works.
     with one right answer, and it is the wrong one here: Google's own Gemini 3 guidance is to leave
     temperature at its default, because these models reason across the sampled tokens and pinning it can
     send them looping or degrade the answer. It was written as `temperature: 0` first and removed during
-    verification. Little is lost — `CurrencyAi` caches a rate for six hours, so a day of alerts asks once.
+    verification. The first draft justified it with "the six-hour cache means determinism hardly matters",
+    which the pre-tag review correctly took apart: the cache **repeats** one sample rather than averaging
+    several, and it is in-memory, so a background capture in a cold process draws again. The real reason it
+    is acceptable is what surrounds the number — `isSaneRate`, the rate printed on the face of the row, the
+    "estimate" label, and a pinned rate that overrides it. A looping answer would clear none of those.
   - *Default model `gemini-3.5-flash-lite`.* This feature asks one one-line question, so the cheapest,
     fastest model that thinks only minimally is the right fit; on AI Studio's free tier with the 6h cache it
     should cost nothing. As with every provider it is only a default — any model id can be typed on the phone
@@ -44,6 +48,27 @@ for how the project works.
     `AiClient.kt` were compiled standalone against the real okhttp/coroutines/org.json jars and **run**:
     all 11 `AiProviderTest` cases green, every parser assertion green, and the emitted request body checked
     field-by-field against Google's documented `generateContent` shape.
+  - **The pre-tag review found a real one, and it was not in the new code.** Two adversarial reviewers ran
+    before the tag. The compile/wiring one found nothing that breaks CI (it re-derived all 21 raw-string
+    literals in the new parser test and confirmed 16/16 assertions, and confirmed unit tests here really do
+    see `internal` members — three existing tests already rely on it). The logic/data-safety one found this:
+    **there is one key slot, and changing provider did not clear it.** So picking Google with an Anthropic
+    key saved sent `sk-ant-…` to Google as `x-goog-api-key` on the next foreign alert — silently, with the
+    settings row still reading "Saved on this device", and the secret landing in another vendor's logs. It
+    dates from v1.70.0, but this release is what makes it the FIRST thing every existing user does, and it
+    contradicts the sentence on the provider dialog itself. `setProvider` now clears the key, the dialog
+    says so before you choose, and re-picking the SAME provider is a no-op (the dialog's Done fires either
+    way and must not cost anyone their key). **This fix has no automated test**: a ViewModel test for it
+    would be timing-sensitive, this branch cannot be run locally, and the last commit before it was a
+    flaky-ViewModel-test fix — so it is a ⭐⭐ box in the manual checklist instead, and that is the honest
+    status rather than a comfortable one.
+  - *Three smaller things the same review turned up, all fixed.* A thrown `JSONException` put the **whole
+    response body** on the settings screen — a hotel captive portal's login page returns 200 and is not
+    JSON, and `org.json` appends its entire input to the message; failures are now classified into short
+    reasons and the body never escapes. The 404 advice said "try clearing the model field", which is a dead
+    end when the field is already blank — it now names the default it falls back to. And the Model box, now
+    that its contents go into the request URL on Google, refuses a pasted API key instead of putting it
+    somewhere it gets written down.
   - *Disclosure re-swept*, per the rule that a new network call means redoing it: `README.md`,
     `play/DATA_SAFETY.md`, `docs/index.html` and `docs/FEATURE-INVENTORY.md` all name the fourth provider.
     **What is sent did not change** — still one rate question, no amount, no merchant, no message text.

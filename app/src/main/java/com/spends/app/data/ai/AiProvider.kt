@@ -1,8 +1,9 @@
 package com.spends.app.data.ai
 
 /**
- * Where the model id goes in an endpoint template — only Google's contains it. A `const` so it is
- * folded in at compile time, which is what lets an enum entry above use it in its own constructor.
+ * Where the model id goes in an endpoint template — only Google's contains it. `const` so the template
+ * below is a compile-time constant string rather than one assembled at class-init time; a plain `val`
+ * would also work, this is just the cheaper of the two.
  */
 private const val MODEL_TOKEN = "{model}"
 

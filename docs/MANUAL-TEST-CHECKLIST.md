@@ -43,8 +43,12 @@ feature changed — same switch, same one rate question sent, same rate line on 
 - [ ] ⭐ Paste a deliberately wrong key (change a few characters) and press Test. You should get a readable
       sentence — *"That key or model was rejected…"* — **not** a bare `HTTP 400`. Google reports a bad key
       differently from the others, and that translation is new in this release.
-- [ ] Type a nonsense model name (e.g. `gemini-does-not-exist`) and Test. Expect a readable failure, then
-      clear the field and confirm it goes back to working.
+- [ ] Type a nonsense model name (e.g. `gemini-does-not-exist`) and Test. The failure should now NAME the
+      default it falls back to rather than just saying "clear the field" — that old wording was a dead end
+      when the field was already blank. Clear it and confirm it goes back to working.
+- [ ] Paste your **API key into the Model box** by mistake. Save should be greyed out with a red note
+      saying it looks like a key. That guard is new: on Google the model goes into the web address, so a
+      key pasted there would end up in Google's logs.
 - [ ] Paste the model with Google's own prefix — `models/gemini-3.5-flash-lite` — and Test. It should
       still work; the prefix is stripped for you rather than 404ing.
 - [ ] ⭐⭐ **The real thing.** With Gemini selected and the key saved, let a genuine foreign card alert
@@ -54,8 +58,17 @@ feature changed — same switch, same one rate question sent, same rate line on 
 - [ ] ⭐ Save that transaction and confirm the saved row still carries the original amount and the rate.
 - [ ] Check a second foreign alert in the same currency arrives quickly and quotes the **same** rate —
       that means the six-hour cache is working and you are not paying for a call per message.
+- [ ] ⭐⭐ **Changing provider now removes the saved key — check that it does.** With a key saved, open
+      **Provider**. The dialog should warn you ("Changing provider removes the key saved on this device").
+      Pick a different provider, press Done, and the **API key** row must go back to **Not set**.
+      *This one has no automated test behind it — it is a real-money-adjacent security fix and this box
+      is the only proof it works.* Before this release the old key stayed put and was sent to the NEW
+      provider on the next foreign alert — your Anthropic key would have gone to Google.
+- [ ] ⭐ **Opening Provider and pressing Done without changing anything must cost you nothing** — the key
+      stays saved and a model name you typed stays put.
 - [ ] ⭐ **Nothing broke for the other three.** If you have an Anthropic, OpenAI or Groq key handy, switch
-      to it, Test, and confirm it still works exactly as it did in v1.71.1.
+      to it, paste that key (the switch clears the old one, as above), Test, and confirm it still works
+      exactly as it did in v1.71.1.
 - [ ] Turn **Convert with AI** off and confirm a foreign alert goes back to arriving flagged and
       unconverted, with Save greyed out until you type the rupee figure.
 - [ ] Turn it back on, then use **Remove the saved key** and confirm the key is gone (the row reads

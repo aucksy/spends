@@ -46,7 +46,7 @@ Rationale (Play's definition of *collect* = transmitted off the device to you or
 ## Section 1a — AI currency conversion, and why "Shared" is still No
 
 **The feature.** Off by default. The user must switch it on *and* paste their own API key (Anthropic,
-OpenAI, Google/Gemini or Groq — their choice). Until both are done the app makes no AI request at all.
+OpenAI, Groq or Google/Gemini — their choice). Until both are done the app makes no AI request at all.
 
 **What is transmitted.** One generic question with no user data in it:
 
