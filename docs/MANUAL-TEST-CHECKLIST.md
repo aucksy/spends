@@ -39,6 +39,10 @@ feature changed — same switch, same one rate question sent, same rate line on 
 - [ ] ⭐ Paste your AI Studio key and press **Test key**. It should say **Working** within a few seconds.
       This is the single most important box on the page: it is the only proof the new provider actually
       talks to Google.
+      **If it says 503, it is almost certainly billing, not an outage.** Google does not offer the free
+      tier in every country, and where it does not the refusal arrives as a 503 with nothing about billing
+      in it — which is what happened on the owner's phone within an hour of v1.72.0 shipping. Enable
+      billing on the Google project and it works. (Already ticked once, on the real phone.)
 - [ ] Try **Test before saving** inside the key sheet too, with the key typed but not yet saved.
 - [ ] ⭐ Paste a deliberately wrong key (change a few characters) and press Test. You should get a readable
       sentence — *"That key or model was rejected…"* — **not** a bare `HTTP 400`. Google reports a bad key

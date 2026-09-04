@@ -30,8 +30,11 @@ for how the project works.
     is acceptable is what surrounds the number — `isSaneRate`, the rate printed on the face of the row, the
     "estimate" label, and a pinned rate that overrides it. A looping answer would clear none of those.
   - *Default model `gemini-3.5-flash-lite`.* This feature asks one one-line question, so the cheapest,
-    fastest model that thinks only minimally is the right fit; on AI Studio's free tier with the 6h cache it
-    should cost nothing. As with every provider it is only a default — any model id can be typed on the phone
+    fastest model that thinks only minimally is the right fit. **The "free tier" caveat, learned on the
+    owner's phone within an hour of shipping:** Google does not offer the free tier in every country, and
+    where it does not, the refusal comes back as a **503** — not as anything mentioning billing. It looks
+    exactly like an outage. Enabling billing on the Google project fixed it. Cost is still negligible at
+    the paid rate: one short question with a six-hour cache is pennies a month, not pounds. As with every provider it is only a default — any model id can be typed on the phone
     when Google rotates its lineup.
   - *The parser skips `thought` parts*, for the same reason the Anthropic one walks blocks: on a thinking
     model the answer is not reliably part zero. Every no-answer shape — a safety block, a turn that spent its

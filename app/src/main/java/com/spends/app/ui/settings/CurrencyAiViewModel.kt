@@ -159,15 +159,16 @@ class CurrencyAiViewModel @Inject constructor(
         reason.contains("404") -> "That model isn't available on this key. Open Model and type one that " +
             "is — leaving it blank uses ${provider.defaultModel}."
         reason.contains("429") -> "Rate limited by the provider. Wait a moment and try again."
-        // The provider's own trouble, not anything a setting can fix — and a bare "HTTP 503" reads like a
-        // bug in Spends. Google documents 503 as "temporarily overloaded or down, wait and retry", and
-        // the usual reason is a recently released model whose capacity has not caught up with its launch:
-        // hence the nudge towards an older one, which is a thing the user can actually act on.
+        // Google DOCUMENTS 503 as "temporarily overloaded or down, wait and retry" — and on the owner's
+        // phone, on the day this shipped, a 503 actually meant *no billing account on the Google project*.
+        // The free tier is not offered in every country, and where it is not, the refusal arrives as a
+        // 503 rather than as anything mentioning billing. So this message leads with the cause that is
+        // fixable and silent, and keeps the documented one second. Both, in the order worth trying.
         reason.contains("500") || reason.contains("502") ||
             reason.contains("503") || reason.contains("504") ->
-            "${provider.label} is busy or down right now — nothing wrong with your key. Try again in a " +
-                "minute. If it keeps happening, open Model and use an older one, which is usually less " +
-                "crowded than whatever launched most recently."
+            "Your key is fine — this is ${provider.label}'s end. Most likely their free tier isn't " +
+                "offered in your country and the account needs billing enabled; check that first. " +
+                "Otherwise they're just busy, so try again in a minute."
         else -> reason
     }
 }
