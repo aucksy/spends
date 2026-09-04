@@ -4,7 +4,50 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Tagged: v1.71.1** — versionCode **83**, versionName **"1.71.1"**. **A foreign-currency card alert was
+- **Tagged: v1.72.0** — versionCode **84**, versionName **"1.72.0"**. **Google Gemini joins the AI provider
+  list**, so a Google AI Studio key now works for foreign-currency conversion. No schema change.
+  - *Why it was asked for.* The owner holds a Google AI Studio key, not an Anthropic/OpenAI/Groq one. The
+    BYOK promise in v1.70.0 was that the key is the *user's* — that only holds if the list contains the key
+    the user actually has.
+  - *Google's own endpoint, not its OpenAI-compatible one.* Google serves an OpenAI-shaped
+    `chat/completions` too, and using it would have been a one-line enum entry with no new client code.
+    It was rejected: that layer is documented as beta, documents only a handful of the fields it accepts,
+    and **silently ignores the rest** — the output ceiling among them. A parameter quietly dropped rather
+    than rejected is invisible until the day it matters, which is the opposite of how the rest of this
+    feature is built. Gemini goes to `generateContent`, where what is sent is what applies.
+  - *So there are three wire formats now.* `AiProvider.openAiCompatible: Boolean` became `AiWire` — a
+    two-valued flag cannot pick between three payload builders and three parsers. Google is also the only
+    provider that names the model in the URL rather than the body, so `endpoint` became `endpointFor(model)`.
+    A pasted `models/gemini-…` prefix is stripped, because that is how Google's docs name a model and
+    verbatim it would build `/v1beta/models/models/…` and 404 for no visible reason.
+  - **No `temperature` in the Gemini payload, deliberately.** Sending 0 is the obvious choice for a question
+    with one right answer, and it is the wrong one here: Google's own Gemini 3 guidance is to leave
+    temperature at its default, because these models reason across the sampled tokens and pinning it can
+    send them looping or degrade the answer. It was written as `temperature: 0` first and removed during
+    verification. Little is lost — `CurrencyAi` caches a rate for six hours, so a day of alerts asks once.
+  - *Default model `gemini-3.5-flash-lite`.* This feature asks one one-line question, so the cheapest,
+    fastest model that thinks only minimally is the right fit; on AI Studio's free tier with the 6h cache it
+    should cost nothing. As with every provider it is only a default — any model id can be typed on the phone
+    when Google rotates its lineup.
+  - *The parser skips `thought` parts*, for the same reason the Anthropic one walks blocks: on a thinking
+    model the answer is not reliably part zero. Every no-answer shape — a safety block, a turn that spent its
+    whole budget thinking, an error envelope — falls through to the existing fail-closed path, so the amount
+    stays in its own currency and flagged rather than becoming a guess.
+  - *"Test key" now explains a 400.* Google answers a bad key with 400 where the others use 401, so it read
+    as a bare `HTTP 400` with no advice.
+  - *Tests.* `AiProviderTest` pins the URL building (the `models/` prefix, blank-falls-back-to-default, that
+    no other provider's endpoint moved, that none is left holding an unreplaced placeholder, that all four
+    are https). The three response parsers became `internal` and gained `AiClientParseTest` — they are where
+    a reply becomes text a rate is read out of, and every interesting case there is a body shape, not a
+    network condition, so a MockWebServer dependency would have bought nothing.
+  - *Verified without a build, as usual.* The toolchain cannot compile this project, so `AiProvider.kt` and
+    `AiClient.kt` were compiled standalone against the real okhttp/coroutines/org.json jars and **run**:
+    all 11 `AiProviderTest` cases green, every parser assertion green, and the emitted request body checked
+    field-by-field against Google's documented `generateContent` shape.
+  - *Disclosure re-swept*, per the rule that a new network call means redoing it: `README.md`,
+    `play/DATA_SAFETY.md`, `docs/index.html` and `docs/FEATURE-INVENTORY.md` all name the fourth provider.
+    **What is sent did not change** — still one rate question, no amount, no merchant, no message text.
+- Previous: **v1.71.1** — versionCode **83**, versionName **"1.71.1"**. **A foreign-currency card alert was
   being captured as the remaining CREDIT LIMIT.** Owner-reported, with two screenshots from his own phone.
   No schema change.
   - *What happened.* Yes Bank writes every card alert the same way: what you spent, then what is left

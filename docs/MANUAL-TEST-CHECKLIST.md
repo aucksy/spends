@@ -11,8 +11,7 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.70.0 — eighteen releases.** Install **v1.70.0**; it contains
-every one of them.
+**Currently untested: v1.57.0 → v1.72.0.** Install **v1.72.0**; it contains every one of them.
 
 > ⚠️ **Four sections below are now DEAD and must not be worked through.** v1.60.0, v1.61.0, v1.62.0 and
 > v1.64.0 test the AI insight cards, which were **removed entirely in v1.65.0**. There is no carousel and no
@@ -25,6 +24,44 @@ every one of them.
 > silently stopped becoming transactions from **v1.58.0** onward, which matches exactly when capture
 > stopped working. The same copied line is what crashed the v1.63.0 debug screen. **The single most
 > valuable thing to check now is whether a real bank text captures again.**
+
+---
+
+## v1.72.0 — Google Gemini is now one of the AI providers
+
+You have a Google AI Studio key. Until now the provider list held Anthropic, OpenAI and Groq only, so that
+key had nowhere to go and every foreign alert stayed flagged and unconverted. Nothing else about the
+feature changed — same switch, same one rate question sent, same rate line on the transaction.
+
+- [ ] ⭐ **Settings → Currency & AI → Convert with AI → Provider** now lists **Google (Gemini)**. Pick it.
+      The Model row should immediately read **gemini-3.5-flash-lite (default)** — switching provider clears
+      whatever model was there, so it should never show a leftover Claude or Llama name.
+- [ ] ⭐ Paste your AI Studio key and press **Test key**. It should say **Working** within a few seconds.
+      This is the single most important box on the page: it is the only proof the new provider actually
+      talks to Google.
+- [ ] Try **Test before saving** inside the key sheet too, with the key typed but not yet saved.
+- [ ] ⭐ Paste a deliberately wrong key (change a few characters) and press Test. You should get a readable
+      sentence — *"That key or model was rejected…"* — **not** a bare `HTTP 400`. Google reports a bad key
+      differently from the others, and that translation is new in this release.
+- [ ] Type a nonsense model name (e.g. `gemini-does-not-exist`) and Test. Expect a readable failure, then
+      clear the field and confirm it goes back to working.
+- [ ] Paste the model with Google's own prefix — `models/gemini-3.5-flash-lite` — and Test. It should
+      still work; the prefix is stripped for you rather than 404ing.
+- [ ] ⭐⭐ **The real thing.** With Gemini selected and the key saved, let a genuine foreign card alert
+      arrive (or forward yourself the exact text of one). The review card should show the converted rupee
+      amount **with the rate line under it**, e.g. `RM 87.48 → ₹1,650.00 · 1 MYR = ₹18.86`. Sanity-check
+      that rate against what Google says today — it is an estimate, but it should not be wildly off.
+- [ ] ⭐ Save that transaction and confirm the saved row still carries the original amount and the rate.
+- [ ] Check a second foreign alert in the same currency arrives quickly and quotes the **same** rate —
+      that means the six-hour cache is working and you are not paying for a call per message.
+- [ ] ⭐ **Nothing broke for the other three.** If you have an Anthropic, OpenAI or Groq key handy, switch
+      to it, Test, and confirm it still works exactly as it did in v1.71.1.
+- [ ] Turn **Convert with AI** off and confirm a foreign alert goes back to arriving flagged and
+      unconverted, with Save greyed out until you type the rupee figure.
+- [ ] Turn it back on, then use **Remove the saved key** and confirm the key is gone (the row reads
+      *Not set*) and conversion stops.
+- [ ] A **pinned rate** still wins over the AI: set one for MYR in *Your own rates*, and confirm the next
+      alert uses your figure with no call at all.
 
 ---
 
