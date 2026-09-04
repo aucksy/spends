@@ -53,7 +53,7 @@ The SMS parser reads foreign amounts too — `RM 250.00`, `USD 42.10`, `SGD 88.0
 ### 🤖 AI currency conversion — optional, your key, and it shows its working
 When an alert arrives in a currency you don't keep books in, Spends can convert it and **tell you exactly what it did**: every converted transaction carries `RM 100.00 → ₹1,890.00 · 1 MYR = ₹18.90` on its face.
 
-- **Bring your own key** — Anthropic (Claude), OpenAI or Groq, pasted in *Settings → Currency & AI*, encrypted on-device, never in a backup, never shown back to you, with a **Test key** button that proves it works before you rely on it.
+- **Bring your own key** — Anthropic (Claude), OpenAI, Google (Gemini) or Groq, pasted in *Settings → Currency & AI*, encrypted on-device, never in a backup, never shown back to you, with a **Test key** button that proves it works before you rely on it.
 - **What's sent is only a rate question** — *"How many INR is 1 MYR right now?"*. No amount, no merchant, no card number, no message text. Rates are cached six hours, so a day of alerts costs one call.
 - **Or skip the AI entirely** — pin your own rate for a currency pair and Spends uses that, with no network call at all.
 - **It can't quietly get it wrong** — the rate is sanity-checked, an answer about the wrong currency pair is thrown away, and if no conversion is possible the transaction is held in the review queue **flagged and in its original currency** rather than being logged as the wrong number. "Add all" refuses to bulk-commit those.

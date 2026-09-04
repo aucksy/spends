@@ -132,6 +132,10 @@ class CurrencyAiViewModel @Inject constructor(
      */
     private fun explain(reason: String): String = when {
         reason.contains("401") || reason.contains("403") -> "That key was rejected. Check you pasted it in full."
+        // Google answers a bad key with 400 where the others use 401, and the same 400 also covers a
+        // request it could not read — so this one has to name both causes rather than guess.
+        reason.contains("400") -> "That key or model was rejected. Check the key is pasted in full, " +
+            "then try clearing the model field."
         reason.contains("404") -> "The model name isn't available on this key. Try clearing the model field."
         reason.contains("429") -> "Rate limited by the provider. Wait a moment and try again."
         else -> reason
