@@ -15,6 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -68,10 +69,25 @@ class CurrencyAiViewModel @Inject constructor(
         settingsRepository.setAiConversionEnabled(value)
     }
 
+    /**
+     * Change provider — which also **removes the saved key**, because there is only one key slot and the
+     * key in it belongs to the provider being left behind.
+     *
+     * Without this, picking Google with an Anthropic key saved sent `sk-ant-…` to Google as
+     * `x-goog-api-key` on the very next foreign alert: no prompt, no warning, the settings row still
+     * reading "Saved on this device", and the secret landing in another vendor's request logs. That is
+     * the exact opposite of the sentence on the provider dialog, and the first thing an existing user
+     * does after this release is switch provider with a key already saved.
+     *
+     * Choosing the provider that is already selected is a no-op — the dialog's "Done" fires this whether
+     * or not the selection moved, and it must not cost the user their key or their typed model.
+     */
     fun setProvider(provider: AiProvider) = viewModelScope.launch {
+        if (provider == settingsRepository.settings.first().aiProvider) return@launch
         settingsRepository.setAiProvider(provider)
         // The model field is per-provider; carrying "gpt-4o-mini" across to Anthropic would just 404.
         settingsRepository.setAiModel("")
+        aiClient.clearKey()
         currencyAi.clearCache()
         _keyTest.value = KeyTestState.Idle
     }
@@ -113,7 +129,7 @@ class CurrencyAiViewModel @Inject constructor(
         }
         _keyTest.value = when (result) {
             is AiResult.Ok -> KeyTestState.Passed
-            is AiResult.Failed -> KeyTestState.Failed(explain(result.reason))
+            is AiResult.Failed -> KeyTestState.Failed(explain(result.reason, settings.aiProvider))
         }
     }
 
@@ -127,12 +143,21 @@ class CurrencyAiViewModel @Inject constructor(
 
     /**
      * Turn a provider's status code into something actionable. The client deliberately never surfaces a
-     * response body (it can echo the key back), so these three codes are all there is to go on — and they
-     * are the three that actually happen.
+     * response body (it can echo the key back), so a status code is all there is to go on — and these are
+     * the ones that actually happen. Google is why there are four rather than three: it reports a bad key
+     * as 400 where the others use 401.
      */
-    private fun explain(reason: String): String = when {
+    private fun explain(reason: String, provider: AiProvider): String = when {
         reason.contains("401") || reason.contains("403") -> "That key was rejected. Check you pasted it in full."
-        reason.contains("404") -> "The model name isn't available on this key. Try clearing the model field."
+        // Google answers a bad key with 400 where the others use 401, and the same 400 also covers a
+        // request it could not read — so this one has to name both causes rather than guess.
+        reason.contains("400") -> "That key or model was rejected. Check the key is pasted in full, " +
+            "then try a different model."
+        // Naming the default matters: the old wording said "try clearing the model field", which is a dead
+        // end when the field is ALREADY blank — clearing it just puts back the default that has stopped
+        // working. Providers rotate their model lineups, so that day comes.
+        reason.contains("404") -> "That model isn't available on this key. Open Model and type one that " +
+            "is — leaving it blank uses ${provider.defaultModel}."
         reason.contains("429") -> "Rate limited by the provider. Wait a moment and try again."
         else -> reason
     }

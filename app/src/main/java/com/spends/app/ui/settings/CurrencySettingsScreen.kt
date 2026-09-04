@@ -181,7 +181,12 @@ fun CurrencySettingsScreen(
     if (showProviderDialog) {
         ChoiceDialog(
             title = "AI provider",
-            body = "Whichever you already have a key for. Your key is only ever sent to the provider you pick here.",
+            // The second sentence is a promise, so the third has to be here: one key is stored, and it is
+            // the key for the provider selected. Moving to another provider therefore takes the saved key
+            // with it, and the user is told that before they choose rather than after.
+            body = "Whichever you already have a key for. Your key is only ever sent to the provider you " +
+                "pick here." +
+                if (hasKey) " Changing provider removes the key saved on this device — you'll paste the new one." else "",
             options = AiProvider.entries.map { it.label },
             selectedIndex = AiProvider.entries.indexOf(state.aiProvider),
             onSelect = { viewModel.setProvider(AiProvider.entries[it]) },
@@ -203,6 +208,7 @@ fun CurrencySettingsScreen(
 
     if (showModelDialog) {
         var text by remember { mutableStateOf(state.aiModel) }
+        val looksLikeAKey = looksLikeAnApiKey(text)
         AlertDialog(
             onDismissRequest = { showModelDialog = false },
             title = { Text("Model") },
@@ -221,12 +227,29 @@ fun CurrencySettingsScreen(
                         label = { Text("Model") },
                         placeholder = { Text(state.aiProvider.defaultModel) },
                         singleLine = true,
+                        isError = looksLikeAKey,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    // Two text fields on one screen, one of them masked and one not — so the paste lands
+                    // in the wrong one eventually. It matters more than it used to: on Google the model
+                    // goes into the request URL, and a URL is the one place a secret gets written down at
+                    // the other end. Refuse it here rather than send it and explain afterwards.
+                    if (looksLikeAKey) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "That looks like an API key, not a model name. Keys go in the API key row " +
+                                "above — this one would be sent as part of the web address.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.setModel(text); showModelDialog = false }) { Text("Save") }
+                TextButton(
+                    onClick = { viewModel.setModel(text); showModelDialog = false },
+                    enabled = !looksLikeAKey,
+                ) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { showModelDialog = false }) { Text("Cancel") } },
         )
@@ -347,6 +370,19 @@ private fun ApiKeyDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * Does this look like a pasted API key rather than a model name?
+ *
+ * Prefix matching, not cleverness: three prefixes cover all four providers in [AiProvider] (`sk-` catches
+ * both OpenAI and Anthropic's `sk-ant-`), and no model any of them ships is named like one. It only has to
+ * catch the honest mistake of pasting into the wrong box on the same screen — a determined user can still
+ * type anything.
+ */
+private fun looksLikeAnApiKey(value: String): Boolean {
+    val v = value.trim()
+    return v.startsWith("sk-") || v.startsWith("gsk_") || v.startsWith("AIza")
 }
 
 /** A plain single-choice list dialog — used for the currency and the provider. */
