@@ -159,6 +159,15 @@ class CurrencyAiViewModel @Inject constructor(
         reason.contains("404") -> "That model isn't available on this key. Open Model and type one that " +
             "is — leaving it blank uses ${provider.defaultModel}."
         reason.contains("429") -> "Rate limited by the provider. Wait a moment and try again."
+        // The provider's own trouble, not anything a setting can fix — and a bare "HTTP 503" reads like a
+        // bug in Spends. Google documents 503 as "temporarily overloaded or down, wait and retry", and
+        // the usual reason is a recently released model whose capacity has not caught up with its launch:
+        // hence the nudge towards an older one, which is a thing the user can actually act on.
+        reason.contains("500") || reason.contains("502") ||
+            reason.contains("503") || reason.contains("504") ->
+            "${provider.label} is busy or down right now — nothing wrong with your key. Try again in a " +
+                "minute. If it keeps happening, open Model and use an older one, which is usually less " +
+                "crowded than whatever launched most recently."
         else -> reason
     }
 }
