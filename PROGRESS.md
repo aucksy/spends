@@ -4,7 +4,7 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **v1.74.0** — versionCode **90**. (v1.73.4 was never tagged; its changes ship here.) Drive backup reminder: from the 3rd day the app is opened, if no backup exists and daily backup is off, a pop-up offers "Set up backup" (opens Settings → Backup); "Not now" waits 7 days; at most 3 times (`BackupNudge`). "Apps to watch" shows the last alert's fate per app (`LastAlertLog`: Android hid the text / unknown sender / no amount / added). Play closed testing ("alpha") now gets every signed tag automatically (job `play-upload`, keyless WIF, `scripts/ci/play_upload.py`, notes from `play/whatsnew.txt`).
+- **v1.74.0** — versionCode **90**. (v1.73.4 was never tagged; its changes ship here.) Drive backup reminder: from the 3rd day the app is opened, if no backup exists and daily backup is off, a pop-up offers "Set up backup" (opens Settings → Backup); "Not now" waits 7 days; at most 3 times; never after a Drive restore (`BackupNudge`). "Apps to watch" shows the last alert's fate per app (`LastAlertLog`: Android hid the text / unknown sender / no amount / added). Play closed testing ("alpha") now gets every signed tag automatically (job `play-upload`, keyless WIF, `scripts/ci/play_upload.py`, notes from `play/whatsnew.txt`).
   Also: Notification capture's "Apps to watch" now offers the phone's own SMS app
   (Vivo, Xiaomi, OnePlus...) when it is not Google Messages, Truecaller or Samsung Messages. Fixed: Samsung
   Messages always showed "Not installed" because it was missing from the manifest `<queries>`.
