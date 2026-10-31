@@ -246,6 +246,7 @@ class BackupRepository @Inject constructor(
         val snapshot = decodeAny(driveClient.download(token, fileId))
         backupSafetyCopy(token)
         applySnapshot(snapshot)
+        BackupNudge.markDriveRestored(context)
     }
 
     /** New-device Drive restore: decrypt with the recovery password, safety-copy, then apply. */
@@ -253,6 +254,7 @@ class BackupRepository @Inject constructor(
         val snapshot = decodeWithPassword(driveClient.download(token, fileId), password)
         backupSafetyCopy(token) // armed now — the password just imported the DEK
         applySnapshot(snapshot)
+        BackupNudge.markDriveRestored(context)
     }
 
     /** Best-effort pre-restore safety copy (skipped silently if not protected yet, e.g. a fresh device). */

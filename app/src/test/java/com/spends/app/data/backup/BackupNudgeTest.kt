@@ -32,6 +32,12 @@ class BackupNudgeTest {
     }
 
     @Test
+    fun neverAfterADriveRestore() {
+        val s = BackupNudge.onDriveRestored(usedOn(1, 2, 3, 4))
+        assertFalse(BackupNudge.shouldShow(s, hasBackup = false, autoBackupOn = false, now = 100 * day))
+    }
+
+    @Test
     fun snoozesAWeekThenStopsAfterThree() {
         var s = BackupNudge.onShown(usedOn(1, 2, 3), now = 0)
         assertFalse(BackupNudge.shouldShow(s, false, false, now = 6 * day))

@@ -28,6 +28,13 @@ object BackupNudge {
 
     fun onShown(s: State, now: Long): State = s.copy(timesShown = s.timesShown + 1, lastShownAt = now)
 
+    /** Their Drive is already in use (they restored from it): never ask. PURE. */
+    fun onDriveRestored(s: State): State = s.copy(timesShown = MAX_TIMES)
+
+    fun markDriveRestored(context: Context) {
+        runCatching { write(context, onDriveRestored(read(context))) }
+    }
+
     /** PURE. */
     fun shouldShow(s: State, hasBackup: Boolean, autoBackupOn: Boolean, now: Long): Boolean =
         !hasBackup && !autoBackupOn &&
