@@ -12,8 +12,8 @@ import java.time.Instant
 /**
  * Schedules the daily recurring-materialisation pass at an EXACT time (#4). WorkManager's periodic job was
  * inexact — Doze/App-Standby batching legitimately deferred the 9 AM run by up to a couple of hours, which
- * the user noticed. An AlarmManager exact alarm fires on-the-minute (backed by USE_EXACT_ALARM /
- * SCHEDULE_EXACT_ALARM). Exact alarms are one-shot, so the receiver re-arms tomorrow's alarm after it fires,
+ * the user noticed. An AlarmManager exact alarm fires on-the-minute (backed by SCHEDULE_EXACT_ALARM; Play
+ * restricts USE_EXACT_ALARM to alarm-clock apps). Exact alarms are one-shot, so the receiver re-arms tomorrow's alarm after it fires,
  * and [com.spends.app.receiver.BootReceiver] re-arms it after a reboot (alarms are cleared on boot).
  *
  * The app ALSO materialises silently on launch (MainViewModel), so this alarm is the backstop for when the
@@ -36,8 +36,8 @@ object RecurringAlarmScheduler {
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val triggerAt = nextTriggerMillis(minuteOfDay)
         val pending = pendingIntent(context)
-        // With USE_EXACT_ALARM (API 33+) / SCHEDULE_EXACT_ALARM (31/32) this is always permitted; guard
-        // anyway so a revoked permission degrades to an inexact alarm instead of a SecurityException crash.
+        // SCHEDULE_EXACT_ALARM is denied by default on Android 14+ and can be revoked anywhere, so this
+        // degrades to an inexact alarm instead of a SecurityException crash.
         val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
         if (canExact) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)

@@ -3,7 +3,7 @@
 # Android app (Pause), so a clean cloud build is reproducible. Room + WorkManager are added on
 # top at conservative, known-good pins for this toolchain.
 [versions]
-agp = "8.7.3"
+agp = "8.13.2"
 kotlin = "2.0.21"
 ksp = "2.0.21-1.0.28"
 
@@ -30,8 +30,8 @@ serializationJson = "1.7.3"
 # Testing
 junit = "4.13.2"
 coroutinesTest = "1.9.0"
-# 4.14.1 is the first Robolectric that renders SDK 35, which is this app's compileSdk/targetSdk.
-robolectric = "4.14.1"
+# 4.16 is the first Robolectric that renders SDK 36 (this app's compileSdk/targetSdk); it needs Java 21 to run.
+robolectric = "4.16.1"
 truth = "1.4.4"
 turbine = "1.1.0"
 mockk = "1.13.13"

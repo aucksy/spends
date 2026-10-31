@@ -32,14 +32,14 @@ val hasReleaseSigning: Boolean = releaseStoreFilePath != null && releaseStorePas
 
 android {
     namespace = "com.spends.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.simpleapps.spends"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 86
-        versionName = "1.73.1"
+        targetSdk = 36
+        versionCode = 87
+        versionName = "1.73.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

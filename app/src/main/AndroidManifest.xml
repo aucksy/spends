@@ -28,10 +28,10 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Recurring reminder (#4): fire the daily "recurring added" pass on an EXACT alarm so it lands at the
-         chosen time instead of drifting under Doze. USE_EXACT_ALARM auto-grants on Android 13+ (reminder is
-         the feature's core function); SCHEDULE_EXACT_ALARM covers Android 12. RECEIVE_BOOT_COMPLETED re-arms
+         chosen time instead of drifting under Doze. Only SCHEDULE_EXACT_ALARM: Play restricts USE_EXACT_ALARM
+         to alarm-clock and calendar apps. Where the user has not allowed exact alarms, the scheduler falls
+         back to an inexact alarm, so the reminder can land a few minutes late. RECEIVE_BOOT_COMPLETED re-arms
          the alarm after a reboot (exact alarms don't survive a restart). -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
