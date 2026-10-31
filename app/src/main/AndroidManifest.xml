@@ -44,6 +44,12 @@
     <queries>
         <package android:name="com.google.android.apps.messaging" />
         <package android:name="com.truecaller" />
+        <package android:name="com.samsung.android.messaging" />
+        <!-- Whatever app is the phone's SMS app (Vivo, Xiaomi, OnePlus...), so the checklist can offer it. -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
     </queries>
 
     <application

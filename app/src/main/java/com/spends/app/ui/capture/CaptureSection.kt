@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Telephony
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -224,7 +225,17 @@ fun CaptureSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
             )
-            NotificationCaptureApps.CANDIDATES.forEach { app ->
+            val candidates = remember {
+                val sms = runCatching { Telephony.Sms.getDefaultSmsPackage(context) }.getOrNull()
+                val label = sms?.let { p ->
+                    runCatching {
+                        val pm = context.packageManager
+                        pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString()
+                    }.getOrNull()
+                }
+                NotificationCaptureApps.candidatesFor(sms, label)
+            }
+            candidates.forEach { app ->
                 val installed = remember(app.packageName) { isAppInstalled(context, app.packageName) }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

@@ -99,7 +99,7 @@ class ReviewViewModel @Inject constructor(
         val title = merchant?.takeIf { it.isNotBlank() } ?: cat?.name ?: "Detected transaction"
         val instrument = institution?.let { inst -> last4?.let { "$inst ••$it" } ?: inst }
         val subtitle = listOfNotNull(instrument, DateUtils.formatDay(occurredAt)).joinToString(" · ")
-        val sourceAppName = sourceApp?.let { NotificationCaptureApps.displayName(it) ?: it }
+        val sourceAppName = sourceApp?.let { NotificationCaptureApps.displayName(it) ?: "your SMS app" }
         val converted = isConverted
         val unconverted = isUnconvertedForeign
         val amountText = if (unconverted) Money.formatCode(amountMinor, fxCurrency) else Money.format(amountMinor)

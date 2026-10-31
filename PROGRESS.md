@@ -4,6 +4,9 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
+- **v1.73.4** — versionCode **89**. Notification capture's "Apps to watch" now offers the phone's own SMS app
+  (Vivo, Xiaomi, OnePlus...) when it is not Google Messages, Truecaller or Samsung Messages. Fixed: Samsung
+  Messages always showed "Not installed" because it was missing from the manifest `<queries>`.
 - **v1.73.3** — versionCode **88**. The GitHub APK is `com.spends.app` again, so it updates the owner's
   existing install and keeps his data. v1.73.1 and v1.73.2 shipped the APK as `com.simpleapps.spends`, which the
   phone treated as a separate app. Only the Play AAB uses `com.simpleapps.spends` (`-PplayStore=true`).

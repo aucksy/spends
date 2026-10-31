@@ -33,6 +33,14 @@ object NotificationCaptureApps {
         CandidateApp(SAMSUNG_MESSAGES, "Samsung Messages"),
     )
 
+    /**
+     * The checklist for this phone: [CANDIDATES], plus the phone's own SMS app when it is none of them
+     * (a Vivo or Xiaomi phone ships its own, and RCS bank alerts land there). Null/blank = nothing added.
+     */
+    fun candidatesFor(defaultSmsPackage: String?, defaultSmsLabel: String?): List<CandidateApp> =
+        if (defaultSmsPackage.isNullOrBlank() || CANDIDATES.any { it.packageName == defaultSmsPackage }) CANDIDATES
+        else CANDIDATES + CandidateApp(defaultSmsPackage, "${defaultSmsLabel ?: "Messages"} (your SMS app)")
+
     /** Pre-ticked when capture is first enabled. */
     val DEFAULT_PACKAGES: Set<String> = setOf(GOOGLE_MESSAGES, TRUECALLER, SAMSUNG_MESSAGES)
 
