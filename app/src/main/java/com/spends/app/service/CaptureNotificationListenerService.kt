@@ -6,6 +6,7 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
 import com.spends.app.data.capture.CaptureNotifier
+import com.spends.app.data.capture.LastAlertLog
 import com.spends.app.data.capture.NotificationCapture
 import com.spends.app.data.capture.RecentCaptureGuard
 import com.spends.app.data.capture.SmsCaptureRepository
@@ -112,10 +113,25 @@ class CaptureNotificationListenerService : NotificationListenerService() {
         if (!looksReadable(sbn)) return
         val payload = payloadOf(sbn)
         val candidates = candidatesOf(payload) // extras snapshot, cheap; allowlist filters here too
-        if (candidates.isEmpty()) return
+        if (candidates.isEmpty()) {
+            // The "last alert" line under this app in Settings: say why a money-looking alert was dropped.
+            val texts = arrayOf(payload.text, payload.bigText) + payload.messages.map { it.text }
+            LastAlertLog.reasonWithoutCandidate(*texts)?.let { reason ->
+                LastAlertLog.record(this, pkg, reason, payload.conversationTitle ?: payload.title)
+            }
+            return
+        }
         scope.launch {
             candidates.forEach { c -> runCatching { process(c, pkg, canPrompt = true) } }
         }
+    }
+
+    private fun reasonFor(c: NotificationCapture.Candidate, d: SmsCaptureRepository.NotificationDecision) = when {
+        LastAlertLog.looksHidden(c.body) -> LastAlertLog.Reason.HIDDEN_BY_ANDROID
+        d == SmsCaptureRepository.NotificationDecision.NOT_TRANSACTION -> LastAlertLog.Reason.NO_AMOUNT
+        d == SmsCaptureRepository.NotificationDecision.DUPLICATE -> LastAlertLog.Reason.ALREADY_IN_SPENDS
+        d == SmsCaptureRepository.NotificationDecision.QUEUED -> LastAlertLog.Reason.ADDED_TO_REVIEW
+        else -> LastAlertLog.Reason.ASKED_YOU
     }
 
     /** Skip our own notifications, group summaries ("2 new messages" carries no content of its own),
@@ -193,6 +209,7 @@ class CaptureNotificationListenerService : NotificationListenerService() {
             return
         }
         val outcome = captureRepository.handleNotificationAlert(c.sender, c.body, c.timestamp, pkg, canPrompt)
+        LastAlertLog.record(this, pkg, reasonFor(c, outcome.decision), c.sender)
         if (outcome.decision != SmsCaptureRepository.NotificationDecision.PROMPT) return
         val preview = outcome.preview ?: return
         if (guard.claimPrompt(preview.relaxedHash, preview.refNumber)) {

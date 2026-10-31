@@ -1,0 +1,79 @@
+package com.spends.app.data.capture
+
+import android.content.Context
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+/**
+ * What happened to the last money-looking alert from each watched app, shown under that app in the
+ * "Apps to watch" checklist. Replaces the removed debug screens with one line the owner can read
+ * after a missed alert ("Android hid the text" vs "not a bank Spends knows"). Stores the time, a
+ * reason code and the sender name only — never the message text. Device-local, not in the backup.
+ */
+object LastAlertLog {
+
+    enum class Reason(val line: String) {
+        HIDDEN_BY_ANDROID("Android hid the text, so Spends could not read it"),
+        UNKNOWN_SENDER("looked like money, but the sender is not a bank Spends knows"),
+        NO_AMOUNT("read it, but found no amount"),
+        ALREADY_IN_SPENDS("already in Spends"),
+        ADDED_TO_REVIEW("added to Review"),
+        ASKED_YOU("asked you to add it"),
+    }
+
+    data class Entry(val atMillis: Long, val reason: Reason, val sender: String?)
+
+    // Android's own placeholder when it redacts a "sensitive" notification for a normal listener (Android 15+).
+    private const val HIDDEN_PLACEHOLDER = "sensitive notification content hidden"
+
+    private val MONEY = Regex("""(?i)(₹|\brs\.?\s?\d|\binr\b|\bdebited\b|\bcredited\b|\bspent\b)""")
+
+    fun looksHidden(vararg texts: String?): Boolean =
+        texts.any { it != null && it.lowercase(Locale.ROOT).contains(HIDDEN_PLACEHOLDER) }
+
+    fun looksLikeMoney(vararg texts: String?): Boolean = texts.any { it != null && MONEY.containsMatchIn(it) }
+
+    /**
+     * The reason for a notification that produced NO parse candidate, or null when it is not worth a line
+     * (a missed call, a chat) — those must not overwrite the line a missed bank alert left behind.
+     */
+    fun reasonWithoutCandidate(vararg texts: String?): Reason? = when {
+        looksHidden(*texts) -> Reason.HIDDEN_BY_ANDROID
+        looksLikeMoney(*texts) -> Reason.UNKNOWN_SENDER
+        else -> null
+    }
+
+    fun record(context: Context, pkg: String, reason: Reason, sender: String?, atMillis: Long = System.currentTimeMillis()) {
+        runCatching {
+            prefs(context).edit().putString(pkg, encode(Entry(atMillis, reason, sender))).apply()
+        }
+    }
+
+    fun read(context: Context, pkg: String): Entry? =
+        runCatching { prefs(context).getString(pkg, null)?.let(::decode) }.getOrNull()
+
+    /** "Last alert, 2:14 pm: added to Review" (today) or "Last alert, 30 Oct 2:14 pm: …". */
+    fun describe(e: Entry, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): String {
+        val at = Instant.ofEpochMilli(e.atMillis).atZone(zone)
+        val time = at.format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)).lowercase(Locale.ROOT)
+        val whenText = if (at.toLocalDate() == today) time
+        else at.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)) + " " + time
+        val from = e.sender?.takeIf { it.isNotBlank() }?.let { " (from $it)" }.orEmpty()
+        return "Last alert, $whenText$from: ${e.reason.line}"
+    }
+
+    internal fun encode(e: Entry): String = "${e.atMillis}|${e.reason.name}|${e.sender.orEmpty().replace("|", " ")}"
+
+    internal fun decode(s: String): Entry? {
+        val parts = s.split("|", limit = 3)
+        if (parts.size < 2) return null
+        val at = parts[0].toLongOrNull() ?: return null
+        val reason = Reason.entries.firstOrNull { it.name == parts[1] } ?: return null
+        return Entry(at, reason, parts.getOrNull(2)?.takeIf { it.isNotBlank() })
+    }
+
+    private fun prefs(context: Context) = context.getSharedPreferences("last_alert_log", Context.MODE_PRIVATE)
+}

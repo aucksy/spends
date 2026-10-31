@@ -1,0 +1,4 @@
+version: 1.74.0
+• Spends now reminds you to turn on Google Drive backup, so your spends are safe if you lose or change your phone.
+• Settings → Apps to watch now shows what happened to the last alert from each app, so you can see why a payment was missed.
+• Samsung Messages and your phone's own SMS app can now be picked as apps to watch.

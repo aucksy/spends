@@ -36,6 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,6 +55,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.CrashLog
+import com.spends.app.data.capture.LastAlertLog
 import com.spends.app.data.capture.NotificationCaptureApps
 import com.spends.app.service.NotificationListenerControl
 
@@ -72,6 +74,7 @@ fun CaptureSection(
     var showAccessExplainer by remember { mutableStateOf(false) }
     // Survives the trip out to Android's notification-access screen (our activity may be recreated).
     var awaitingAccess by rememberSaveable { mutableStateOf(false) }
+    var resumeTick by remember { mutableIntStateOf(0) } // bumps on every resume: re-reads the last-alert lines
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -249,6 +252,16 @@ fun CaptureSection(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        } else {
+                            // Re-read on every return to this screen: the listener writes it in the background.
+                            val last = remember(app.packageName, resumeTick) { LastAlertLog.read(context, app.packageName) }
+                            if (last != null) {
+                                Text(
+                                    LastAlertLog.describe(last),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                     Checkbox(
@@ -367,6 +380,7 @@ fun CaptureSection(
     // Coming back from the access screen: if the grant happened, flip the switch on for real.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumeTick++
             if (event == Lifecycle.Event.ON_RESUME && awaitingAccess) {
                 if (hasNotificationAccess(context)) {
                     awaitingAccess = false

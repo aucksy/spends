@@ -11,6 +11,7 @@ import androidx.navigation.navArgument
 import com.spends.app.data.settings.SettingsState
 import com.spends.app.domain.model.TxnKind
 import com.spends.app.ui.addedit.AddEditScreen
+import com.spends.app.ui.backup.BackupNudgeDialog
 import com.spends.app.ui.backup.OnboardingRestoreScreen
 import com.spends.app.ui.breakdown.CycleBreakdownScreen
 import com.spends.app.ui.cards.CardsScreen
@@ -110,6 +111,7 @@ fun SpendsNavHost(
                 openQuickAddSignal = pendingQuickAdd,
                 onQuickAddConsumed = onQuickAddConsumed,
             )
+            BackupNudgeDialog(onSetUp = { navController.navigate(Routes.SETTINGS_BACKUP) })
         }
 
         composable(

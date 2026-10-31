@@ -129,4 +129,6 @@ Capture at the phone's native resolution; upload PNGs. Tell me if you want them 
 - [done] App icon `play/assets/spends-icon-512.png` + feature graphic `play/assets/spends-feature-1024x500.png`.
 - [you] Capture 2–8 phone screenshots (see **Screenshots** above).
 - [owner] Everything marked **[owner]** above.
-- [optional Round 3] CI auto-upload of the AAB to a Play track via a service account.
+- [done 31 Oct 2026] Every signed `vX.Y.Z` tag goes to **Closed testing (alpha)** by itself: job `play-upload` in
+  `android-release.yml`, keyless (WIF provider `aucksy-spends`, GCP `forgeai-d7eea`), notes from `play/whatsnew.txt`
+  (first line `version: X.Y.Z`, update it every release).

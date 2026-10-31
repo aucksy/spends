@@ -36,8 +36,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.keystore.outputs.signed }}
     env:
-      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
       # The tag being released: the pushed tag, or the one typed into a manual run. Empty = build only.
       RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.tag }}
     steps:
@@ -135,18 +136,64 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-      # --- Google Play (internal track) ---
-      # Runs only on a signed tag build AND when the PLAY_SERVICE_ACCOUNT_JSON secret exists.
-      - name: Publish to Google Play (internal testing)
-        # Deliberately still gated on a real TAG PUSH, not on RELEASE_TAG: a manual run should be able to
-        # publish an APK without also pushing to the Play track unasked.
-        if: ${{ startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY == 'true' && steps.keystore.outputs.signed == 'true' }}
-        continue-on-error: true
-        uses: r0adkll/upload-google-play@v1
+  # --- Google Play closed testing ("alpha"), after every signed tag release ---
+  # Keyless (Workload Identity Federation): GitHub's OIDC token for this repo (provider "aucksy-spends" in
+  # GCP project forgeai-d7eea, condition assertion.repository=='aucksy/spends') is swapped for a short-lived
+  # token of the service account in the PLAY_SERVICE_ACCOUNT repo VARIABLE. No key file. Same method as
+  # MettleUp. Only a real tag push uploads; a manual run never pushes to Play unasked. A Play failure turns
+  # this job red but never touches the GitHub Release, which is already out.
+  play-upload:
+    needs: build
+    if: ${{ startsWith(github.ref, 'refs/tags/') && needs.build.outputs.signed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: play-edit
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check setup
+        id: setup
+        run: |
+          if [ -z "${{ vars.PLAY_WIF_PROVIDER }}" ] || [ -z "${{ vars.PLAY_SERVICE_ACCOUNT }}" ]; then
+            echo "::error::Repo variables PLAY_WIF_PROVIDER / PLAY_SERVICE_ACCOUNT are not set: nothing sent to Play."
+            exit 1
+          fi
+          CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
+          NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          if [ "v$NAME" != "$TAG" ]; then echo "::error::Tag $TAG but versionName $NAME."; exit 1; fi
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "$TAG = versionCode $CODE"
+
+      - name: Download the release AAB
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "Spends-$TAG.aab" --dir "$RUNNER_TEMP/aab"
+
+      - uses: actions/setup-python@v5
         with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.simpleapps.spends
-          releaseFiles: app/build/outputs/bundle/release/*.aab
-          track: internal
-          status: completed
-          whatsNewDirectory: distribution/whatsnew
+          python-version: '3.12'
+
+      - name: Install the Google API client (pinned)
+        run: python -m pip install --disable-pip-version-check -q -r scripts/ci/play-requirements.txt
+
+      - name: Google sign-in (keyless)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WIF_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+
+      - name: Upload to Play closed testing
+        run: >-
+          python scripts/ci/play_upload.py
+          --aab "$RUNNER_TEMP/aab/Spends-$TAG.aab"
+          --version "${{ steps.setup.outputs.name }}"
+          --version-code "${{ steps.setup.outputs.code }}"
