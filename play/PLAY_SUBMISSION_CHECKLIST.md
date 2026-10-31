@@ -35,7 +35,9 @@ Play Console → **Create app**. Name **Spends**, default language **English (In
 
 ## 3. Privacy policy  **[owner]** — page is **[done]** in `docs/index.html`
 - Enable GitHub Pages: repo **Settings → Pages → Source: Deploy from a branch → `main` / `/docs`**.
-- Confirm it serves at **https://aucksy.github.io/spends/** (allow a minute after saving).
+- **The repo is private, so GitHub Pages cannot serve it.** Since 2026-10-31 the page is a Cloudflare static
+  Worker: **https://spends-privacy.aakashpahuja1990.workers.dev/** (copy `docs/index.html` to a folder and
+  `npx wrangler deploy` with `assets.directory` pointing at it; name `spends-privacy`).
 - Paste that URL into Play Console → **Policy → App content → Privacy policy**, and it's already in the
   store description.
 

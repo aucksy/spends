@@ -24,10 +24,6 @@ fun CaptureSettingsScreen(
     onBack: () -> Unit,
     onOpenReview: () -> Unit,
     onOpenSilencedAlerts: () -> Unit,
-    // TEMPORARY: notification-capture diagnostic. Remove with NotificationDebugLog.
-    onOpenNotificationDebug: () -> Unit,
-    // TEMPORARY: live-SMS-capture diagnostic. Remove with SmsDebugLog.
-    onOpenSmsDebug: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -51,8 +47,6 @@ fun CaptureSettingsScreen(
             CaptureSection(
                 onOpenReview = onOpenReview,
                 onOpenSilencedAlerts = onOpenSilencedAlerts,
-                onOpenNotificationDebug = onOpenNotificationDebug,
-                onOpenSmsDebug = onOpenSmsDebug,
             )
         }
     }

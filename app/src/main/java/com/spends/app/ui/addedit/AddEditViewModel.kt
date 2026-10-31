@@ -9,6 +9,7 @@ import com.spends.app.core.time.DateUtils
 import com.spends.app.data.capture.CaptureDraft
 import com.spends.app.data.capture.CaptureDraftStore
 import com.spends.app.data.capture.SmsCaptureRepository
+import com.spends.app.data.capture.SmsParser
 import com.spends.app.data.db.entity.CategoryEntity
 import com.spends.app.data.repo.AllocationInput
 import com.spends.app.data.repo.CategoryRepository
@@ -228,7 +229,13 @@ class AddEditViewModel @Inject constructor(
                         note = captureRepository.learnedNoteFor(p.merchant, allowFuzzy = true).orEmpty(),
                         occurredAt = p.occurredAt,
                         // Auto-match the instrument from the SMS so "Paid with" is pre-filled for review (#3).
-                        paymentMethodId = paymentMethodRepository.matchInstrument(p.last4, p.institution),
+                        // The row does not store whether the alert named a credit card or an account, so
+                        // re-read its text for that (UNKNOWN for rows queued before the text was kept).
+                        paymentMethodId = paymentMethodRepository.matchInstrument(
+                            p.last4,
+                            p.institution,
+                            SmsParser.parse(p.sender, p.rawBody, p.receivedAt).channel,
+                        ),
                         conversionNote = conversionNoteFor(p.fxCurrency, p.fxAmountMinor, p.fxRateMicros, p.amountMinor),
                         unconvertedForeign = p.isUnconvertedForeign,
                         fxCurrency = p.fxCurrency,

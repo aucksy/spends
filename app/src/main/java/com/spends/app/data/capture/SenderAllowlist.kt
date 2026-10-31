@@ -87,6 +87,8 @@ object SenderAllowlist {
         put("SBIBANK", Institution("SBI", InstitutionType.BANK))
         put("SBICARD", Institution("SBI Card", InstitutionType.CREDIT_CARD))
         put("SBICARDS", Institution("SBI Card", InstitutionType.CREDIT_CARD))
+        // The issuer's legal name, "SBI Cards and Payment Services Ltd" (SERVICES + LTD stripped).
+        put("SBICARDSANDPAYMENT", Institution("SBI Card", InstitutionType.CREDIT_CARD))
         put("INDUSINDBANK", Institution("IndusInd Bank", InstitutionType.CREDIT_CARD))
         put("INDUSIND", Institution("IndusInd Bank", InstitutionType.CREDIT_CARD))
         put("ICICIBANK", Institution("ICICI Bank", InstitutionType.CREDIT_CARD))
@@ -150,11 +152,11 @@ object SenderAllowlist {
         val normalized = senderOrTitle?.trim()?.uppercase()?.replace(Regex("[^A-Z0-9]"), "")
             ?.takeIf { it.isNotBlank() } ?: return null
         byDisplayName[normalized]?.let { return it }
-        // Real RBM/Truecaller agent names vary ("Axis Bank Ltd", "HDFC Bank Cards") — retry with up
-        // to two common trailing tokens stripped, exact-matching the table after each strip so a
+        // Real RBM/Truecaller agent names vary ("Axis Bank Ltd", "HDFC Bank Cards", "SBI Card Alerts") —
+        // retry with up to three common trailing tokens stripped, exact-matching the table after each strip so a
         // random business can never fuzzy-match into a bank.
         var n = normalized
-        repeat(2) {
+        repeat(3) {
             val suffix = NAME_SUFFIXES.firstOrNull { n.length > it.length && n.endsWith(it) } ?: return null
             n = n.removeSuffix(suffix)
             byDisplayName[n]?.let { return it }
@@ -163,7 +165,10 @@ object SenderAllowlist {
     }
 
     /** Trailing tokens RBM agent names append to the bare brand (longest first so LIMITED wins over LTD). */
-    private val NAME_SUFFIXES = listOf("LIMITED", "OFFICIAL", "INDIA", "CARDS", "CARD", "BANK", "LTD")
+    private val NAME_SUFFIXES = listOf(
+        "TRANSACTIONS", "LIMITED", "OFFICIAL", "SERVICES", "UPDATES", "ALERTS", "ALERT",
+        "INDIA", "CARDS", "CARD", "BANK", "LTD",
+    )
 
     /**
      * Translate a notification sender/title into a sender string [SmsParser] accepts, or null when

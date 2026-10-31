@@ -4,7 +4,28 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
-- **Tagged: v1.72.0** — versionCode **84**, versionName **"1.72.0"**. **Google Gemini joins the AI provider
+- **Tagged: v1.73.0** — versionCode **85**, versionName **"1.73.0"**. Four owner reports. No schema change.
+  - *Review & Add opened an OLDER transaction.* Android keeps the intent that first opened the task. After
+    the process died, a recreate or a Recents relaunch handed MainActivity that ORIGINAL notification again,
+    and onCreate parsed the old alert into a draft that raced the new tap's draft. `removeExtra` only edits
+    this process's copy, so it never stopped this. Now onCreate honours launch extras only on a fresh launch
+    (`LaunchIntents.isFreshLaunch`: no saved state, not LAUNCHED_FROM_HISTORY), and the newest tap wins in
+    `MainViewModel.handleCaptureEdit` (a request counter), because `draftFor` suspends and can finish out
+    of order.
+  - *IDFC credit card read as the IDFC bank.* IDFC sends card AND account alerts from one sender. When the
+    card's last4 matched nothing, the bank-name fallback picked the only confirmed "IDFC" instrument — the
+    savings account. `SmsParser.Parsed.channel` (CREDIT_CARD / ACCOUNT / UNKNOWN) now says what paid, and
+    `PaymentMethodRepository.pickByInstitution` filters on it. Issuer names compare on their first
+    distinctive word, so "IDFC First Bank" matches "IDFC FIRST" / "IDFC RuPay". Scan-found bank cards are now
+    labelled "<bank> Credit Card". Proven over the owner's backup: all 509 IDFC card spends → CREDIT_CARD,
+    all 1,295 account spends → ACCOUNT, zero crossed.
+  - *SBI Card RCS never captured.* Three gaps: Samsung Messages (the Galaxy default SMS/RCS app) was not
+    in the watch list; a MessagingStyle whose messages carry no text (RCS rich card) returned nothing
+    instead of falling back to big text; agent-name suffixes like "Alerts"/"Services" were not stripped.
+    All three fixed, with tests. Android 15's OTP redaction is still outside the app's reach.
+  - *Debug screens removed* (SMS debug, Notification debug, their logs and tests), as asked.
+
+- **v1.72.0** — versionCode **84**, versionName **"1.72.0"**. **Google Gemini joins the AI provider
   list**, so a Google AI Studio key now works for foreign-currency conversion. No schema change.
   - *Why it was asked for.* The owner holds a Google AI Studio key, not an Anthropic/OpenAI/Groq one. The
     BYOK promise in v1.70.0 was that the key is the *user's* — that only holds if the list contains the key

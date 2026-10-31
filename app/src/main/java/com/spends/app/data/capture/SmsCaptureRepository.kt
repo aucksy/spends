@@ -189,7 +189,7 @@ class SmsCaptureRepository @Inject constructor(
             relaxedHash = relaxedHashOf(parsed, occurredAt, amount, kind),
             fromNotification = sourceApp != null,
             // Pre-match the instrument so the editor's "Paid with" is filled in for review (#3).
-            paymentMethodId = paymentMethodRepository.matchInstrument(parsed.last4, parsed.institution),
+            paymentMethodId = paymentMethodRepository.matchInstrument(parsed.last4, parsed.institution, parsed.channel),
             fxCurrency = fx.currency,
             fxAmountMinor = fx.originalMinor,
             fxRateMicros = fx.rateMicros,

@@ -3,6 +3,7 @@ package com.spends.app.data.repo
 import androidx.room.withTransaction
 import com.spends.app.core.category.ColorAssigner
 import com.spends.app.core.time.DateUtils
+import com.spends.app.data.capture.SmsParser
 import com.spends.app.data.db.SpendsDatabase
 import com.spends.app.data.db.dao.ExpenseDao
 import com.spends.app.data.db.dao.PaymentMethodDao
@@ -111,7 +112,9 @@ class PaymentMethodRepository @Inject constructor(
         dao.insert(
             PaymentMethodEntity(
                 type = PaymentMethodType.CREDIT_CARD,
-                label = inst, // a sensible starting name; the user renames it on review
+                // A sensible starting name; the user renames it on review. Name it a CARD: a bank-header
+                // card (IDFC, Axis) labelled just "IDFC First Bank" read as the bank account, not the card.
+                label = defaultCardLabel(inst),
                 institution = inst,
                 last4 = l4,
                 colorHex = assignColor(inst + l4),
@@ -139,26 +142,13 @@ class PaymentMethodRepository @Inject constructor(
      * card AND an ICICI account) are ambiguous, so we return null and leave the choice to the user in the
      * review editor. Also null when the SMS carries no usable institution.
      */
-    suspend fun matchInstrument(last4: String?, institution: String?): Long? {
+    suspend fun matchInstrument(
+        last4: String?,
+        institution: String?,
+        channel: SmsParser.Channel = SmsParser.Channel.UNKNOWN,
+    ): Long? {
         matchConfirmedByLast4(last4)?.let { return it }
-        val target = normalizeInstitution(institution)
-        if (target.isBlank()) return null
-        val matches = dao.getConfirmedOnce().filter { normalizeInstitution(it.institution) == target }
-        return matches.singleOrNull()?.id
-    }
-
-    /**
-     * Reduce an institution string to a comparable core token so "ICICI Bank", "ICICI", and "icici bank"
-     * all match: lowercase, drop punctuation, and strip the generic words (bank/card/credit/…) that don't
-     * distinguish one issuer from another. Returns "" for a blank/unusable value (never matches).
-     */
-    private fun normalizeInstitution(raw: String?): String {
-        if (raw.isNullOrBlank()) return ""
-        return raw.lowercase()
-            .replace(Regex("[^a-z0-9 ]"), " ")
-            .split(" ")
-            .filter { it.isNotBlank() && it !in GENERIC_INSTITUTION_WORDS }
-            .joinToString("")
+        return pickByInstitution(dao.getConfirmedOnce(), institution, channel)
     }
 
     /**
@@ -191,8 +181,52 @@ class PaymentMethodRepository @Inject constructor(
         dao.insertAll(cards)
     }
 
-    private companion object {
-        /** Generic tokens stripped before comparing institution names (#3) — they don't identify an issuer. */
-        val GENERIC_INSTITUTION_WORDS = setOf("bank", "card", "cards", "credit", "debit", "cc", "the", "ltd", "limited")
+    internal companion object {
+        /** Generic tokens skipped when finding the issuer's name (#3) — they don't identify an issuer. */
+        private val GENERIC_INSTITUTION_WORDS =
+            setOf("bank", "card", "cards", "credit", "debit", "cc", "the", "of", "ltd", "limited")
+
+        /**
+         * The bank-name fallback of [matchInstrument], pure so a JVM test can call it. Picks an instrument ONLY
+         * when exactly one confirmed instrument fits — ambiguity is left to the user in the review editor.
+         *
+         * "Fits" means two things:
+         *  - **Same issuer**, compared on the issuer's first distinctive word, so "IDFC First Bank" (what the
+         *    alert says) agrees with "IDFC FIRST", "IDFC" or "IDFC RuPay" (what an owner may have typed). An
+         *    instrument saved without an institution is compared on its label.
+         *  - **The right kind.** A credit-card alert is paid by a credit card; an account alert never is.
+         *    Without this, IDFC — which sends card AND account alerts from one sender — pre-filled its
+         *    credit-card spends with the IDFC savings account whenever the card's last4 matched nothing.
+         */
+        fun pickByInstitution(
+            confirmed: List<PaymentMethodEntity>,
+            institution: String?,
+            channel: SmsParser.Channel,
+        ): Long? {
+            val target = issuerKey(institution) ?: return null
+            return confirmed
+                .filter { issuerKey(it.institution) == target || (it.institution.isNullOrBlank() && issuerKey(it.label) == target) }
+                .filter {
+                    when (channel) {
+                        SmsParser.Channel.CREDIT_CARD -> it.type == PaymentMethodType.CREDIT_CARD
+                        SmsParser.Channel.ACCOUNT -> it.type != PaymentMethodType.CREDIT_CARD
+                        SmsParser.Channel.UNKNOWN -> true
+                    }
+                }
+                .singleOrNull()?.id
+        }
+
+        /** "IDFC First Bank" → "IDFC First Bank Credit Card"; a name that already says card is kept. */
+        fun defaultCardLabel(institution: String): String =
+            if (institution.contains("card", ignoreCase = true)) institution else "$institution Credit Card"
+
+        /** The issuer's first distinctive word ("IDFC First Bank" → "idfc"), or null when there is none. */
+        fun issuerKey(raw: String?): String? {
+            if (raw.isNullOrBlank()) return null
+            return raw.lowercase()
+                .replace(Regex("[^a-z0-9 ]"), " ")
+                .split(" ")
+                .firstOrNull { it.isNotBlank() && it !in GENERIC_INSTITUTION_WORDS }
+        }
     }
 }

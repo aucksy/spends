@@ -146,3 +146,4 @@ same callbacks; that copy goes away with the rest of the diagnostic.
 
 - 2026-07-26 — code trace complete; reconnect fix + diagnostic written. Not yet tagged (owner says
   when to ship). Release ritual still owed at tag time: 2 adversarial review agents, then bump.
+- 2026-10-31 — removed: the Notification debug and SMS debug screens and all their logging were deleted; the Keep list above stays.

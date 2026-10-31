@@ -15,6 +15,14 @@ object SmsParser {
 
     enum class Result { TRANSACTION, STATEMENT, IGNORED }
 
+    /**
+     * What KIND of instrument the alert says paid: a credit card, a bank account (incl. its debit card / UPI),
+     * or not stated. Used only to pick a payment method when the last4 matched nothing — see
+     * PaymentMethodRepository.pickByInstitution. One bank (IDFC) sends both card and account alerts from one
+     * sender, so the bank name alone cannot tell them apart.
+     */
+    enum class Channel { CREDIT_CARD, ACCOUNT, UNKNOWN }
+
     data class Parsed(
         val result: Result,
         val amountMinor: Long? = null,
@@ -32,9 +40,26 @@ object SmsParser {
         // at all. [amountMinor] is always minor units of THAT currency — converting it to the currency the
         // ledger is kept in happens later, in the capture layer, where the AI helper and settings live.
         val currencyCode: String? = null,
+        val channel: Channel = Channel.UNKNOWN,
     )
 
     private val ignored = Parsed(Result.IGNORED)
+
+    // Account words win over "credit card": "debited from A/c XX1234 towards credit card payment" is money
+    // leaving the ACCOUNT. And a CREDIT_CARD sender type alone proves nothing — HDFC, ICICI, Yes and others
+    // send account alerts ("ICICI Bank Acct XX123 debited") under it — so only issuers that offer nothing
+    // but cards count as a card without the words. Checked against the owner's 1,800+ IDFC alerts and
+    // ~1,000 SBI Card alerts: every card spend still reads CREDIT_CARD.
+    /** Internal for tests: [low] is the lowercased, whitespace-collapsed body. */
+    internal fun channelOf(low: String, inst: Institution): Channel = when {
+        low.contains("a/c") || low.contains("acct") || low.contains("account") || low.contains("debit card") ->
+            Channel.ACCOUNT
+        low.contains("credit card") -> Channel.CREDIT_CARD
+        inst.name in CARD_ONLY_ISSUERS -> Channel.CREDIT_CARD
+        else -> Channel.UNKNOWN
+    }
+
+    private val CARD_ONLY_ISSUERS = setOf("SBI Card", "OneCard", "American Express")
 
     fun parse(sender: String?, body: String?, receivedAt: Long): Parsed {
         if (body.isNullOrBlank()) return ignored
@@ -57,12 +82,14 @@ object SmsParser {
 
         // 3) Classify kind.
         val (kind, direction, categoryHint) = classify(low, inst, isCard) ?: return ignored
+        val channel = channelOf(low, inst)
         val merchant = extractMerchant(text)
         val occurredAt = resolveOccurredAt(text, receivedAt)
         val confidence = confidenceFor(amount, kind, last4, merchant, inst)
 
         return Parsed(
             result = Result.TRANSACTION,
+            channel = channel,
             amountMinor = amount,
             kind = kind,
             direction = direction,

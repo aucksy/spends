@@ -10,9 +10,7 @@ import org.junit.Test
  * A parsed bank alert that is neither shown nor queued is a real transaction lost with no record
  * anywhere. Until now the SMS path checked only the app's MASTER notification toggle and then returned,
  * so a prompt hidden by the "Transaction detection" CATEGORY alone was handed to Android, quietly
- * binned, and gone. [CaptureNotifier.canPost] is the pure rule both live paths now branch on, and the
- * SMS debug screen reads the same function so the screen can never report a verdict the capture path
- * disagrees with.
+ * binned, and gone. [CaptureNotifier.canPost] is the pure rule both live paths now branch on.
  *
  * The importance values are Android's own frozen constants, written as literals here so the test needs
  * no framework: IMPORTANCE_NONE = 0, MIN = 1, LOW = 2, DEFAULT = 3, HIGH = 4.

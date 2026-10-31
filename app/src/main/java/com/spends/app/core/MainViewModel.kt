@@ -85,14 +85,21 @@ class MainViewModel @Inject constructor(
     private val _pendingCaptureDraft = MutableStateFlow(false)
     val pendingCaptureDraft: StateFlow<Boolean> = _pendingCaptureDraft
 
+    // Main-thread only (called from the Activity, read back on viewModelScope's main dispatcher).
+    private var captureRequest = 0
+
     fun handleCaptureEdit(sender: String?, body: String?, receivedAt: Long, sourceApp: String? = null) {
         if (body.isNullOrBlank()) return
         // Same reasoning as CaptureActionReceiver: the "Edit" action of a prompt left over from before the
         // switch would open the editor on a REAL transaction that saves into the demo sandbox.
         if (DemoMode.isEnabled(context)) return
+        // Newest tap wins. draftFor suspends (database reads, and a currency conversion that can go to the
+        // network), so two taps can finish out of order — and the store holds ONE draft. Without this, an
+        // older tap finishing last overwrote the newer one and "Review & Add" opened on the wrong alert.
+        val request = ++captureRequest
         viewModelScope.launch {
             val draft = runCatching { captureRepository.draftFor(sender, body, receivedAt, sourceApp) }.getOrNull()
-            if (draft != null) {
+            if (draft != null && request == captureRequest) {
                 captureDraftStore.set(draft)
                 _pendingCaptureDraft.value = true
             }

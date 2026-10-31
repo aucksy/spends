@@ -143,85 +143,86 @@ class NotificationCaptureTest {
         assertThat(out).isEmpty()
     }
 
-    // ---- Android's own redaction (the Truecaller Business Chat finding) ----
-    //
-    // This is the shape the owner's phone actually produced: title = the APP's name, text = the platform
-    // placeholder, no bigText, no MessagingStyle. Before these tests it was reported as "the sender isn't a
-    // bank Spends knows", which sent the investigation to the sender allowlist — a file that cannot possibly
-    // be the cause when the body never arrived.
-
-    @Test fun redacted_plain_notification_is_diagnosed_as_redacted_not_unknown_sender() {
-        val d = NotificationCapture.diagnose(
-            title = "Truecaller",
-            text = "Sensitive notification content hidden",
-            bigText = null,
-            conversationTitle = null,
-            messages = emptyList(),
-            postTime = postTime,
-        )
-        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.REDACTED_BY_ANDROID)
-    }
-
-    @Test fun redacted_message_inside_a_chat_is_also_diagnosed_as_redacted() {
-        val d = NotificationCapture.diagnose(
-            title = "Truecaller",
-            text = null,
-            bigText = null,
-            // An unmapped business chat, so the sender does not resolve and this really is a rejection.
-            // The resolved-sender case is a different path entirely — see the test below.
-            conversationTitle = "Bakery Business Chat",
-            messages = listOf(RawMessage(null, "Sensitive notification content hidden", postTime)),
-            postTime = postTime,
-        )
-        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.REDACTED_BY_ANDROID)
-    }
-
-    /**
-     * ⭐**A redaction check must never run ahead of `candidates()`, and this pins that.**
-     *
-     * When the sender DOES resolve — "HDFC Bank" normalises onto the allowlist — `candidates()` produces a
-     * candidate and there is no rejection to explain, so `diagnose` correctly answers NONE. That candidate
-     * then fails at the parser instead, which is where the listener labels it.
-     *
-     * Written as a test because the tempting "simplification" is to check for the placeholder first and
-     * return early. That would make `diagnose` disagree with `candidates()` about whether anything
-     * survived — and anyone who then moved the same check into `candidates()` would start DROPPING real
-     * bank alerts whose text merely resembles the placeholder.
-     */
-    @Test fun a_resolved_bank_sender_is_not_a_rejection_even_when_the_body_is_redacted() {
-        val d = NotificationCapture.diagnose(
-            title = "Truecaller",
-            text = null,
-            bigText = null,
-            conversationTitle = "HDFC Bank",
-            messages = listOf(RawMessage("HDFC Bank", "Sensitive notification content hidden", postTime)),
-            postTime = postTime,
-        )
-        assertThat(d.rejection).isEqualTo(NotificationCapture.Rejection.NONE)
-    }
-
-    @Test fun redaction_check_is_case_and_padding_insensitive() {
-        assertThat(NotificationCapture.looksRedacted("  Sensitive Content Hidden  ")).isTrue()
-        assertThat(NotificationCapture.looksRedacted("SENSITIVE NOTIFICATION CONTENT HIDDEN")).isTrue()
-    }
-
-    // ⭐The guard that matters most. A real bank alert must NEVER be written off as a platform redaction —
-    // that would blame the phone for a parser bug and close the only investigation that could fix it.
-    @Test fun a_real_message_mentioning_hidden_is_not_treated_as_redacted() {
-        assertThat(NotificationCapture.looksRedacted("INR 499 debited. Balance hidden for security")).isFalse()
-        assertThat(NotificationCapture.looksRedacted("Your sensitive data is safe with us")).isFalse()
-        assertThat(NotificationCapture.looksRedacted(null)).isFalse()
-    }
-
-    // A redacted body carries no amount, so capture was always going to fail on it. Pinned so the diagnosis
-    // change can never be mistaken for a capture change.
-    @Test fun redaction_diagnosis_does_not_alter_what_capture_does() {
+    // Android 15+ replaces OTP-classified notifications with a placeholder for ordinary listeners. That
+    // placeholder has no bank sender and no amount, so capture yields nothing for it.
+    @Test fun android_redaction_placeholder_yields_nothing() {
         val out = NotificationCapture.candidates(
             title = "Truecaller",
             text = "Sensitive notification content hidden",
             bigText = null,
             conversationTitle = null,
             messages = emptyList(),
+            postTime = postTime,
+        )
+        assertThat(out).isEmpty()
+    }
+
+    // ---- SBI Card RCS (the owner never once had one captured) ----
+
+    private val sbiCardAlert = "Rs.1,178.82 spent on your SBI Credit Card ending 1234 at PAYTM on 27/02/26. " +
+        "Trxn. not done by you? Report at https://sbicard.com/Dispute"
+
+    @Test fun sbi_card_rcs_chat_becomes_an_sbi_card_transaction() {
+        val out = NotificationCapture.candidates(
+            title = "SBI Card", text = sbiCardAlert, bigText = null, conversationTitle = "SBI Card",
+            messages = listOf(RawMessage("SBI Card", sbiCardAlert, 1_700_000_100_000L)),
+            postTime = postTime,
+        )
+        assertThat(out).hasSize(1)
+        val parsed = SmsParser.parse(out[0].sender, out[0].body, out[0].timestamp)
+        assertThat(parsed.result).isEqualTo(SmsParser.Result.TRANSACTION)
+        assertThat(parsed.amountMinor).isEqualTo(117_882L)
+        assertThat(parsed.institution).isEqualTo("SBI Card")
+        assertThat(parsed.channel).isEqualTo(SmsParser.Channel.CREDIT_CARD)
+    }
+
+    // An RCS rich card can post messages that carry no text; the alert is only in the big text.
+    @Test fun textless_messages_fall_back_to_big_text() {
+        val out = NotificationCapture.candidates(
+            title = "SBI Card", text = "Transaction alert", bigText = sbiCardAlert, conversationTitle = null,
+            messages = listOf(RawMessage("SBI Card", null, 1L)),
+            postTime = postTime,
+        )
+        assertThat(out).hasSize(1)
+        assertThat(out[0].body).isEqualTo(sbiCardAlert)
+        assertThat(out[0].timestamp).isEqualTo(1L) // dated by the textless message, not the post time
+    }
+
+    // The owner's real thread: older text alerts, then a new rich card. The new one must not be dropped,
+    // and it is dated by its message, not by the (fresh-on-every-repost) post time.
+    @Test fun new_rich_card_in_a_thread_with_older_text_is_still_captured() {
+        val older = "Rs.99.00 spent on your SBI Credit Card ending 1234 at SWIGGY on 25/02/26."
+        val out = NotificationCapture.candidates(
+            title = "SBI Card", text = "Transaction alert", bigText = sbiCardAlert, conversationTitle = null,
+            messages = listOf(
+                RawMessage("SBI Card", older, 1_700_000_100_000L),
+                RawMessage("SBI Card", null, 1_700_000_200_000L),
+            ),
+            postTime = postTime,
+        )
+        assertThat(out.map { it.body }).containsExactly(older, sbiCardAlert)
+        assertThat(out[1].timestamp).isEqualTo(1_700_000_200_000L)
+    }
+
+    @Test fun newest_message_with_text_adds_no_big_text_copy() {
+        val out = NotificationCapture.candidates(
+            title = "SBI Card", text = "x", bigText = sbiCardAlert, conversationTitle = null,
+            messages = listOf(RawMessage("SBI Card", null, 1L), RawMessage("SBI Card", sbiCardAlert, 2L)),
+            postTime = postTime,
+        )
+        assertThat(out).hasSize(1)
+    }
+
+    @Test fun sbi_card_agent_name_variants_resolve() {
+        for (name in listOf("SBI Card", "SBI Card Alerts", "SBI Card Official", "SBI Cards and Payment Services Ltd")) {
+            assertThat(SenderAllowlist.lookupSenderOrName(name)?.name).isEqualTo("SBI Card")
+        }
+    }
+
+    @Test fun a_person_chat_with_textless_messages_still_yields_nothing() {
+        val out = NotificationCapture.candidates(
+            title = "Rahul", text = "Photo", bigText = "Photo", conversationTitle = null,
+            messages = listOf(RawMessage("Rahul", null, 1L)),
             postTime = postTime,
         )
         assertThat(out).isEmpty()

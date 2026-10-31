@@ -11,7 +11,7 @@ unknown, which is fine; it just isn't confirmed.
 **Priority when time is short:** do the ⭐ items first. They are the ones where being wrong means a
 wrong number about real money, rather than something looking untidy.
 
-**Currently untested: v1.57.0 → v1.72.0.** Install **v1.72.0**; it contains every one of them.
+**Currently untested: v1.57.0 → v1.73.0.** Install **v1.73.0**; it contains every one of them.
 
 > ⚠️ **Four sections below are now DEAD and must not be worked through.** v1.60.0, v1.61.0, v1.62.0 and
 > v1.64.0 test the AI insight cards, which were **removed entirely in v1.65.0**. There is no carousel and no
@@ -24,6 +24,24 @@ wrong number about real money, rather than something looking untidy.
 > silently stopped becoming transactions from **v1.58.0** onward, which matches exactly when capture
 > stopped working. The same copied line is what crashed the v1.63.0 debug screen. **The single most
 > valuable thing to check now is whether a real bank text captures again.**
+
+---
+
+## v1.73.0 — Review & Add opens the right alert; IDFC card spends pick the card; SBI Card RCS
+
+The debug screens (SMS debug, Notification debug) are **gone** in this release. Every older section that says
+"open SMS debug" or "Notification debug" can no longer be done — skip those boxes.
+
+- [ ] ⭐ **Review & Add opens the alert you tapped.** Add a spend from the widget. Then wait for a bank alert
+      and tap **Review & Add** on it. The editor shows the NEW alert's amount and shop, not the widget one.
+- [ ] Swipe Spends away from Recents. Tap **Review & Add** on a fresh alert. Same result.
+- [ ] ⭐ **IDFC credit card.** Spend on the IDFC card (RuPay/UPI or the FIRST card). On Review & Add,
+      "Paid with" shows the **IDFC card**, never the IDFC bank account. If you have not saved the card yet,
+      "Paid with" is empty — it must not say the bank account.
+- [ ] A new card found by "Find my cards" is now named "IDFC First Bank Credit Card", not "IDFC First Bank".
+- [ ] ⭐ **SBI Card from notifications.** Settings → Automatic Entries → notification capture: tick
+      **Samsung Messages** (new). Pay with the SBI card. A "Review & Add" prompt appears.
+- [ ] Settings → Automatic Entries no longer shows "SMS debug" or "Notification debug".
 
 ---
 

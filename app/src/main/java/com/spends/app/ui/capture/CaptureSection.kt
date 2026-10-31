@@ -60,10 +60,6 @@ import com.spends.app.service.NotificationListenerControl
 fun CaptureSection(
     onOpenReview: () -> Unit,
     onOpenSilencedAlerts: () -> Unit,
-    // TEMPORARY: notification-capture diagnostic. Remove with NotificationDebugLog.
-    onOpenNotificationDebug: () -> Unit,
-    // TEMPORARY: live-SMS-capture diagnostic. Remove with SmsDebugLog.
-    onOpenSmsDebug: () -> Unit,
     viewModel: CaptureViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -290,14 +286,9 @@ fun CaptureSection(
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        // TEMPORARY: the two capture diagnostics. Deliberately OUTSIDE the enabled-only blocks — the
-        // whole point is to diagnose the case where capture looks on but nothing is happening, and
-        // "the switch reads on while the switch is what's wrong" is one of the answers they can give.
         HorizontalDivider(Modifier.padding(vertical = 10.dp))
         // ---- Last crash ----
-        // Deliberately on THIS screen and not on the SMS debug screen it is diagnosing: the fault being
-        // chased closes the app as that screen opens, so anything shown there would never be read. Only
-        // appears when there is something to report, and the owner can dismiss it for good.
+        // Only appears when there is something to report, and the owner can dismiss it for good.
         var lastCrash by remember { mutableStateOf(CrashLog.read(context)) }
         lastCrash?.let { crash ->
             Spacer(Modifier.height(12.dp))
@@ -330,41 +321,6 @@ fun CaptureSection(
             }
             Spacer(Modifier.height(12.dp))
             HorizontalDivider()
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenSmsDebug)
-                .padding(vertical = 10.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("SMS debug", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "Temporary: shows whether bank texts are reaching Spends, and where each one stopped.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenNotificationDebug)
-                .padding(vertical = 10.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Notification debug", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "Temporary: shows whether the notification reader is running and what it saw.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
         }
 
         state.message?.let { msg ->

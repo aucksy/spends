@@ -44,7 +44,7 @@ No account. No ads. No analytics or tracking on your financial data. Your SMS an
 
 Spends requests SMS access solely to auto-detect your bank transaction alerts on your device, and it always works without it.
 
-Privacy policy: https://aucksy.github.io/spends/
+Privacy policy: https://spends-privacy.aakashpahuja1990.workers.dev/
 Questions or feedback: simpleapps108@gmail.com
 ```
 
@@ -57,7 +57,7 @@ Questions or feedback: simpleapps108@gmail.com
 | **Tags** | expense tracker, budget planner, money manager (pick from Play's tag list) |
 | **Email** | simpleapps108@gmail.com |
 | **Website** (optional) | https://github.com/aucksy/spends |
-| **Privacy policy URL** | https://aucksy.github.io/spends/ |
+| **Privacy policy URL** | https://spends-privacy.aakashpahuja1990.workers.dev/ |
 | **Default language** | English (India) — or English (US); the copy suits both |
 
 ## Graphics

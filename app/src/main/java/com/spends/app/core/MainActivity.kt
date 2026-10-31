@@ -39,12 +39,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         splash.setKeepOnScreenCondition { viewModel.uiState.value.loading }
-        handleCaptureEditIntent(intent)
-        handleOpenExpenseIntent(intent)
-        // Only honor a widget quick-add on a genuinely fresh launch. On a config-change/process-death
-        // recreate, savedInstanceState != null and Android re-delivers the original launch intent (extra
-        // still set), which would otherwise re-pop the sheet. A real new tap arrives via onNewIntent.
-        if (savedInstanceState == null) handleQuickAddIntent(intent)
+        // Only honor a launch intent's one-shot extras on a genuinely fresh launch. `removeExtra` below edits
+        // only this process's copy; Android keeps the ORIGINAL intent on the task. So after the process dies,
+        // a recreate (savedInstanceState != null) or a relaunch from Recents (LAUNCHED_FROM_HISTORY) hands
+        // back the notification that first opened the app — days old, often already added. Honoring it here
+        // parsed that OLD alert into a draft, which then raced the NEW tap's draft (delivered via
+        // onNewIntent) for the editor: "Review & Add" opened on an older transaction. A real new tap always
+        // arrives via onNewIntent, or as a fresh launch, both of which pass this gate.
+        if (isFreshLaunch(savedInstanceState, intent)) {
+            handleCaptureEditIntent(intent)
+            handleOpenExpenseIntent(intent)
+            handleQuickAddIntent(intent)
+        }
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -147,6 +153,9 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private fun isFreshLaunch(savedInstanceState: Bundle?, intent: Intent?): Boolean =
+            LaunchIntents.isFreshLaunch(savedInstanceState != null, intent?.flags ?: 0)
+
         const val EXTRA_CAPTURE_EDIT = "capture_edit"
         const val EXTRA_OPEN_QUICK_ADD = "open_quick_add"
 

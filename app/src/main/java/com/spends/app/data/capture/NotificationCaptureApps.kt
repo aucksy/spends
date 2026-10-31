@@ -17,6 +17,10 @@ object NotificationCaptureApps {
     const val GOOGLE_MESSAGES = "com.google.android.apps.messaging"
     const val TRUECALLER = "com.truecaller"
 
+    // Samsung's own SMS/RCS app — the default on Galaxy phones, so on a Galaxy an RCS-only bank alert (SBI
+    // Card's) lands HERE, never in Google Messages. Same MessagingStyle shape, same parser.
+    const val SAMSUNG_MESSAGES = "com.samsung.android.messaging"
+
     // Future round (needs per-app parsing rules before being offered):
     const val GPAY = "com.google.android.apps.nbu.paisa.user"
     const val PHONEPE = "com.phonepe.app"
@@ -26,10 +30,11 @@ object NotificationCaptureApps {
     val CANDIDATES: List<CandidateApp> = listOf(
         CandidateApp(GOOGLE_MESSAGES, "Google Messages"),
         CandidateApp(TRUECALLER, "Truecaller"),
+        CandidateApp(SAMSUNG_MESSAGES, "Samsung Messages"),
     )
 
     /** Pre-ticked when capture is first enabled. */
-    val DEFAULT_PACKAGES: Set<String> = setOf(GOOGLE_MESSAGES, TRUECALLER)
+    val DEFAULT_PACKAGES: Set<String> = setOf(GOOGLE_MESSAGES, TRUECALLER, SAMSUNG_MESSAGES)
 
     /** Short human name for a watched package (review-card origin badge). Null when unknown. */
     fun displayName(packageName: String?): String? =

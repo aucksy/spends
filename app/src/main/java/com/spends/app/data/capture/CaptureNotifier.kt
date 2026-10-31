@@ -137,9 +137,8 @@ class CaptureNotifier @Inject constructor(
             notificationsEnabled && channelImportance != NotificationManager.IMPORTANCE_NONE
 
         /**
-         * [canPost] answered for a live context — the single implementation, used both before posting and
-         * by the SMS debug screen, so the screen can never report a different verdict from the one the
-         * capture path actually acts on.
+         * [canPost] answered for a live context — the single implementation, checked before posting a
+         * capture prompt.
          */
         fun promptsCanBeSeen(context: Context): Boolean = canPost(
             NotificationManagerCompat.from(context).areNotificationsEnabled(),
