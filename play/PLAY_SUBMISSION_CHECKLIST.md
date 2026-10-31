@@ -11,8 +11,9 @@ The signed **AAB** is produced by CI on every `vX.Y.Z` tag and attached to the G
 
 ## 0. Pre-flight
 - **[done] Package name.** `com.spends.app` was taken on Play (31 Oct 2026), so from v1.73.1 the
-  `applicationId` is **`com.simpleapps.spends`**. The Kotlin package stays `com.spends.app`. A phone
-  with the old sideloaded app gets the new one as a SEPARATE app; move data with a Drive backup.
+  Play bundle (built with `-PplayStore=true`) is **`com.simpleapps.spends`**. The GitHub APK stays
+  `com.spends.app` (v1.73.3 on) so it updates existing installs in place. The two install side by
+  side; move data to the Play app with a Drive backup.
 - **[done] Target API level:** `targetSdk = 36` (v1.73.2) — Play has required API 36 since 31 Aug 2026; 35 is refused at release review. `USE_EXACT_ALARM` was dropped at the same time (Play allows it only for alarm-clock and calendar apps).
 - **[owner] Developer account type:** if this is a **personal** account created after Nov 2023, Google
   requires a **closed test with ≥ 12 testers** (may be 20) opted in for **14 continuous days** before you
