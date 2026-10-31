@@ -35,11 +35,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.spends.app"
+        applicationId = "com.simpleapps.spends"
         minSdk = 26
         targetSdk = 35
-        versionCode = 85
-        versionName = "1.73.0"
+        versionCode = 86
+        versionName = "1.73.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

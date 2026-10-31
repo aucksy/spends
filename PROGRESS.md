@@ -4,6 +4,10 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
+- **Tagged: v1.73.1** — versionCode **86**, versionName **"1.73.1"**. Only change: `applicationId` is now
+  **`com.simpleapps.spends`** because Play reported `com.spends.app` as already in use. The Kotlin package
+  is unchanged. Old sideloaded installs stay a separate app; Drive backup needs an Android OAuth client
+  for the new package (see `play/PLAY_SUBMISSION_CHECKLIST.md` step 11).
 - **Tagged: v1.73.0** — versionCode **85**, versionName **"1.73.0"**. Four owner reports. No schema change.
   - *Review & Add opened an OLDER transaction.* Android keeps the intent that first opened the task. After
     the process died, a recreate or a Recents relaunch handed MainActivity that ORIGINAL notification again,

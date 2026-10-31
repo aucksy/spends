@@ -13,7 +13,7 @@ capture from **bank SMS + bank/UPI notifications** (review-only — captures lan
 
 - **Codebase root:** `D:\Apps\Spends\Spends CodeBase`
 - **Repo:** github.com/aucksy/spends (public, lowercase)
-- **applicationId:** `com.spends.app` · **namespace:** `com.spends.app`
+- **applicationId:** `com.simpleapps.spends` (Play: `com.spends.app` was taken; changed v1.73.1) · **namespace:** `com.spends.app`
 - **Source of truth:** `D:\Apps\Spends\PRD\` (build prompt + parser fixtures) and the
   design export in `D:\Apps\Spends\Design System\project\*.dc.html`.
 

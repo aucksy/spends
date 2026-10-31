@@ -10,9 +10,9 @@ The signed **AAB** is produced by CI on every `vX.Y.Z` tag and attached to the G
 ---
 
 ## 0. Pre-flight
-- **[owner] Confirm the package name is free.** Creating the app (step 1) with `com.spends.app` will fail
-  if it's taken. If so, tell me — changing `applicationId` ripples into signing + the Drive OAuth client,
-  so we'd handle it deliberately (e.g. `com.spendsapp.app`), keeping the Kotlin package `com.spends.app`.
+- **[done] Package name.** `com.spends.app` was taken on Play (31 Oct 2026), so from v1.73.1 the
+  `applicationId` is **`com.simpleapps.spends`**. The Kotlin package stays `com.spends.app`. A phone
+  with the old sideloaded app gets the new one as a SEPARATE app; move data with a Drive backup.
 - **[done] Target API level:** `targetSdk = 35` — meets Play's current requirement for new apps.
 - **[owner] Developer account type:** if this is a **personal** account created after Nov 2023, Google
   requires a **closed test with ≥ 12 testers** (may be 20) opted in for **14 continuous days** before you
@@ -91,7 +91,7 @@ for Play-installed users unless an Android OAuth client with the Play signing SH
    **App signing key certificate SHA-1**.
 2. In **Google Cloud Console → APIs & Services → Credentials** (use the project whose OAuth consent screen
    Spends already uses — expected to be the shared **`gmailapi-491903`**; confirm), create an **Android
-   OAuth client** for package `com.spends.app` with that **Play signing SHA-1**. Add a *second* Android
+   OAuth client** for package `com.simpleapps.spends` with that **Play signing SHA-1**. Add a *second* Android
    client with your **upload/debug** keystore SHA-1 so sideload + internal testing keep working.
 3. On that project's **OAuth consent screen**, make sure the scope `.../auth/drive.file` is listed.
    `drive.file` is a **non-sensitive** scope, so **no Google verification / security assessment is
