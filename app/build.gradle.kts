@@ -35,11 +35,15 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.simpleapps.spends"
+        // Two package names, one codebase. The GitHub APK keeps com.spends.app, the name every
+        // existing install has, so it updates in place and keeps the owner's data. Google Play
+        // refused com.spends.app (already taken there), so the Play bundle is built with
+        // -PplayStore=true and becomes com.simpleapps.spends. The two install side by side.
+        applicationId = if (project.findProperty("playStore") == "true") "com.simpleapps.spends" else "com.spends.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 87
-        versionName = "1.73.2"
+        versionCode = 88
+        versionName = "1.73.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

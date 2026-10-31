@@ -4,7 +4,8 @@ name: Android Release
 # `v1.0.0`.
 #
 # Signing: add these repository secrets (Settings → Secrets and variables → Actions) for a SIGNED
-# release (applicationId com.simpleapps.spends):
+# release. The APK is com.spends.app (updates existing installs); the AAB is built with
+# -PplayStore=true and is com.simpleapps.spends (the Play listing's package):
 #   KEYSTORE_BASE64    base64 of your release keystore (key alias must be `spends`)
 #   KEYSTORE_PASSWORD  keystore password (also used as the key password)
 #
@@ -93,7 +94,9 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
-            ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace
+            # Separate runs: the property changes applicationId for the whole build.
+            ./gradlew assembleRelease --no-daemon --stacktrace
+            ./gradlew bundleRelease -PplayStore=true --no-daemon --stacktrace
           else
             ./gradlew assembleDebug --no-daemon --stacktrace
           fi
@@ -115,9 +118,9 @@ jobs:
         run: |
           TAG="$RELEASE_TAG"
           if [ "$SIGNED" = "true" ]; then
-            NOTES="Signed release build of **Spends** (\`com.simpleapps.spends\`). Download the \`.apk\` below and install it on your phone (allow installs from unknown sources). The \`.aab\` is for Google Play upload."
+            NOTES="Signed release build of **Spends**. The \`.apk\` is \`com.spends.app\` and updates an existing install in place; download it and install it on your phone (allow installs from unknown sources). The \`.aab\` is \`com.simpleapps.spends\`, for Google Play upload only."
           else
-            NOTES="⚠️ Installable **debug** build (\`com.simpleapps.spends.debug\`) — published because \`KEYSTORE_BASE64\` was missing or invalid. It installs and runs fine. For a proper signed release, fix the keystore secret (see the workflow header) and re-push the tag."
+            NOTES="⚠️ Installable **debug** build (\`com.spends.app.debug\`) — published because \`KEYSTORE_BASE64\` was missing or invalid. It installs and runs fine. For a proper signed release, fix the keystore secret (see the workflow header) and re-push the tag."
           fi
           gh release delete "$TAG" --yes 2>/dev/null || true
           # --target matters only when the tag does not exist yet (a manual run): it is what creates
