@@ -2,6 +2,7 @@ package com.spends.app.ui.store
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,13 +36,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.ComposeUiTest
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.AndroidComposeUiTest
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.runAndroidComposeUiTest
 import androidx.compose.ui.unit.dp
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -373,23 +375,45 @@ class StoreScreenshotsTest {
     // Waiting and capturing
     // ---------------------------------------------------------------------------------------------
 
-    /** Wait until any of [texts] is on screen — real Room data, not the loading state. */
+    /**
+     * Wait until any of [texts] is on screen — real Room data, not the loading state. A miss does not fail
+     * the run: the shot is still taken, and the screen's text is written beside it so the miss can be read.
+     */
     @OptIn(ExperimentalTestApi::class)
-    private fun ComposeUiTest.awaitAny(vararg texts: String) {
-        waitUntil(timeoutMillis = 15_000) {
-            texts.any { onAllNodesWithText(it, substring = true).fetchSemanticsNodes().isNotEmpty() }
+    private fun AndroidComposeUiTest<ComponentActivity>.awaitAny(vararg texts: String) {
+        try {
+            waitUntil(timeoutMillis = 15_000) {
+                texts.any { onAllNodesWithText(it, substring = true).fetchSemanticsNodes().isNotEmpty() }
+            }
+        } catch (e: ComposeTimeoutException) {
+            missed += texts.take(3).joinToString()
         }
     }
 
+    private val missed = mutableListOf<String>()
+
+    /**
+     * Draw the window into a bitmap. `captureToImage()` timed out on CI for every screen (it waits for a
+     * frame that a Robolectric window never commits), so the decor view is drawn by hand instead.
+     */
     @OptIn(ExperimentalTestApi::class)
-    private fun ComposeUiTest.shoot(name: String) {
+    private fun AndroidComposeUiTest<ComponentActivity>.shoot(name: String) {
         waitForIdle()
         mainClock.advanceTimeBy(2_000)
         waitForIdle()
-        val bitmap = onRoot().captureToImage().asAndroidBitmap()
+        var bitmap: Bitmap? = null
+        runOnUiThread {
+            val view = activity!!.window.decorView
+            bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888).also { view.draw(Canvas(it)) }
+        }
         val dir = File("build/store-screenshots").apply { mkdirs() }
         val out = File(dir, "$name.png")
-        FileOutputStream(out).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        FileOutputStream(out).use { bitmap!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        if (missed.isNotEmpty()) {
+            File(dir, "$name.MISSED.txt").writeText("Never appeared: $missed
+
+" + onRoot().printToString(maxDepth = 60))
+        }
         assertTrue("$name.png was not written", out.length() > 0)
     }
 
@@ -463,7 +487,7 @@ class StoreScreenshotsTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun shot_01_home_timeline() = runComposeUiTest {
+    fun shot_01_home_timeline() = runAndroidComposeUiTest<ComponentActivity> {
         val f = fixture()
         try {
             val vm = TransactionsViewModel(
@@ -500,7 +524,7 @@ class StoreScreenshotsTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun shot_02_analytics() = runComposeUiTest {
+    fun shot_02_analytics() = runAndroidComposeUiTest<ComponentActivity> {
         val f = fixture()
         try {
             val vm = AnalyticsViewModel(
@@ -532,7 +556,7 @@ class StoreScreenshotsTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun shot_03_banks_and_cards() = runComposeUiTest {
+    fun shot_03_banks_and_cards() = runAndroidComposeUiTest<ComponentActivity> {
         val f = fixture()
         try {
             val vm = CardsViewModel(
@@ -558,7 +582,7 @@ class StoreScreenshotsTest {
     /** "Review & add" on a bank SMS from the review queue (Croma, on the HDFC card ending 4821). */
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun shot_04_review_and_add_from_sms() = runComposeUiTest {
+    fun shot_04_review_and_add_from_sms() = runAndroidComposeUiTest<ComponentActivity> {
         val f = fixture()
         try {
             val vm = AddEditViewModel(
@@ -585,7 +609,7 @@ class StoreScreenshotsTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun shot_05_category_detail() = runComposeUiTest {
+    fun shot_05_category_detail() = runAndroidComposeUiTest<ComponentActivity> {
         val f = fixture()
         try {
             val name = "Food"
@@ -622,7 +646,7 @@ class StoreScreenshotsTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun shot_06_recurring() = runComposeUiTest {
+    fun shot_06_recurring() = runAndroidComposeUiTest<ComponentActivity> {
         val f = fixture()
         try {
             val vm = RecurringViewModel(
@@ -653,7 +677,7 @@ class StoreScreenshotsTest {
      */
     @OptIn(ExperimentalTestApi::class, ExperimentalMaterial3Api::class)
     @Test
-    fun shot_07_sms_capture_settings() = runComposeUiTest {
+    fun shot_07_sms_capture_settings() = runAndroidComposeUiTest<ComponentActivity> {
         val f = fixture(smsCaptureOn = true)
         try {
             val vm = CaptureViewModel(settingsRepository = f.settings, captureRepository = f.capture)
