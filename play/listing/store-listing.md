@@ -1,16 +1,18 @@
 # Spends — Google Play store listing copy
 
 Paste these verbatim into Play Console → **Grow → Store presence → Main store listing**.
-SMS-based expense tracking is deliberately foregrounded (title, short description, and the FIRST
+SMS-based expense tracking is deliberately foregrounded (short description, and the FIRST
 section of the full description) — this is required for the SMS Permissions Declaration to be approved.
 
 ---
 
 ## App name  (max 30 chars)
 ```
-Spends: SMS Expense Tracker
+Spends: Offline Money Tracker
 ```
-(27 chars.)
+(29 chars.) Chosen by the owner on 31 Oct 2026. Replaces "Spends: SMS Expense Tracker", which read as if it
+tracked SMS. SMS stays foregrounded where the declaration needs it: the short description opens with
+it, and so does the first section of the full description.
 
 ## Short description  (max 80 chars)
 ```
