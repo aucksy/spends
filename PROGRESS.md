@@ -4,6 +4,13 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
+- **v1.74.1** — versionCode **91**. Live SMS misses (owner, 31 Oct 2026: an IDFC card spend and an IDFC UPI debit got
+  no prompt; "Scan past SMS" found both, so parsing was fine). The receiver's steps moved to `SmsIntake` (same order,
+  shared). New catch-up sweep `SmsIntake.catchUp` reads the inbox for bank texts the receiver never got (`SmsSeen`
+  fingerprints; window = since last sweep minus 30 min, max 48 h, first run 24 h) and prompts them late (over 5 in one
+  sweep go to Review quietly). Runs on every app open (`MainActivity.onResume`) and every 15 min (`SmsCatchUpWorker`).
+  The SMS route writes `LastAlertLog` under key `sms` again, and Settings shows "Last bank SMS …" plus "Android last
+  passed a text to Spends: …" — an old time while texts arrive = the phone is stopping Spends (Vivo battery manager).
 - **v1.74.0** — versionCode **90**. (v1.73.4 was never tagged; its changes ship here.) Drive backup reminder: from the 3rd day the app is opened, if no backup exists and daily backup is off, a pop-up offers "Set up backup" (opens Settings → Backup); "Not now" waits 7 days; at most 3 times; never after a Drive restore (`BackupNudge`). "Apps to watch" shows the last alert's fate per app (`LastAlertLog`: Android hid the text / unknown sender / no amount / added). Play closed testing ("alpha") now gets every signed tag automatically (job `play-upload`, keyless WIF, `scripts/ci/play_upload.py`, notes from `play/whatsnew.txt`).
   Also: Notification capture's "Apps to watch" now offers the phone's own SMS app
   (Vivo, Xiaomi, OnePlus...) when it is not Google Messages, Truecaller or Samsung Messages. Fixed: Samsung

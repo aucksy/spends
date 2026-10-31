@@ -7,6 +7,7 @@ import androidx.work.WorkManager
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.service.NotificationListenerControl
 import com.spends.app.work.BackupScheduler
+import com.spends.app.work.SmsCatchUpWorker
 import com.spends.app.work.RecurringAlarmScheduler
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -72,6 +73,10 @@ class SpendsApp : Application(), Configuration.Provider {
         // KEEP so a process restart never disturbs the persisted schedule (which already holds the user's
         // chosen time). The DEFAULT_MINUTE only applies on a first-ever creation; Settings UPDATEs the time.
         BackupScheduler.schedule(this, BackupScheduler.DEFAULT_MINUTE, replace = false)
+
+        // Safety net for live SMS capture: bank texts Android never delivered to the receiver (a phone's
+        // battery manager stopped the app) are found in the inbox and prompted late. See SmsIntake.
+        runCatching { SmsCatchUpWorker.schedule(this) }
     }
 
     private companion object {

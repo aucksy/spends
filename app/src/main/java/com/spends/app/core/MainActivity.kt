@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import com.spends.app.data.capture.SmsIntake
 import com.spends.app.core.theme.SpendsTheme
 import com.spends.app.domain.model.ThemeMode
 import com.spends.app.receiver.CaptureActionReceiver
@@ -28,11 +30,15 @@ import com.spends.app.ui.navigation.SpendsNavHost
 import com.spends.app.ui.onboarding.SplashScreenContent
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+
+    @Inject lateinit var smsIntake: SmsIntake
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
@@ -115,6 +121,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Keep the home-screen summary widget (#2) in step with the latest data while the app is used.
         com.spends.app.widget.SummaryWidget.refresh(this)
+        // Bank texts the live receiver never got (the phone stopped Spends in the background) are found
+        // in the inbox now and prompted, so opening the app is enough to catch up. Cheap when none.
+        lifecycleScope.launch { runCatching { smsIntake.catchUp() } }
     }
 
     /** Home-screen widget tap (#14): open the quick-add sheet once we're at Home. */

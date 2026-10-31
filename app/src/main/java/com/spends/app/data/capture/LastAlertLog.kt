@@ -22,7 +22,15 @@ object LastAlertLog {
         ALREADY_IN_SPENDS("already in Spends"),
         ADDED_TO_REVIEW("added to Review"),
         ASKED_YOU("asked you to add it"),
+        // SMS route only (key [SMS_KEY]).
+        NOT_A_PAYMENT("read it, but it was not a payment"),
+        PROMPT_BLOCKED("Spends notifications are off, so it went to Review"),
+        FOUND_LATE("Android did not pass it to Spends when it arrived. Spends found it later and asked you"),
+        FOUND_LATE_TO_REVIEW("Android did not pass it to Spends when it arrived. Spends found it later and added it to Review"),
     }
+
+    /** The key the SMS route records under. Not a package name, so it can never clash with a watched app. */
+    const val SMS_KEY = "sms"
 
     data class Entry(val atMillis: Long, val reason: Reason, val sender: String?)
 
@@ -56,13 +64,31 @@ object LastAlertLog {
         runCatching { prefs(context).getString(pkg, null)?.let(::decode) }.getOrNull()
 
     /** "Last alert, 2:14 pm: added to Review" (today) or "Last alert, 30 Oct 2:14 pm: …". */
-    fun describe(e: Entry, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): String {
-        val at = Instant.ofEpochMilli(e.atMillis).atZone(zone)
-        val time = at.format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)).lowercase(Locale.ROOT)
-        val whenText = if (at.toLocalDate() == today) time
-        else at.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)) + " " + time
+    fun describe(
+        e: Entry,
+        today: LocalDate = LocalDate.now(),
+        zone: ZoneId = ZoneId.systemDefault(),
+        label: String = "Last alert",
+    ): String {
+        val whenText = whenText(e.atMillis, today, zone)
         val from = e.sender?.takeIf { it.isNotBlank() }?.let { " (from $it)" }.orEmpty()
-        return "Last alert, $whenText$from: ${e.reason.line}"
+        return "$label, $whenText$from: ${e.reason.line}"
+    }
+
+    /**
+     * "Android last passed a text to Spends: 2:14 pm". The one fact that splits a missed bank SMS into
+     * its two causes: a recent time means texts ARE arriving (look at the bank SMS line); an old one, while
+     * texts visibly arrive, means the phone is stopping Spends in the background.
+     */
+    fun deliveredLine(atMillis: Long, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): String =
+        "Android last passed a text to Spends: ${whenText(atMillis, today, zone)}"
+
+    /** "2:14 pm" today, "30 Oct 2:14 pm" on any other day. */
+    private fun whenText(atMillis: Long, today: LocalDate, zone: ZoneId): String {
+        val at = Instant.ofEpochMilli(atMillis).atZone(zone)
+        val time = at.format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)).lowercase(Locale.ROOT)
+        return if (at.toLocalDate() == today) time
+        else at.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)) + " " + time
     }
 
     internal fun encode(e: Entry): String = "${e.atMillis}|${e.reason.name}|${e.sender.orEmpty().replace("|", " ")}"

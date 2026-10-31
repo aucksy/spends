@@ -39,6 +39,30 @@ class SmsParserTest {
         assertThat(r.kind).isEqualTo(TxnKind.EXPENSE)
     }
 
+    // The owner's two live misses of 31 Oct 2026, verbatim. Both parse; the miss was delivery, not parsing.
+    @Test fun idfc_owner_texts_of_31_oct_2026_parse() {
+        val cardSpend = p(
+            "JD-IDFCFB-S",
+            "Transaction Successful! INR 130.00 spent on your IDFC FIRST Bank Credit Card ending XX1507 at " +
+                "JAIPUR SCHOOL OF YOGA on 31 OCT 2026 at 07:24 PM Avbl Limit: INR 157695.03 If not done by you, " +
+                "call 180010888 for dispute or to block your card SMS CCBLOCK 1507 to 5676732",
+        )
+        assertThat(cardSpend.result).isEqualTo(Result.TRANSACTION)
+        assertThat(cardSpend.amountMinor).isEqualTo(13000)
+        assertThat(cardSpend.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(cardSpend.last4).isEqualTo("1507")
+
+        val upi = p(
+            "JD-IDFCFB-S",
+            "Your A/c XX3452 debited by Rs. 200.00 on 31/10/26; Mr Zaki credited. RRN 219399321719. " +
+                "Available balance Rs. 2,61,882.73. Team IDFC FIRST Bank",
+        )
+        assertThat(upi.result).isEqualTo(Result.TRANSACTION)
+        assertThat(upi.amountMinor).isEqualTo(20000)
+        assertThat(upi.kind).isEqualTo(TxnKind.EXPENSE)
+        assertThat(upi.last4).isEqualTo("3452")
+    }
+
     // ---- Axis Bank (account) ----
     @Test fun axis_upi_debit() {
         val r = p("AD-AXISBK-S", "INR 499.00 debited A/c no. XX5678 21-06-2026 13:01:22 UPI/P2A/000000/<PAYEE> Not you? SMS BLOCKUPI Cust ID to Axis Bank")

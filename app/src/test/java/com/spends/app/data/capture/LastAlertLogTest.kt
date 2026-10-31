@@ -42,4 +42,19 @@ class LastAlertLogTest {
         assertThat(LastAlertLog.describe(e.copy(sender = null), LocalDate.of(2026, 11, 1), zone))
             .isEqualTo("Last alert, 31 Oct 2:14 pm: Android hid the text, so Spends could not read it")
     }
+
+    @Test fun the_sms_line_names_itself_and_says_when_android_was_late() {
+        val e = LastAlertLog.Entry(millis(LocalDateTime.of(2026, 10, 31, 19, 24)), Reason.FOUND_LATE, "IDFC First Bank")
+        assertThat(LastAlertLog.describe(e, LocalDate.of(2026, 10, 31), zone, label = "Last bank SMS")).isEqualTo(
+            "Last bank SMS, 7:24 pm (from IDFC First Bank): Android did not pass it to Spends when it arrived. " +
+                "Spends found it later and asked you",
+        )
+        assertThat(LastAlertLog.decode(LastAlertLog.encode(e))).isEqualTo(e)
+    }
+
+    @Test fun delivered_line_shows_the_time() {
+        val at = millis(LocalDateTime.of(2026, 10, 30, 9, 5))
+        assertThat(LastAlertLog.deliveredLine(at, LocalDate.of(2026, 10, 31), zone))
+            .isEqualTo("Android last passed a text to Spends: 30 Oct 9:05 am")
+    }
 }

@@ -1,4 +1,3 @@
-version: 1.74.0
-• Spends now reminds you to turn on Google Drive backup, so your spends are safe if you lose or change your phone.
-• Settings → Apps to watch now shows what happened to the last alert from each app, so you can see why a payment was missed.
-• Samsung Messages and your phone's own SMS app can now be picked as apps to watch.
+version: 1.74.1
+• Fixed: some bank SMS got no "Review & Add" alert because the phone kept Spends asleep. Spends now checks your inbox when you open it and every 15 minutes, and asks you about any bank SMS it missed.
+• Settings → Detect from bank SMS now shows what happened to your last bank SMS, and when your phone last passed a text to Spends.

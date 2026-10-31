@@ -56,6 +56,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.spends.app.core.CrashLog
 import com.spends.app.data.capture.LastAlertLog
+import com.spends.app.data.capture.SmsSeen
 import com.spends.app.data.capture.NotificationCaptureApps
 import com.spends.app.service.NotificationListenerControl
 
@@ -138,6 +139,24 @@ fun CaptureSection(
         }
 
         if (state.enabled) {
+            // What happened to the last bank text, and when Android last handed Spends ANY text. Re-read on
+            // every return to this screen: the receiver and the catch-up sweep write them in the background.
+            val lastSms = remember(resumeTick) { LastAlertLog.read(context, LastAlertLog.SMS_KEY) }
+            val lastDelivered = remember(resumeTick) { SmsSeen.lastDeliveredAt(context) }
+            if (lastSms != null) {
+                Text(
+                    LastAlertLog.describe(lastSms, label = "Last bank SMS"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (lastDelivered > 0L) {
+                Text(
+                    LastAlertLog.deliveredLine(lastDelivered),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             HorizontalDivider(Modifier.padding(vertical = 6.dp))
 
             Row(
