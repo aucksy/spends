@@ -16,35 +16,41 @@ it, and so does the first section of the full description.
 
 ## Short description  (max 80 chars)
 ```
-Auto-track expenses from bank SMS. Private, offline, salary-cycle budgeting.
+Tracks spending from your bank SMS. You check each one. Private, works offline.
 ```
-(75 chars.)
+(79 chars.)
 
 ## Full description  (max 4000 chars)
 ```
-Spends turns the transaction SMS your bank already sends into an effortless expense tracker — and your data stays on your phone.
+Spends reads the payment SMS your bank already sends and turns it into an expense list. Your data stays on your phone.
 
-▍ Automatic expense capture from SMS
-The moment your bank or credit-card SMS arrives, Spends detects the transaction and notifies you. Tap "Review & Add", check the entry it has already filled in, and save — no typing the amount, no switching apps. Nothing is ever added without your confirmation. Spends reads these messages on your device to find the amount and account; nothing is ever uploaded to us, and nothing is sent to anyone else. Prefer not to grant SMS access? Spends works fully with quick manual entry too — SMS is optional, and the app is completely usable without it.
+▍ Expenses from your bank SMS
+When a bank or card SMS arrives, Spends shows a notification with the amount and account already filled in. Tap "Review & Add", check it, and save. Spends never adds anything without you.
+If your phone delays the SMS, Spends finds it the next time you open the app. "Scan past SMS" picks up older bank texts.
+Some banks send alerts as app notifications instead of SMS. Spends can read those too, if you turn it on.
+Spends reads these messages only on your phone. It never uploads them. SMS access is optional: you can add every entry by hand instead.
 
-▍ Budget by YOUR cycle, not the calendar
-Smart Cycle tracks your money by your real salary and card-billing cycles, so you always know what's actually left to spend before your next paycheck — not just a generic calendar month.
+▍ Count by salary, not by calendar month
+Smart Cycle counts your money from one salary day to the next. It shows how much of this salary is left, and can carry the leftover into the next cycle.
 
-▍ Everything you need to stay on top of spending
-• Banks & Cards — track balances and see what's due when each statement generates
-• Split a single payment across multiple categories
-• A fast built-in calculator keypad for amounts
-• Home-screen widgets — one-tap quick-add and a private balance summary you can hide
-• Search, a clean day-by-day timeline, and long-press to bulk delete or re-categorise, with undo
-• Recurring entries with a daily reminder
-• Some banks now send alerts as chat messages instead of SMS — Spends can optionally read those too
-• Optional backup to YOUR OWN Google Drive — we never see it
-• Light, dark, or automatic dark on a schedule you set
+▍ Everything else you need
+• Banks & Cards: check balances and card bill due dates in one place
+• Split one payment across several categories
+• Type amounts on a built-in calculator
+• Two home-screen widgets: quick add, and a balance that stays hidden until you tap the eye
+• Search, and a day-by-day list of every entry
+• Long-press to delete or re-categorise many entries at once, with undo
+• Repeating entries, with a reminder at 9 AM
+• Export to Excel, or import from Excel or CSV
+• Light theme, dark theme, or dark between times you choose
 
 ▍ Private by design
-No account. No ads. No analytics or tracking on your financial data. Your SMS and transactions are processed and stored on your device. Spends uses the network in only two places, both off until you turn them on: your own Google Drive backup, and optional AI currency conversion — which asks an exchange-rate question and sends no transaction details at all.
+No account. No ads. No analytics.
+Spends goes online for only two things, and both stay off until you turn them on:
+• Backup to your own Google Drive. We never see it.
+• Foreign-currency conversion with your own AI key (OpenAI, Groq or Gemini). It asks only the exchange rate, never your transactions. Converted amounts are marked as estimates.
 
-Spends requests SMS access solely to auto-detect your bank transaction alerts on your device, and it always works without it.
+Spends asks for SMS access only to find your bank transaction alerts on your phone. The app works fully without it.
 
 Privacy policy: https://spends-privacy.aakashpahuja1990.workers.dev/
 Questions or feedback: simpleapps108@gmail.com
@@ -71,13 +77,15 @@ Questions or feedback: simpleapps108@gmail.com
 ## Notes
 - Keep the SMS wording in the title/short description on every future update — the approved SMS
   Permissions Declaration depends on the listing continuing to foreground SMS as core functionality.
-- ⚠️ **Do not re-add these three claims.** They were in this file until 2026-08-03 and none of them is
+- ⚠️ **Do not re-add these claims.** They were in this file until 2026-08-03 and none of them is
   true of the app. Play treats a listing that overstates the product as a policy issue, and each one is
   trivially disprovable by a reviewer holding the phone:
   - *"swipe-to-delete with undo"* — there is **no swipe gesture anywhere** in the app; it was removed
     deliberately after too many accidental deletes. Deleting is tap-a-row, or long-press to multi-select.
   - *"Material You colours"* — Material You was removed in v0.12.0. The app always uses its own brand
     palette. (The old setting still exists only so pre-v0.12 backups still load; the theme ignores it.)
+  - *"Auto-track" and "budgeting"* (removed 31 Oct 2026) — Spends never adds an expense on its own (you
+    save each one), and it has no budget limits. Smart Cycle shows what is left of a salary; that is all.
   - *"add it in one tap"* — the notification's buttons are **Review & Add** and **Ignore**. "Review & Add"
     opens a pre-filled entry that you then Save. It is one tap to review, one to save — never a silent add.
     That is a selling point, not a shortfall: it is the whole "nothing is added without your confirmation"
