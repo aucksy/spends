@@ -410,9 +410,7 @@ class StoreScreenshotsTest {
         val out = File(dir, "$name.png")
         FileOutputStream(out).use { bitmap!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
         if (missed.isNotEmpty()) {
-            File(dir, "$name.MISSED.txt").writeText("Never appeared: $missed
-
-" + onRoot().printToString(maxDepth = 60))
+            File(dir, "$name.MISSED.txt").writeText("Never appeared: $missed\n\n" + onRoot().printToString(maxDepth = 60))
         }
         assertTrue("$name.png was not written", out.length() > 0)
     }
