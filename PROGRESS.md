@@ -4,6 +4,12 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
+- **Tagged: v1.73.2** — versionCode **87**, versionName **"1.73.2"**. compileSdk/targetSdk **36** (Play refuses 35
+  since 31 Aug 2026): AGP 8.13.2, Gradle 8.14.5, Robolectric 4.16.1, CI on Java 21. `USE_EXACT_ALARM` removed (Play
+  allows it only for alarm-clock/calendar apps); recurring reminders fall back to an inexact alarm when exact
+  alarms are not granted, so they can land a few minutes late. **Sent to Play closed testing (Alpha) review on
+  31 Oct 2026** with 7 store screenshots from CI (`store-screenshots` artifact), testers =
+  mettleup-testers@googlegroups.com, 178 countries, SMS declaration = "SMS based money management".
 - **Tagged: v1.73.1** — versionCode **86**, versionName **"1.73.1"**. Only change: `applicationId` is now
   **`com.simpleapps.spends`** because Play reported `com.spends.app` as already in use. The Kotlin package
   is unchanged. Old sideloaded installs stay a separate app; Drive backup needs an Android OAuth client
