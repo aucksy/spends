@@ -125,15 +125,16 @@ import java.time.temporal.ChronoUnit
  * database not literally named `spends-demo.db`, which an in-memory one never is; that guard exists to protect
  * real money and must not be loosened for a test, so the insert loop is repeated here instead.
  *
- * **Size.** 411 x 731 dp at xxhdpi = 1233 x 2193 px. Play rejects a screenshot whose long side is more than
- * twice its short side, so a modern 19.5:9 frame (1080 x 2340) would be refused; 16:9 is safe.
+ * **Size.** 411 x 891 dp at xxhdpi = 1233 x 2673 px, the 20:9 shape of a modern phone. These are not uploaded
+ * as they are: `scripts/store/frame_screenshots.py` puts each one in a phone frame on a 9:16 page, and only
+ * that page must keep Play's limit (long side at most twice the short side).
  *
  * **Not on screen:** the demo "sample data" strip (no DemoModeWrapper) and the status bar.
  *
  * Each screen has its own test so one broken screen does not lose the others.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, qualifiers = "w411dp-h731dp-xxhdpi")
+@Config(application = Application::class, qualifiers = "w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class StoreScreenshotsTest {
 
