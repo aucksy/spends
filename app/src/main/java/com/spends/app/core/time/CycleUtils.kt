@@ -31,16 +31,19 @@ object CycleUtils {
     fun clampDay(ym: YearMonth, anchorDay: Int): LocalDate =
         ym.atDay(min(max(anchorDay, 1), ym.lengthOfMonth()))
 
-    /** The cycle window that contains [date] for the given monthly [anchorDay]. */
+    /**
+     * The cycle window that contains [date] for the given monthly [anchorDay]. For the salary anchor, a
+     * month whose salary came early or late starts on the day it came ([SalaryDates]); otherwise every
+     * month starts on the anchor day.
+     */
     fun windowFor(date: LocalDate, anchorDay: Int): CycleWindow {
-        val thisMonthAnchor = clampDay(YearMonth.from(date), anchorDay)
-        val start = if (!date.isBefore(thisMonthAnchor)) {
-            thisMonthAnchor
-        } else {
-            clampDay(YearMonth.from(date).minusMonths(1), anchorDay)
-        }
-        val nextStart = clampDay(YearMonth.from(start).plusMonths(1), anchorDay)
-        return CycleWindow(start, nextStart.minusDays(1))
+        val cal = SalaryDates.active
+        // The latest cycle month that has started by [date]. Starts move at most 10 days, so this is one of
+        // next month, this month or last month.
+        var ym = YearMonth.from(date).plusMonths(1)
+        while (cal.startOf(ym, anchorDay).isAfter(date)) ym = ym.minusMonths(1)
+        val nextStart = cal.startOf(ym.plusMonths(1), anchorDay)
+        return CycleWindow(cal.startOf(ym, anchorDay), nextStart.minusDays(1))
     }
 
     /** The window immediately before [window] for the same anchor. */

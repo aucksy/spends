@@ -26,6 +26,9 @@ import com.spends.app.ui.capture.SilencedAlertsScreen
 import com.spends.app.ui.categories.CategoriesScreen
 import com.spends.app.ui.categorytxns.CategoryTransactionsScreen
 import com.spends.app.ui.home.HomeScreen
+import com.spends.app.ui.home.SalaryAsk
+import com.spends.app.ui.home.SalaryNudgeDialog
+import com.spends.app.ui.home.SalaryNudgeViewModel
 import com.spends.app.ui.importer.ImportScreen
 import com.spends.app.ui.onboarding.OnboardingScreen
 import com.spends.app.ui.recurring.RecurringScreen
@@ -117,11 +120,15 @@ fun SpendsNavHost(
                 openQuickAddSignal = pendingQuickAdd,
                 onQuickAddConsumed = onQuickAddConsumed,
             )
-            // One ask at a time: the banks-and-cards ask comes first, and the backup ask waits until it is closed.
+            // One ask at a time: banks and cards first, then the salary, and the backup ask waits until both close.
             val newCardsVm: NewCardsNudgeViewModel = hiltViewModel()
             val banksCardsAsk by newCardsVm.ask.collectAsState()
+            val salaryVm: SalaryNudgeViewModel = hiltViewModel()
+            val salaryAsk by salaryVm.ask.collectAsState()
             if (banksCardsAsk != BanksCardsAsk.None) {
                 NewCardsDialog(onOpenBanksCards = { navController.navigate(Routes.BANKS_CARDS) }, viewModel = newCardsVm)
+            } else if (salaryAsk != SalaryAsk.None) {
+                SalaryNudgeDialog(viewModel = salaryVm)
             } else {
                 BackupNudgeDialog(onSetUp = { navController.navigate(Routes.SETTINGS_BACKUP) })
             }

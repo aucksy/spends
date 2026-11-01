@@ -142,11 +142,15 @@ object SmsParser {
                 // income and no longer a "transfer" kind, so don't log it.
                 null
             } else {
-                Triple(TxnKind.INCOME, Direction.CREDIT, null)
+                // A credit that names itself salary ("NEFT ... SALARY OCT", "SAL FOR OCT") is filed under
+                // Salary, so the salary cycle can start on the day it really came.
+                Triple(TxnKind.INCOME, Direction.CREDIT, if (salaryRe.containsMatchIn(low)) "Salary" else null)
             }
         }
         return null // no clear direction → don't log (avoid false positives)
     }
+
+    private val salaryRe = Regex("""\bsal(ary|aries)?\b|\bpayroll\b""")
 
     private fun categoryHint(low: String): String? = when {
         low.containsAny("loan account", "nach debit", "loan emi", "emi debit", " emi ", "loan") -> "Loan/EMI"

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.spends.app.core.money.AppCurrency
+import com.spends.app.core.time.SalaryDates
 import com.spends.app.data.ai.AiProvider
 import com.spends.app.domain.model.DefaultLanding
 import com.spends.app.domain.model.SmsCaptureMode
@@ -31,6 +32,15 @@ data class SettingsState(
     val autoDarkStartMinute: Int = 20 * 60,
     val autoDarkEndMinute: Int = 6 * 60,
     val salaryCycleStartDay: Int = 1,
+    // Follow the real salary date: a month whose salary came early or late starts on the day it came
+    // ([SalaryDates]). ON by default — a fixed day splits an early salary into the wrong month.
+    val followSalaryDate: Boolean = true,
+    // The owner did not know their salary day at setup ("It hasn't come yet"). The first salary credit sets
+    // the day by itself, then [salaryDayFoundNotice] tells them once (the day number; 0 = nothing to tell).
+    val salaryDayPending: Boolean = false,
+    val salaryDayFoundNotice: Int = 0,
+    // The per-month starts in force (derived from Salary income by SalaryCalendar; empty when not following).
+    val salaryStarts: Map<java.time.YearMonth, java.time.LocalDate> = emptyMap(),
     val defaultLanding: DefaultLanding = DefaultLanding.TRANSACTIONS,
     val carryForwardEnabled: Boolean = false,
     // Carry-forward only counts from this anchor date onward (0 = no anchor → count everything), with an
@@ -115,7 +125,19 @@ class SettingsRepository @Inject constructor(
 ) {
 
     val settings: Flow<SettingsState> = store.data.map { prefs ->
+        // Publish the salary calendar BEFORE emitting, so a screen recomputing its cycle on this emission
+        // already sees the real salary dates (CycleUtils.windowFor reads them). Stale starts saved for a
+        // different usual day are ignored until SalaryCalendar recomputes them.
+        val salaryDay = prefs[Keys.SALARY_DAY] ?: 1
+        val follow = prefs[Keys.FOLLOW_SALARY_DATE] ?: true
+        val saved = SalaryDates.decode(prefs[Keys.SALARY_STARTS])
+        val calendar = if (follow && saved.usualDay == salaryDay) saved else SalaryDates.Calendar()
+        SalaryDates.publish(calendar)
         SettingsState(
+            followSalaryDate = follow,
+            salaryDayPending = prefs[Keys.SALARY_DAY_PENDING] ?: false,
+            salaryDayFoundNotice = prefs[Keys.SALARY_DAY_FOUND] ?: 0,
+            salaryStarts = calendar.starts,
             onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
             themeMode = prefs[Keys.THEME_MODE]?.toThemeMode() ?: ThemeMode.SYSTEM,
             dynamicColor = prefs[Keys.DYNAMIC_COLOR] ?: false,
@@ -156,6 +178,11 @@ class SettingsRepository @Inject constructor(
         it[Keys.AUTO_DARK_END] = endMinute.coerceIn(0, 1439)
     }
     suspend fun setSalaryCycleStartDay(day: Int) = edit { it[Keys.SALARY_DAY] = day.coerceIn(1, 31) }
+    suspend fun setFollowSalaryDate(value: Boolean) = edit { it[Keys.FOLLOW_SALARY_DATE] = value }
+    suspend fun setSalaryDayPending(value: Boolean) = edit { it[Keys.SALARY_DAY_PENDING] = value }
+    suspend fun setSalaryDayFoundNotice(day: Int) = edit { it[Keys.SALARY_DAY_FOUND] = day }
+    /** Written only by SalaryCalendar: the starts derived from Salary income. Device-local, re-derived after a restore. */
+    suspend fun setSalaryStarts(calendar: SalaryDates.Calendar) = edit { it[Keys.SALARY_STARTS] = SalaryDates.encode(calendar) }
     suspend fun setDefaultLanding(landing: DefaultLanding) = edit { it[Keys.DEFAULT_LANDING] = landing.name }
     suspend fun setCarryForwardEnabled(value: Boolean) = edit { it[Keys.CARRY_FORWARD] = value }
     suspend fun setCarryForwardAnchor(epochDay: Long) = edit { it[Keys.CARRY_FORWARD_ANCHOR] = epochDay }
@@ -270,6 +297,10 @@ class SettingsRepository @Inject constructor(
         val AUTO_DARK_START = intPreferencesKey("auto_dark_start_minute")
         val AUTO_DARK_END = intPreferencesKey("auto_dark_end_minute")
         val SALARY_DAY = intPreferencesKey("salary_cycle_start_day")
+        val FOLLOW_SALARY_DATE = booleanPreferencesKey("follow_salary_date")
+        val SALARY_DAY_PENDING = booleanPreferencesKey("salary_day_pending")
+        val SALARY_DAY_FOUND = intPreferencesKey("salary_day_found_notice")
+        val SALARY_STARTS = stringPreferencesKey("salary_starts")
         val DEFAULT_LANDING = stringPreferencesKey("default_landing")
         val CARRY_FORWARD = booleanPreferencesKey("carry_forward_enabled")
         val CARRY_FORWARD_ANCHOR = longPreferencesKey("carry_forward_anchor_epoch_day")

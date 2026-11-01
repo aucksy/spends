@@ -14,16 +14,24 @@ import java.time.LocalDate
 import java.time.YearMonth
 import javax.inject.Inject
 
+/** The answer on the salary step. */
+sealed interface SalaryChoice {
+    /** The day the last salary reached the bank (today or earlier). */
+    data class OnDate(val date: LocalDate) : SalaryChoice
+    data object NotYet : SalaryChoice
+    data object NoSalary : SalaryChoice
+}
+
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val captureRepository: SmsCaptureRepository,
 ) : ViewModel() {
 
-    private val _salaryDay = MutableStateFlow(1)
-    val salaryDay: StateFlow<Int> = _salaryDay
+    private val _salaryChoice = MutableStateFlow<SalaryChoice?>(null)
+    val salaryChoice: StateFlow<SalaryChoice?> = _salaryChoice
 
-    fun setSalaryDay(day: Int) = _salaryDay.update { day.coerceIn(1, 31) }
+    fun setSalaryChoice(choice: SalaryChoice) = _salaryChoice.update { choice }
 
     /**
      * Turn on live SMS capture from the onboarding permission step, and optionally queue the last
@@ -49,12 +57,38 @@ class OnboardingViewModel @Inject constructor(
      * salary cycle configured rather than silently left on the default.
      */
     fun persistSalaryDay() {
-        viewModelScope.launch { settingsRepository.setSalaryCycleStartDay(_salaryDay.value) }
+        viewModelScope.launch { saveSalaryChoice() }
+    }
+
+    /**
+     * A picked date sets the usual day. "Hasn't come yet" runs on calendar months until the first salary
+     * arrives, which then sets the day by itself (SalaryCalendar). "No monthly salary" stays on calendar
+     * months and does not follow salary credits.
+     */
+    private suspend fun saveSalaryChoice() {
+        when (val c = _salaryChoice.value) {
+            is SalaryChoice.OnDate -> {
+                settingsRepository.setSalaryCycleStartDay(c.date.dayOfMonth)
+                settingsRepository.setSalaryDayPending(false)
+                settingsRepository.setFollowSalaryDate(true)
+            }
+            SalaryChoice.NotYet -> {
+                settingsRepository.setSalaryCycleStartDay(1)
+                settingsRepository.setSalaryDayPending(true)
+                settingsRepository.setFollowSalaryDate(true)
+            }
+            SalaryChoice.NoSalary -> {
+                settingsRepository.setSalaryCycleStartDay(1)
+                settingsRepository.setSalaryDayPending(false)
+                settingsRepository.setFollowSalaryDate(false)
+            }
+            null -> Unit
+        }
     }
 
     fun finish(onDone: () -> Unit) {
         viewModelScope.launch {
-            settingsRepository.setSalaryCycleStartDay(_salaryDay.value)
+            saveSalaryChoice()
             settingsRepository.setOnboardingComplete(true)
             onDone()
         }

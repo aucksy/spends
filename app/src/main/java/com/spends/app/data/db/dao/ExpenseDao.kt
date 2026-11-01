@@ -10,6 +10,7 @@ import com.spends.app.data.db.entity.CategorySpend
 import com.spends.app.data.db.entity.ExpenseEntity
 import com.spends.app.data.db.entity.ExpenseWithAllocations
 import com.spends.app.data.db.entity.KindSum
+import com.spends.app.data.db.entity.SalaryCredit
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -147,6 +148,14 @@ interface ExpenseDao {
     /** Earliest active transaction time — the lower bound for the cycle selector's "All" range. */
     @Query("SELECT MIN(occurredAt) FROM expenses WHERE deletedAt IS NULL")
     fun observeEarliestOccurredAt(): Flow<Long?>
+
+    /** Income filed under a category named like "Salary" — the real salary days the cycles follow. */
+    @Query(
+        "SELECT e.occurredAt AS occurredAt, SUM(a.amountMinor) AS amountMinor FROM expenses e " +
+            "JOIN allocations a ON a.expenseId = e.id JOIN categories c ON c.id = a.categoryId " +
+            "WHERE e.deletedAt IS NULL AND e.kind = 'INCOME' AND LOWER(c.name) LIKE '%salary%' GROUP BY e.id",
+    )
+    fun observeSalaryCredits(): Flow<List<SalaryCredit>>
 
     /** Income timestamps — used to auto-detect the salary day for the Smart cycle. */
     @Query("SELECT occurredAt FROM expenses WHERE deletedAt IS NULL AND kind = 'INCOME'")

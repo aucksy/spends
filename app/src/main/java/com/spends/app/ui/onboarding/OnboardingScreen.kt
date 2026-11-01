@@ -67,6 +67,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import com.spends.app.core.time.DateUtils
+import java.time.LocalDate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -105,7 +109,7 @@ fun OnboardingScreen(
     var step by rememberSaveable { mutableIntStateOf(0) }
     var dataChoice by rememberSaveable { mutableIntStateOf(0) } // 0 fresh · 1 import · 2 restore
     var autoCapture by rememberSaveable { mutableStateOf(true) }
-    val salaryDay by viewModel.salaryDay.collectAsStateWithLifecycle()
+    val salaryChoice by viewModel.salaryChoice.collectAsStateWithLifecycle()
     val lastStep = 4
 
     // The notification permission is requested right after SMS (still on THIS screen), and we only
@@ -182,7 +186,7 @@ fun OnboardingScreen(
         else -> {
             // Salary is now the last step (reached by fresh + import). Import persists the day before
             // handing off to the import flow; a fresh start finishes onboarding here.
-            primaryLabel = "Confirm salary day"
+            primaryLabel = "Continue"
             primaryAction = {
                 when (dataChoice) {
                     1 -> { viewModel.persistSalaryDay(); onImport() }
@@ -258,12 +262,14 @@ fun OnboardingScreen(
                     )
                     2 -> BatteryStep()
                     3 -> SetupStep(selectedIndex = dataChoice, onSelect = { dataChoice = it })
-                    else -> SalaryStep(salaryDay = salaryDay, onSelect = viewModel::setSalaryDay)
+                    else -> SalaryStep(choice = salaryChoice, onSelect = viewModel::setSalaryChoice)
                 }
             }
 
             Button(
                 onClick = primaryAction,
+                // The salary step needs an answer: a date, "hasn't come yet" or "no monthly salary".
+                enabled = step != lastStep || salaryChoice != null,
                 shape = RoundedCornerShape(999.dp),
                 modifier = Modifier.fillMaxWidth().height(52.dp),
             ) {
@@ -551,54 +557,36 @@ private fun BatteryStep() {
 }
 
 @Composable
-private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
+private fun SalaryStep(choice: SalaryChoice?, onSelect: (SalaryChoice) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StepBadge(Icons.Filled.EventRepeat)
         Spacer(Modifier.height(14.dp))
-        Text("When does your salary land?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+        Text("When did your last salary come?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Your salary cycle starts on this day each month — it's how Spends groups income & spending.",
+            "Pick the day it reached your bank. Each month in Spends starts on your salary day, so you see how much of each salary you have spent.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(12.dp))
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
-                    Text(
-                        "SALARY DAY",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
-                    )
-                    Text(
-                        "${ordinal(salaryDay)} of every month",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                }
-                Icon(
-                    Icons.Filled.Payments,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                    modifier = Modifier.size(26.dp),
-                )
-            }
-        }
+        SalaryDateGrid(
+            selected = (choice as? SalaryChoice.OnDate)?.date,
+            onSelect = { onSelect(SalaryChoice.OnDate(it)) },
+        )
         Spacer(Modifier.height(10.dp))
-        Text("PICK A DAY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(6.dp))
-        DayGrid(selected = salaryDay, onSelect = onSelect)
+        SalaryOptionRow(
+            selected = choice == SalaryChoice.NotYet,
+            title = "It hasn't come yet",
+            subtitle = "Spends spots your salary when it comes, and starts your months from that day.",
+            onClick = { onSelect(SalaryChoice.NotYet) },
+        )
+        Spacer(Modifier.height(8.dp))
+        SalaryOptionRow(
+            selected = choice == SalaryChoice.NoSalary,
+            title = "I don't get a monthly salary",
+            subtitle = "Spends uses calendar months: the 1st to the end of the month.",
+            onClick = { onSelect(SalaryChoice.NoSalary) },
+        )
         Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier
@@ -618,7 +606,7 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
                 modifier = Modifier.size(17.dp),
             )
             Text(
-                "Last few days of the month auto-adjust for Feb & 30-day months.",
+                "Salary comes a few days early or late some months? Spends moves that month's start to the day it really came.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -626,35 +614,76 @@ private fun SalaryStep(salaryDay: Int, onSelect: (Int) -> Unit) {
     }
 }
 
+/**
+ * The last 5 weeks, ending today — only days that have already happened can be picked. Five weeks, not
+ * "this month": installed on 2 Nov, a salary that came early on 30 Oct must still be pickable.
+ */
 @Composable
-private fun DayGrid(selected: Int, onSelect: (Int) -> Unit) {
-    // 7-column grid of days 1..31 (design screen 4). Plain Column of Rows so it nests in a scroll.
-    // Compact cells (38dp) keep the whole step on one page without scrolling (#2).
+private fun SalaryDateGrid(selected: LocalDate?, onSelect: (LocalDate) -> Unit) {
+    val today = remember { LocalDate.now(DateUtils.ZONE) }
+    val days = remember(today) { (34 downTo 0).map { today.minusDays(it.toLong()) } }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        (1..31).chunked(7).forEach { week ->
+        days.chunked(7).forEach { week ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                week.forEach { day ->
-                    val isSel = day == selected
+                week.forEach { date ->
+                    val isSel = date == selected
+                    // The month name sits on the first cell and on each 1st, so "30 31 1 2" reads as two months.
+                    val showMonth = date == days.first() || date.dayOfMonth == 1
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
+                            .height(44.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
                             .then(if (isSel) Modifier else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)))
-                            .clickable { onSelect(day) },
+                            .clickable { onSelect(date) }
+                            .semantics { contentDescription = DateUtils.formatDay(date) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            "$day",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (showMonth) {
+                                Text(
+                                    date.month.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            Text(
+                                "${date.dayOfMonth}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                     }
                 }
-                // pad the final short row so the cells keep their width
-                repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SalaryOptionRow(selected: Boolean, title: String, subtitle: String, onClick: () -> Unit) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            if (selected) MaterialTheme.colorScheme.primary else Color(0xFFE3DED2),
+        ),
+    ) {
+        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (selected) Icons.Filled.RadioButtonChecked else Icons.Filled.RadioButtonUnchecked,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -799,13 +828,3 @@ private fun Modifier.dashedBorder(color: Color, radius: androidx.compose.ui.unit
     )
 }
 
-private fun ordinal(day: Int): String {
-    val suffix = when {
-        day in 11..13 -> "th"
-        day % 10 == 1 -> "st"
-        day % 10 == 2 -> "nd"
-        day % 10 == 3 -> "rd"
-        else -> "th"
-    }
-    return "$day$suffix"
-}

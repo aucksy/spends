@@ -6,7 +6,18 @@ for how the project works.
 ## Waiting for release
 Owner rule (1 Nov 2026): never bump the version or tag on your own. Push changes to main, list each one here
 in plain words, and ASK him "Release now?". He decides.
-- (nothing yet — v1.75.1 shipped everything up to commit d9cfbfe)
+- **Salary cycles follow the real salary day** (owner, 1 Nov 2026: "what happens if salary doesn't come on the
+  same day"). `SalaryDates` + `SalaryCalendar`: income in a Salary category is matched to the month whose usual
+  day is nearest (within 10 days; credits under half the typical salary ignored); that month's cycle starts on
+  the real day (`CycleUtils.windowFor` reads `SalaryDates.active` for the salary anchor only). Saved in prefs
+  `salary_starts` so a cold widget has it. Setting "Follow my salary date" (Money & Cycles), default ON.
+  Onboarding salary step is now "When did your last salary come?": the last 5 weeks of dates (no future
+  days), "It hasn't come yet" (calendar months until the first salary sets the day, then a one-time
+  "Spends found your salary" pop-up) and "I don't get a monthly salary" (calendar months, follow OFF).
+  While waiting, Home asks once per credit "Is this your salary?" for the biggest income of ₹5,000+ in
+  40 days; Yes files it under Salary. SMS credits that say "salary"/"sal"/"payroll" are filed under Salary.
+  Draft What's new: "Your months now follow your salary. If your salary comes a few days early or late,
+  that month starts on the day it really came." / "New setup question: when did your last salary come?"
 
 ## Current release
 - **v1.75.1** — versionCode **94**. (v1.75.0 built but never reached Play: its upload was refused while v1.74.2 was

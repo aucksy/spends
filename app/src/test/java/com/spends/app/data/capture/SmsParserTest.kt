@@ -16,6 +16,18 @@ class SmsParserTest {
     private val now = 1_700_000_000_000L
     private fun p(sender: String, body: String) = SmsParser.parse(sender, body, now)
 
+    // ---- Salary credits are filed under Salary, so the salary cycle can follow the real day ----
+    @Test fun salary_credit_gets_salary_hint() {
+        val r = p("JK-IDFCFB", "Your A/C XX1234 is credited with INR 75,000.00 on 30/10/2026 by NEFT-ACME PVT LTD-SALARY OCT 2026. Team IDFC FIRST Bank")
+        assertThat(r.kind).isEqualTo(TxnKind.INCOME)
+        assertThat(r.categoryHint).isEqualTo("Salary")
+    }
+
+    @Test fun plain_credit_gets_no_salary_hint() {
+        val r = p("JK-IDFCFB", "Your A/C XX1234 is credited with INR 75,000.00 on 01/06/2026 10:05. Your new balance is INR 88,000.00. Team IDFC FIRST Bank")
+        assertThat(r.categoryHint).isNull()
+    }
+
     // ---- IDFC First Bank (account) ----
     @Test fun idfc_debit() {
         val r = p("JK-IDFCFB", "Your A/C XX1234 is debited by INR 850.00 on 21/06/2026 14:32. New Bal :INR 12,400.50. Team IDFC FIRST Bank")

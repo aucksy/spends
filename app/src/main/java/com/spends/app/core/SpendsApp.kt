@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.spends.app.data.repo.SalaryCalendar
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.service.NotificationListenerControl
 import com.spends.app.work.BackupScheduler
@@ -28,6 +29,7 @@ class SpendsApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var salaryCalendar: SalaryCalendar
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -68,6 +70,9 @@ class SpendsApp : Application(), Configuration.Provider {
             delay(NotificationListenerControl.BIND_GRACE_MILLIS)
             NotificationListenerControl.ensureBound(this@SpendsApp)
         }
+
+        // Salary cycles follow the days salary really came (early or late), not only the fixed day.
+        salaryCalendar.start(appScope)
 
         // Daily Drive auto-backup runs near a user-chosen time (#11); the worker self-gates on the toggle.
         // KEEP so a process restart never disturbs the persisted schedule (which already holds the user's

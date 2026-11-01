@@ -33,8 +33,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setAutoDarkWindow(startMinute, endMinute) }
     // onSaved runs AFTER the new day is persisted, so a widget refresh re-reads the committed value and
     // shows the new cycle name/dates immediately — refreshing before the write would re-read the old day (#14).
+    fun setFollowSalaryDate(on: Boolean) = viewModelScope.launch { settingsRepository.setFollowSalaryDate(on) }
+
     fun setSalaryDay(day: Int, onSaved: () -> Unit = {}) = viewModelScope.launch {
         settingsRepository.setSalaryCycleStartDay(day)
+        // A day set by hand settles it: stop waiting to spot the first salary.
+        settingsRepository.setSalaryDayPending(false)
         onSaved()
     }
     fun setDefaultLanding(landing: DefaultLanding) = viewModelScope.launch { settingsRepository.setDefaultLanding(landing) }

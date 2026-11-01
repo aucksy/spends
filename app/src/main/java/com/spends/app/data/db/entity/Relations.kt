@@ -22,6 +22,12 @@ data class ExpenseWithAllocations(
     val allocations: List<AllocationWithCategory>,
 )
 
+/** A salary credit: when it landed and how much of it was filed under a Salary category. */
+data class SalaryCredit(
+    val occurredAt: Long,
+    val amountMinor: Long,
+)
+
 /** Aggregation row: total amount for a given transaction kind in a period. */
 data class KindSum(
     val kind: TxnKind,

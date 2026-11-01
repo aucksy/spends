@@ -33,6 +33,8 @@ class CategoryRepository @Inject constructor(
 
     suspend fun getById(id: Long): CategoryEntity? = dao.getById(id)
 
+    suspend fun getByName(name: String): CategoryEntity? = dao.getByName(name)
+
     /**
      * Create a custom category with a distinct auto color (PRD §4.4). The icon is auto-assigned from the
      * name unless the caller passes a hand-picked [iconKey] (#5), in which case it's stored as customized

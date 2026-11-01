@@ -54,8 +54,16 @@ fun MoneySettingsScreen(
         SettingsSection("Salary & carry forward") {
             ClickableRow(
                 title = "Salary day",
-                value = ordinal(state.salaryCycleStartDay),
+                value = if (state.salaryDayPending) "Waiting for your salary" else ordinal(state.salaryCycleStartDay),
                 onClick = { showSalaryDialog = true },
+            )
+            RowDivider()
+            SwitchRow(
+                title = "Follow my salary date",
+                subtitle = "If your salary comes a few days early or late, that month starts on the day it came. " +
+                    "Spends looks for income in your Salary category.",
+                checked = state.followSalaryDate,
+                onChange = viewModel::setFollowSalaryDate,
             )
             RowDivider()
             SwitchRow(
