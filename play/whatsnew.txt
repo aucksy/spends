@@ -1,3 +1,4 @@
-Version: 1.75.0
-• When Spends finds a new credit card in your SMS, it now asks you to set it up. Set the card's bill date, and its spends count in the same month as your card bill.
-• Spends checks your SMS for new cards once a day. It asks about each card only once. You can also find it later in Settings → Money & Cycles → Banks & Cards.
+Version: 1.75.1
+• Spends can now find your bank accounts and credit cards in your SMS. It asks you first. Say yes, and it looks at the last 1 year of bank SMS on this phone only. Say no, and you can add them yourself.
+• For each bank or card it finds, Spends asks you once to check it and add it. For a card, set its bill date. Then the card's spends count in the same month as your card bill.
+• You can see and add them any time in Settings → Money & Cycles → Banks & Cards.

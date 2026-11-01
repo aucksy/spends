@@ -17,6 +17,7 @@ import com.spends.app.ui.addedit.AddEditScreen
 import com.spends.app.ui.backup.BackupNudgeDialog
 import com.spends.app.ui.backup.OnboardingRestoreScreen
 import com.spends.app.ui.breakdown.CycleBreakdownScreen
+import com.spends.app.ui.cards.BanksCardsAsk
 import com.spends.app.ui.cards.CardsScreen
 import com.spends.app.ui.cards.NewCardsDialog
 import com.spends.app.ui.cards.NewCardsNudgeViewModel
@@ -116,11 +117,11 @@ fun SpendsNavHost(
                 openQuickAddSignal = pendingQuickAdd,
                 onQuickAddConsumed = onQuickAddConsumed,
             )
-            // One ask at a time: the new-card ask comes first, and the backup ask waits until it is closed.
+            // One ask at a time: the banks-and-cards ask comes first, and the backup ask waits until it is closed.
             val newCardsVm: NewCardsNudgeViewModel = hiltViewModel()
-            val newCards by newCardsVm.cards.collectAsState()
-            if (newCards.isNotEmpty()) {
-                NewCardsDialog(onSetUp = { navController.navigate(Routes.BANKS_CARDS) }, viewModel = newCardsVm)
+            val banksCardsAsk by newCardsVm.ask.collectAsState()
+            if (banksCardsAsk != BanksCardsAsk.None) {
+                NewCardsDialog(onOpenBanksCards = { navController.navigate(Routes.BANKS_CARDS) }, viewModel = newCardsVm)
             } else {
                 BackupNudgeDialog(onSetUp = { navController.navigate(Routes.SETTINGS_BACKUP) })
             }

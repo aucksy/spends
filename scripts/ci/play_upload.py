@@ -98,17 +98,18 @@ def commit(edits, edit_id, dry_run):
         edits.delete(packageName=PACKAGE, editId=edit_id).execute()
         return "validated"
     try:
-        # Never cancel a review already running (Play's default would restart it from zero).
         edits.commit(packageName=PACKAGE, editId=edit_id, changesInReviewBehavior="ERROR_IF_IN_REVIEW").execute()
         return "committed"
     except HttpError as e:
-        t = http_error_text(e).lower()
-        if not ("changesnotsentforreview" in t or "in review" in t or "being reviewed" in t):
+        if "already have changes in review" not in http_error_text(e).lower():
             raise
-        edits.commit(packageName=PACKAGE, editId=edit_id, changesNotSentForReview=True,
-                     changesInReviewBehavior="ERROR_IF_IN_REVIEW").execute()
-        warn("COMMITTED but NOT sent for review: in Play Console → Publishing overview, press 'Send changes for review'.")
-        return "committed-not-sent-for-review"
+        # An older build is still in review. This build is newer and contains everything in that one, so
+        # replace it: Play restarts the review with this build. (Waiting would leave every later tag failing
+        # until someone re-runs it by hand. "Commit but don't send for review" is refused: this app's
+        # changes are sent for review automatically.)
+        edits.commit(packageName=PACKAGE, editId=edit_id, changesInReviewBehavior="CANCEL_IN_REVIEW_AND_SUBMIT").execute()
+        warn("An older build was still in review; it was replaced by this one and the review restarted.")
+        return "committed-replaced-review"
 
 
 def main():

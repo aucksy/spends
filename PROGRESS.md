@@ -4,6 +4,13 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
+- **v1.75.1** — versionCode **94**. (v1.75.0 built but never reached Play: its upload was refused while v1.74.2 was
+  still in review. `play_upload.py` now replaces a build still in review with the newer one —
+  CANCEL_IN_REVIEW_AND_SUBMIT — because "commit but don't send" is refused for this app.) Owner, 1 Nov 2026: ask
+  BEFORE the SMS scan. Home now asks once "Find your banks and cards?" (`CardNudge.Consent`, prefs `card_nudge`);
+  "Yes, find them" scans, "I'll add them myself" never scans and opens Banks & Cards. The scan now also proposes
+  BANK ACCOUNTS (`discoverBank`: a BANK-sender account alert with an amount, channel ACCOUNT) as candidates
+  ("Cards & banks to review", tag A/C, "Not mine"); confirmed banks then auto-fill "Paid with" by last4.
 - **v1.75.0** — versionCode **93**. New-card ask (owner, 1 Nov 2026: "if someone installs the app and SMS shows a new
   card, do we ask them to set it up / its billing cycle?" — no: cards were found only by tapping Scan on Banks & Cards).
   `NewCardsNudgeViewModel` on Home runs `scanInboxForCards` (first time 365 days back, then at most once a day from the

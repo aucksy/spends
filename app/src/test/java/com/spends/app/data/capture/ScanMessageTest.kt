@@ -123,13 +123,13 @@ class ScanMessageTest {
 
     @Test
     fun `a genuine empty result still reads as an empty result`() {
-        assertEquals("No new cards found in SMS", SmsCaptureRepository.cardScanMessage(scan = scan(0), threw = false))
+        assertEquals("No new cards or banks found in SMS", SmsCaptureRepository.cardScanMessage(scan = scan(0), threw = false))
     }
 
     @Test
     fun `found cards are counted and pluralised`() {
-        assertEquals("Found 1 new card to review", SmsCaptureRepository.cardScanMessage(scan(1), false))
-        assertEquals("Found 3 new cards to review", SmsCaptureRepository.cardScanMessage(scan(3), false))
+        assertEquals("Found 1 new card or bank to review", SmsCaptureRepository.cardScanMessage(scan(1), false))
+        assertEquals("Found 3 new cards or banks to review", SmsCaptureRepository.cardScanMessage(scan(3), false))
     }
 
     /**

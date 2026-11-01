@@ -129,6 +129,33 @@ class PaymentMethodRepository @Inject constructor(
         return true
     }
 
+    /**
+     * Auto-discovery of a BANK ACCOUNT from a parsed account alert ([last4] + [institution]). Same rules as
+     * [discoverCard]: never re-proposes anything the user already has, added as a candidate, or dismissed.
+     * Returns true when a NEW candidate was added. A bank account has no bill date — it rides the salary cycle.
+     */
+    suspend fun discoverBank(last4: String?, institution: String?): Boolean {
+        val l4 = last4?.takeIf { it.isNotBlank() } ?: return false
+        val inst = institution?.takeIf { it.isNotBlank() } ?: return false
+        if (dao.findByLast4AndInstitution(l4, inst) != null) return false
+        if (dao.findConfirmedByLast4(l4) != null) return false
+        val now = DateUtils.nowMillis()
+        dao.insert(
+            PaymentMethodEntity(
+                type = PaymentMethodType.BANK_ACCOUNT,
+                label = defaultBankLabel(inst),
+                institution = inst,
+                last4 = l4,
+                colorHex = assignColor(inst + l4),
+                reviewed = false,
+                dismissed = false,
+                firstSeenAt = now,
+                lastActivityAt = now,
+            ),
+        )
+        return true
+    }
+
     /** A confirmed card whose last4 matches — to auto-fill "Paid with" on an SMS-detected expense. */
     suspend fun matchConfirmedByLast4(last4: String?): Long? {
         val l4 = last4?.takeIf { it.isNotBlank() } ?: return null
@@ -217,6 +244,9 @@ class PaymentMethodRepository @Inject constructor(
         }
 
         /** "IDFC First Bank" → "IDFC First Bank Credit Card"; a name that already says card is kept. */
+        fun defaultBankLabel(institution: String): String =
+            if (institution.contains("account", ignoreCase = true)) institution else "$institution account"
+
         fun defaultCardLabel(institution: String): String =
             if (institution.contains("card", ignoreCase = true)) institution else "$institution Credit Card"
 

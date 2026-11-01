@@ -28,10 +28,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** What the Home pop-up about banks and cards shows right now. */
+sealed interface BanksCardsAsk {
+    data object None : BanksCardsAsk
+
+    /** "May Spends look in your SMS for your banks and cards?" — asked once, before anything is read. */
+    data object MayWeLook : BanksCardsAsk
+
+    /** Display lines for what a scan found ("HDFC Bank Credit Card ending 4821"); asked about once each. */
+    data class Found(val lines: List<String>, val anyCard: Boolean) : BanksCardsAsk
+}
+
 /**
- * On Home: looks for new credit cards in the SMS inbox (see [CardNudge] for how often), then asks the owner
- * ONCE per found card to set it up, so its spends follow the card's own bill date. The setup itself is the
- * existing "Cards to review" flow on Banks & cards, which already pre-fills a bill date found in SMS.
+ * On Home: first asks the owner whether Spends may look in their SMS for banks and cards. On "Yes" it scans
+ * (see [CardNudge] for how often) and lists what it found, ONCE per item, so they set each one up — a card's
+ * bill date decides which month its spends count in. On "I'll add them myself" it never reads, and opens
+ * Banks & Cards. Setup itself is the existing review flow there, which pre-fills a bill date found in SMS.
  */
 @HiltViewModel
 class NewCardsNudgeViewModel @Inject constructor(
@@ -41,69 +53,112 @@ class NewCardsNudgeViewModel @Inject constructor(
     private val paymentMethodRepository: PaymentMethodRepository,
 ) : ViewModel() {
 
-    /** The cards to ask about, as display lines ("HDFC Bank card ending 4821"); empty = no dialog. */
-    private val _cards = MutableStateFlow<List<String>>(emptyList())
-    val cards: StateFlow<List<String>> = _cards
+    private val _ask = MutableStateFlow<BanksCardsAsk>(BanksCardsAsk.None)
+    val ask: StateFlow<BanksCardsAsk> = _ask
 
     init {
         viewModelScope.launch {
             if (DemoMode.isEnabled(context)) return@launch
-            if (!settingsRepository.settings.first().smsCaptureEnabled) return@launch
-            val canRead = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) ==
-                PackageManager.PERMISSION_GRANTED
-            var state = CardNudge.read(context)
-            val now = DateUtils.nowMillis()
-            val start = if (canRead) CardNudge.scanStart(state, now) else null
-            if (start != null) {
-                try {
-                    // Null = the inbox could not be read; try again next time instead of skipping a day.
-                    if (smsCaptureRepository.scanInboxForCards(start, now) != null) {
-                        state = state.copy(lastScanAt = now)
-                        CardNudge.write(context, state)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    android.util.Log.w("NewCardsNudge", "Card scan failed", e)
-                }
-            }
-            val candidates = paymentMethodRepository.observeCandidates().first()
-            val ask = CardNudge.toAsk(candidates.map { it.id }, state)
-            if (ask.isEmpty()) return@launch
-            CardNudge.write(context, CardNudge.onAsked(state, ask, candidates.map { it.id }))
-            _cards.value = candidates.filter { it.id in ask }.map { c ->
-                if (c.last4 != null) "${c.label} ending ${c.last4}" else c.label
+            if (!settingsRepository.settings.first().smsCaptureEnabled || !canReadSms()) return@launch
+            when (CardNudge.read(context).consent) {
+                CardNudge.Consent.UNKNOWN -> _ask.value = BanksCardsAsk.MayWeLook
+                CardNudge.Consent.YES -> scanAndAsk()
+                CardNudge.Consent.NO -> Unit
             }
         }
     }
 
+    /** "Yes, find them". */
+    fun allow() {
+        _ask.value = BanksCardsAsk.None
+        CardNudge.write(context, CardNudge.read(context).copy(consent = CardNudge.Consent.YES))
+        viewModelScope.launch { scanAndAsk() }
+    }
+
+    /** "I'll add them myself" — never read the inbox for this. */
+    fun decline() {
+        _ask.value = BanksCardsAsk.None
+        CardNudge.write(context, CardNudge.read(context).copy(consent = CardNudge.Consent.NO))
+    }
+
     fun dismiss() {
-        _cards.value = emptyList()
+        _ask.value = BanksCardsAsk.None
+    }
+
+    private fun canReadSms(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+
+    private suspend fun scanAndAsk() {
+        var state = CardNudge.read(context)
+        val now = DateUtils.nowMillis()
+        val start = CardNudge.scanStart(state, now)
+        if (start != null) {
+            try {
+                // Null = the inbox could not be read; try again next time instead of skipping a day.
+                if (smsCaptureRepository.scanInboxForCards(start, now) != null) {
+                    state = state.copy(lastScanAt = now)
+                    CardNudge.write(context, state)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("NewCardsNudge", "Bank and card scan failed", e)
+            }
+        }
+        val candidates = paymentMethodRepository.observeCandidates().first()
+        val ask = CardNudge.toAsk(candidates.map { it.id }, state)
+        if (ask.isEmpty()) return
+        CardNudge.write(context, CardNudge.onAsked(state, ask, candidates.map { it.id }))
+        val found = candidates.filter { it.id in ask }
+        _ask.value = BanksCardsAsk.Found(
+            lines = found.map { c -> if (c.last4 != null) "${c.label} ending ${c.last4}" else c.label },
+            anyCard = found.any { it.isCardInstrument() },
+        )
     }
 }
 
-/** "New card found" — asks the owner to set up a card that Spends found in their SMS. */
+/** The Home pop-up: "May Spends look?" first, then "Found in your SMS" for each new bank or card. */
 @Composable
-fun NewCardsDialog(onSetUp: () -> Unit, viewModel: NewCardsNudgeViewModel = hiltViewModel()) {
-    val cards by viewModel.cards.collectAsState()
-    if (cards.isEmpty()) return
-    val one = cards.size == 1
-    AlertDialog(
-        onDismissRequest = viewModel::dismiss,
-        title = { Text(if (one) "New card found" else "${cards.size} new cards found") },
-        text = {
-            Text(
-                "Spends found ${if (one) "this card" else "these cards"} in your SMS:\n\n" +
-                    cards.joinToString("\n") { "• $it" } + "\n\n" +
-                    "Set the bill date for ${if (one) "it" else "each one"}. Then the spends on " +
-                    "${if (one) "this card" else "each card"} count in the right month, the same as your card bill.",
+fun NewCardsDialog(onOpenBanksCards: () -> Unit, viewModel: NewCardsNudgeViewModel = hiltViewModel()) {
+    val ask by viewModel.ask.collectAsState()
+    when (val a = ask) {
+        BanksCardsAsk.None -> Unit
+        BanksCardsAsk.MayWeLook -> AlertDialog(
+            onDismissRequest = viewModel::dismiss,
+            title = { Text("Find your banks and cards?") },
+            text = {
+                Text(
+                    "Spends can look at your bank SMS from the last 1 year to find your bank accounts and credit " +
+                        "cards, and each card's bill date.\n\n" +
+                        "It reads them on this phone only. Nothing is sent anywhere, and nothing is added until you check it.",
+                )
+            },
+            confirmButton = { TextButton(onClick = viewModel::allow) { Text("Yes, find them") } },
+            dismissButton = {
+                TextButton(onClick = { viewModel.decline(); onOpenBanksCards() }) { Text("I'll add them myself") }
+            },
+        )
+        is BanksCardsAsk.Found -> {
+            val one = a.lines.size == 1
+            AlertDialog(
+                onDismissRequest = viewModel::dismiss,
+                title = { Text("Found in your SMS") },
+                text = {
+                    Text(
+                        a.lines.joinToString("\n") { "• $it" } + "\n\n" +
+                            "Add ${if (one) "it" else "them"} so Spends knows what paid for each spend." +
+                            if (a.anyCard) {
+                                " For a card, also set its bill date. Then its spends count in the same month as your card bill."
+                            } else {
+                                ""
+                            },
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.dismiss(); onOpenBanksCards() }) { Text("Review & add") }
+                },
+                dismissButton = { TextButton(onClick = viewModel::dismiss) { Text("Later") } },
             )
-        },
-        confirmButton = {
-            TextButton(onClick = { viewModel.dismiss(); onSetUp() }) { Text(if (one) "Set up card" else "Set up cards") }
-        },
-        dismissButton = {
-            TextButton(onClick = viewModel::dismiss) { Text("Later") }
-        },
-    )
+        }
+    }
 }

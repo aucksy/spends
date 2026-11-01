@@ -38,7 +38,7 @@ data class CardUi(
     val billsLabel: String?, // e.g. "Bills 17th"; null when no billing day set yet
 )
 
-/** An auto-discovered card awaiting review ("Cards to review"). */
+/** An auto-discovered card or bank account awaiting review ("Cards & banks to review"). */
 data class CandidateUi(
     val id: Long,
     val label: String,
@@ -47,6 +47,8 @@ data class CandidateUi(
     val colorHex: String,
     // A statement-SMS-detected billing day (#9) — pre-fills the "Review & Add" editor so the user confirms it.
     val proposedBillingDay: Int? = null,
+    // A bank account found in SMS (no bill date) rather than a card.
+    val isBank: Boolean = false,
 )
 
 data class CardsUiState(
@@ -111,7 +113,7 @@ class CardsViewModel @Inject constructor(
         CardsUiState(
             cards = confirmed.filter { it.isCardInstrument() }.map { toUi(it) },
             banks = confirmed.filter { !it.isCardInstrument() }.map { toUi(it) },
-            candidates = candidates.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex, it.proposedBillingDay) },
+            candidates = candidates.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex, it.proposedBillingDay, !it.isCardInstrument()) },
             defaultId = defaultId,
             defaultLabel = confirmed.firstOrNull { it.id == defaultId }?.label ?: "Bank",
             loading = false,
@@ -122,7 +124,7 @@ class CardsViewModel @Inject constructor(
 
     /** Dismissed ("Not a card") instruments, shown in a restorable section (#14). */
     val dismissed: StateFlow<List<CandidateUi>> = paymentMethodRepository.observeDismissed()
-        .map { list -> list.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex) } }
+        .map { list -> list.map { CandidateUi(it.id, it.label, it.institution, it.last4, it.colorHex, isBank = !it.isCardInstrument()) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun addCard(label: String, last4: String?, institution: String?, billingDay: Int?, dueDay: Int?) =

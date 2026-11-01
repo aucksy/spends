@@ -630,7 +630,17 @@ class SmsCaptureRepository @Inject constructor(
                         // / payment apps (e.g. CRED) don't propose card-named candidates from their messages.
                         val looksLikeCard = inst.type == InstitutionType.CREDIT_CARD ||
                             (inst.type == InstitutionType.BANK && body != null && creditCardBodyRe.containsMatchIn(body))
-                        if (!looksLikeCard) continue
+                        if (!looksLikeCard) {
+                            // A bank ACCOUNT alert (money in or out of a/c XX1234) proposes the account itself.
+                            if (inst.type == InstitutionType.BANK) {
+                                val date = if (iDate >= 0) c.getLong(iDate) else DateUtils.nowMillis()
+                                val p = SmsParser.parse(sender, body, date)
+                                if (p.channel == SmsParser.Channel.ACCOUNT && p.amountMinor != null &&
+                                    paymentMethodRepository.discoverBank(p.last4, inst.name)
+                                ) added++
+                            }
+                            continue
+                        }
                         val date = if (iDate >= 0) c.getLong(iDate) else DateUtils.nowMillis()
                         val last4 = SmsParser.parse(sender, body, date).last4 ?: continue
                         if (paymentMethodRepository.discoverCard(last4, inst.name)) added++
@@ -1220,8 +1230,8 @@ class SmsCaptureRepository @Inject constructor(
             threw -> "Couldn't read your messages — check Spends still has SMS permission."
             scan == null -> "Couldn't read the inbox."
             scan.refusedDemoMode -> "Not while demo mode is on — your real messages were left unread."
-            scan.added > 0 -> "Found ${scan.added} new card${plural(scan.added)} to review"
-            else -> "No new cards found in SMS"
+            scan.added > 0 -> "Found ${scan.added} new card${plural(scan.added)} or bank${plural(scan.added)} to review"
+            else -> "No new cards or banks found in SMS"
         }
 
         /** #7: after this many ignores of the SAME alert pattern, stop notifying (queue silently instead).

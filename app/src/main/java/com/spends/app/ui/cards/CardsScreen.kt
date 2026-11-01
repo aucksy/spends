@@ -152,7 +152,7 @@ fun CardsScreen(
 
             // "Cards to review" sits BELOW the added cards/banks (#14) — suggestions, not the main list.
             if (state.candidates.isNotEmpty()) {
-                item { Column { Spacer(Modifier.height(2.dp)); SectionLabel("Cards to review") } }
+                item { Column { Spacer(Modifier.height(2.dp)); SectionLabel("Cards & banks to review") } }
                 items(state.candidates, key = { "cand-${it.id}" }) { cand ->
                     CandidateCard(
                         candidate = cand,
@@ -229,12 +229,16 @@ fun CardsScreen(
 
     reviewing?.let { cand ->
         CardEditorSheet(
-            title = "Review & add card",
-            saveLabel = "Add card",
-            isBank = false,
+            title = if (cand.isBank) "Review & add bank" else "Review & add card",
+            saveLabel = if (cand.isBank) "Add bank" else "Add card",
+            isBank = cand.isBank,
             // Pre-fill the statement-detected billing day (#9) so the user just reviews name / last4 / day.
             initial = CardEditorInitial(cand.label, cand.last4, cand.institution, cand.proposedBillingDay, null),
-            onSave = { l, l4, inst, bd, dd -> viewModel.confirmCandidate(cand.id, l, l4, inst, bd, dd); reviewing = null },
+            onSave = { l, l4, inst, bd, dd ->
+                if (cand.isBank) viewModel.confirmCandidate(cand.id, l, l4, inst, null, null)
+                else viewModel.confirmCandidate(cand.id, l, l4, inst, bd, dd)
+                reviewing = null
+            },
             onDismiss = { reviewing = null },
         )
     }
@@ -263,10 +267,10 @@ fun CardsScreen(
     dismissConfirm?.let { cand ->
         AlertDialog(
             onDismissRequest = { dismissConfirm = null },
-            title = { Text("Not a card?") },
+            title = { Text(if (cand.isBank) "Not your bank account?" else "Not a card?") },
             text = { Text("We'll stop suggesting \"${cand.label}\". You can bring it back later from the Dismissed section below.") },
             confirmButton = {
-                TextButton(onClick = { viewModel.dismissCandidate(cand.id); dismissConfirm = null }) { Text("Not a card") }
+                TextButton(onClick = { viewModel.dismissCandidate(cand.id); dismissConfirm = null }) { Text(if (cand.isBank) "Not mine" else "Not a card") }
             },
             dismissButton = { TextButton(onClick = { dismissConfirm = null }) { Text("Cancel") } },
         )
@@ -352,7 +356,7 @@ private fun CandidateCard(candidate: CandidateUi, onReviewAndAdd: () -> Unit, on
     SpendsCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                CardChip(candidate.colorHex, "CR")
+                CardChip(candidate.colorHex, if (candidate.isBank) "A/C" else "CR")
                 Spacer(Modifier.size(12.dp))
                 Column(modifier = Modifier.weight(1f).padding(top = 6.dp)) {
                     Text(
@@ -381,7 +385,7 @@ private fun CandidateCard(candidate: CandidateUi, onReviewAndAdd: () -> Unit, on
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = onReviewAndAdd) { Text("Review & Add") }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onNotACard) { Text("Not a card") }
+                TextButton(onClick = onNotACard) { Text(if (candidate.isBank) "Not mine" else "Not a card") }
             }
         }
     }
@@ -395,7 +399,7 @@ private fun DismissedRow(candidate: CandidateUi, onRestore: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CardChip(candidate.colorHex, "CR")
+            CardChip(candidate.colorHex, if (candidate.isBank) "A/C" else "CR")
             Spacer(Modifier.size(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -405,7 +409,7 @@ private fun DismissedRow(candidate: CandidateUi, onRestore: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text("Marked \"Not a card\"", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (candidate.isBank) "Marked \"Not mine\"" else "Marked \"Not a card\"", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = onRestore) { Text("Restore") }
         }
@@ -474,7 +478,7 @@ private fun ScanSection(scanning: Boolean, message: String?, onScan: () -> Unit)
             } else {
                 Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("Scan past SMS for cards")
+                Text("Scan past SMS for banks & cards")
             }
         }
         message?.let {
@@ -483,7 +487,7 @@ private fun ScanSection(scanning: Boolean, message: String?, onScan: () -> Unit)
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "We look for credit-card alerts in your SMS and suggest cards to review — nothing is added automatically.",
+            "We look for bank and credit-card alerts in your SMS and suggest them to review — nothing is added automatically.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
