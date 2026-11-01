@@ -1,4 +1,5 @@
-Version: 1.75.1
-• Spends can now find your bank accounts and credit cards in your SMS. It asks you first. Say yes, and it looks at the last 1 year of bank SMS on this phone only. Say no, and you can add them yourself.
-• For each bank or card it finds, Spends asks you once to check it and add it. For a card, set its bill date. Then the card's spends count in the same month as your card bill.
-• You can see and add them any time in Settings → Money & Cycles → Banks & Cards.
+Version: 1.76.0
+• Your months now follow your salary. If your salary comes a few days early or late, that month starts on the day it really came.
+• New setup question: "When did your last salary come?" Pick the day, or say it has not come yet. Spends then spots your salary and sets the day for you.
+• No monthly salary? Choose "I don't get a monthly salary" and Spends uses calendar months.
+• To turn this off, go to Settings → Money & Cycles → "Follow my salary date".

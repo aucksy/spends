@@ -6,7 +6,10 @@ for how the project works.
 ## Waiting for release
 Owner rule (1 Nov 2026): never bump the version or tag on your own. Push changes to main, list each one here
 in plain words, and ASK him "Release now?". He decides.
-- **Salary cycles follow the real salary day** (owner, 1 Nov 2026: "what happens if salary doesn't come on the
+(nothing waiting)
+
+## Current release
+- **v1.76.0** — versionCode **95**. Salary cycles follow the real salary day (owner, 1 Nov 2026: "what happens if salary doesn't come on the
   same day"). `SalaryDates` + `SalaryCalendar`: income in a Salary category is matched to the month whose usual
   day is nearest (within 10 days; credits under half the typical salary ignored); that month's cycle starts on
   the real day (`CycleUtils.windowFor` reads `SalaryDates.active` for the salary anchor only). Saved in prefs
@@ -18,8 +21,6 @@ in plain words, and ASK him "Release now?". He decides.
   40 days; Yes files it under Salary. SMS credits that say "salary"/"sal"/"payroll" are filed under Salary.
   Draft What's new: "Your months now follow your salary. If your salary comes a few days early or late,
   that month starts on the day it really came." / "New setup question: when did your last salary come?"
-
-## Current release
 - **v1.75.1** — versionCode **94**. (v1.75.0 built but never reached Play: its upload was refused while v1.74.2 was
   still in review. `play_upload.py` now replaces a build still in review with the newer one —
   CANCEL_IN_REVIEW_AND_SUBMIT — because "commit but don't send" is refused for this app.) Owner, 1 Nov 2026: ask
