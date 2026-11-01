@@ -89,6 +89,8 @@ fun AddEditScreen(
     val finished by viewModel.finished.collectAsStateWithLifecycle()
     val paymentState by viewModel.paymentState.collectAsStateWithLifecycle()
     val recurringRuleId by viewModel.recurringRuleId.collectAsStateWithLifecycle()
+    val ruleExists by viewModel.ruleExists.collectAsStateWithLifecycle()
+    val ruleEntryCreatedAt by viewModel.ruleEntryCreatedAt.collectAsStateWithLifecycle()
     var showDelete by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(finished) { if (finished) onDone() }
@@ -127,6 +129,8 @@ fun AddEditScreen(
                 paymentState = paymentState,
                 showPaidWith = viewModel.showPaidWith,
                 recurringRuleId = recurringRuleId,
+                ruleExists = ruleExists,
+                ruleEntryCreatedAt = ruleEntryCreatedAt,
                 onOpenRule = onOpenRule,
                 onAddCategory = { name, usage, iconKey, onCreated -> viewModel.addCategory(name, usage, iconKey, onCreated) },
                 onSave = { amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId ->
@@ -158,12 +162,15 @@ fun AddEditScreen(
  * "fix this month's rent" and "rent has gone up permanently" are different intentions.
  */
 @Composable
-private fun RecurringRuleBanner(onClick: () -> Unit) {
+private fun RecurringRuleBanner(ruleExists: Boolean, createdAt: Long?, onClick: () -> Unit) {
+    // When it was added, so "why is this here?" has an answer on the screen (1 Nov 2026: an entry whose
+    // rule was nowhere to be found, and nothing could say when it had been made).
+    val addedOn = createdAt?.let { "Added on ${DateUtils.formatDay(it)} at ${DateUtils.formatTime(it)}" }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick)
+            .clickable(enabled = ruleExists, onClick = onClick)
             .background(MaterialTheme.colorScheme.secondaryContainer)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -182,16 +189,26 @@ private fun RecurringRuleBanner(onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                "Tap to open the rule that creates it",
+                if (ruleExists) "Tap to open the rule that creates it"
+                else "That rule has since been deleted, so no more will be added.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
             )
+            if (addedOn != null) {
+                Text(
+                    addedOn,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                )
+            }
         }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-        )
+        if (ruleExists) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
     }
 }
 
@@ -207,6 +224,8 @@ private fun AddEditForm(
     showPaidWith: Boolean,
     /** Non-null only for a transaction a recurring rule created (#5). */
     recurringRuleId: Long?,
+    ruleExists: Boolean,
+    ruleEntryCreatedAt: Long?,
     onOpenRule: (Long) -> Unit,
     onAddCategory: (String, CategoryUsage, String?, (Long) -> Unit) -> Unit,
     onSave: (Long, TxnKind, Long, String, String, Long, Long?) -> Unit,
@@ -252,7 +271,11 @@ private fun AddEditForm(
         // Only ever shown for a row the scheduler created (#5). Above the form, not buried at the bottom,
         // because "why did this appear on its own?" is the question the user has BEFORE they start editing.
         if (recurringRuleId != null) {
-            RecurringRuleBanner(onClick = { onOpenRule(recurringRuleId) })
+            RecurringRuleBanner(
+                ruleExists = ruleExists,
+                createdAt = ruleEntryCreatedAt,
+                onClick = { onOpenRule(recurringRuleId) },
+            )
             Spacer(Modifier.height(16.dp))
         }
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {

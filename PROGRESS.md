@@ -4,6 +4,14 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
+- **v1.74.2** — versionCode **92**. Backup burst: on 1 Nov 2026 (06:58-07:03 IST) the owner's Drive got 60+ automatic
+  backups about 5 s apart, and pruning to the newest 60 deleted every older backup. Cause not proven (a worker
+  re-run after the phone killed it mid-upload, or two Spends apps sharing the "Spends Backup" folder). Fix:
+  `BackupRetention` - the automatic worker claims a slot first (`claimAutoBackupSlot`, at most one attempt per 6 h,
+  stamped before upload); prune keeps the newest 60 PLUS the newest backup of each of 90 days (read from the file
+  name stamp). Also: an entry made by a repeating rule shows "Added on ... at ..." (its createdAt), and when its
+  rule no longer exists the banner says so instead of opening a list without it (owner, 1 Nov: a ₹2,000 Maid
+  entry whose rule was not in the list; cause not found - no code path deletes a rule except the user and a restore).
 - **v1.74.1** — versionCode **91**. Live SMS misses (owner, 31 Oct 2026: an IDFC card spend and an IDFC UPI debit got
   no prompt; "Scan past SMS" found both, so parsing was fine). The receiver's steps moved to `SmsIntake` (same order,
   shared). New catch-up sweep `SmsIntake.catchUp` reads the inbox for bank texts the receiver never got (`SmsSeen`

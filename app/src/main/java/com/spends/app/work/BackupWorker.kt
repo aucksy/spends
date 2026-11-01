@@ -37,6 +37,8 @@ class BackupWorker @AssistedInject constructor(
         return try {
             when (val auth = driveAuthManager.authorize()) {
                 is DriveAuthManager.AuthResult.Authorized -> {
+                    // At most one automatic upload per 6 hours, even if this worker is re-run in a loop.
+                    if (!backupRepository.claimAutoBackupSlot()) return Result.success()
                     backupRepository.backupNow(auth.accessToken)
                     Result.success()
                 }

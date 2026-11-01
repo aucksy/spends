@@ -43,6 +43,7 @@ import javax.inject.Singleton
 
 private val Context.backupMetaStore: DataStore<Preferences> by preferencesDataStore(name = "backup_meta")
 private val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
+private val LAST_AUTO_ATTEMPT_AT = longPreferencesKey("last_auto_attempt_at")
 
 /** Raised when a backup can't be made yet because no recovery password has been set (encryption gate). */
 class BackupNotProtectedException : Exception("Set a backup password first so your backups are encrypted.")
@@ -222,7 +223,7 @@ class BackupRepository @Inject constructor(
 
     // ---- Drive operations (token supplied by the caller) ----
 
-    /** Upload a fresh (encrypted) snapshot to the "Spends Backup" folder, validate, prune to 60. */
+    /** Upload a fresh (encrypted) snapshot to the "Spends Backup" folder, validate, prune by [BackupRetention]. */
     suspend fun backupNow(token: String): Long = driveMutex.withLock {
         val folderId = driveClient.ensureBackupFolder(token)
         val snapshot = buildSnapshot()
@@ -267,16 +268,29 @@ class BackupRepository @Inject constructor(
         }
     }
 
-    private suspend fun prune(token: String, folderId: String, keep: Int = 60) {
-        // list() returns newest-first. Real backups and safety copies are pruned on separate budgets
-        // so a burst of restores can't evict real backups.
+    private suspend fun prune(token: String, folderId: String) {
+        // Real backups follow [BackupRetention]: the newest 60 plus the newest of each of 90 days, so a burst
+        // of uploads can never evict older days. Safety copies keep their own small budget, so a burst of
+        // restores can't evict real backups either.
         val files = driveClient.list(token, folderId)
-        files.filter { it.name.startsWith(BackupCodec.FILE_NAME_PREFIX) }
-            .drop(keep)
+        val doomed = BackupRetention.toDelete(files.map { it.name }).toHashSet()
+        files.filter { it.name in doomed }
             .forEach { runCatching { driveClient.delete(token, it.id) } }
         files.filter { it.name.startsWith(BackupCodec.SAFETY_NAME_PREFIX) }
             .drop(10)
             .forEach { runCatching { driveClient.delete(token, it.id) } }
+    }
+
+    /**
+     * Automatic backups only: false when one was ATTEMPTED within [BackupRetention.MIN_AUTO_GAP_MILLIS].
+     * Stamped before the upload starts, so a run the phone kills half-way still counts — that re-run loop is
+     * one way a burst of uploads happens.
+     */
+    suspend fun claimAutoBackupSlot(now: Long = DateUtils.nowMillis()): Boolean {
+        val last = context.backupMetaStore.data.first()[LAST_AUTO_ATTEMPT_AT] ?: 0L
+        if (!BackupRetention.mayRunAuto(last, now)) return false
+        context.backupMetaStore.edit { it[LAST_AUTO_ATTEMPT_AT] = now }
+        return true
     }
 
     private suspend fun setLastBackupAt(millis: Long) {

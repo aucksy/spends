@@ -591,6 +591,7 @@ class StoreScreenshotsTest {
                 captureRepository = f.capture,
                 paymentMethodRepository = f.paymentMethods,
                 settingsRepository = f.settings,
+                recurringRepository = f.recurring,
                 captureDraftStore = CaptureDraftStore(),
             )
             setContent {

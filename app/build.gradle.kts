@@ -42,8 +42,8 @@ android {
         applicationId = if (project.findProperty("playStore") == "true") "com.simpleapps.spends" else "com.spends.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 91
-        versionName = "1.74.1"
+        versionCode = 92
+        versionName = "1.74.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

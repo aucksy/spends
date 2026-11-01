@@ -119,6 +119,7 @@ class AddEditViewModel @Inject constructor(
     private val captureRepository: SmsCaptureRepository,
     private val paymentMethodRepository: PaymentMethodRepository,
     private val settingsRepository: SettingsRepository,
+    private val recurringRepository: com.spends.app.data.repo.RecurringRepository,
     captureDraftStore: CaptureDraftStore,
 ) : ViewModel() {
 
@@ -181,6 +182,16 @@ class AddEditViewModel @Inject constructor(
     private val _recurringRuleId = MutableStateFlow<Long?>(null)
     val recurringRuleId: StateFlow<Long?> = _recurringRuleId
 
+    /**
+     * False when the rule behind [recurringRuleId] no longer exists (deleted, or not in a restored backup).
+     * The banner then says so instead of opening a list that does not contain it; [ruleEntryCreatedAt] is
+     * when Spends made this entry, so "why is this here?" can be answered from the screen.
+     */
+    private val _ruleExists = MutableStateFlow(true)
+    val ruleExists: StateFlow<Boolean> = _ruleExists
+    private val _ruleEntryCreatedAt = MutableStateFlow<Long?>(null)
+    val ruleEntryCreatedAt: StateFlow<Long?> = _ruleEntryCreatedAt
+
     private val _saving = MutableStateFlow(false)
     val saving: StateFlow<Boolean> = _saving
 
@@ -192,6 +203,10 @@ class AddEditViewModel @Inject constructor(
             isEdit -> viewModelScope.launch {
                 val e = expenseRepository.getById(expenseId)
                 _recurringRuleId.value = e?.expense?.recurringRuleId
+                e?.expense?.recurringRuleId?.let { id ->
+                    _ruleExists.value = recurringRepository.getById(id) != null
+                    _ruleEntryCreatedAt.value = e.expense.createdAt
+                }
                 _initial.value = if (e != null) {
                     AddEditInitial(
                         amountText = Money.toEditString(e.expense.amountMinor),
