@@ -4,6 +4,13 @@ Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.m
 for how the project works.
 
 ## Current release
+- **v1.75.0** — versionCode **93**. New-card ask (owner, 1 Nov 2026: "if someone installs the app and SMS shows a new
+  card, do we ask them to set it up / its billing cycle?" — no: cards were found only by tapping Scan on Banks & Cards).
+  `NewCardsNudgeViewModel` on Home runs `scanInboxForCards` (first time 365 days back, then at most once a day from the
+  last scan minus 2 days; `CardNudge`, device-local prefs `card_nudge`), then a "New card found" pop-up lists each new
+  candidate ONCE; "Set up card" opens Banks & Cards, where "Review & add card" pre-fills any statement day from SMS.
+  Skipped in demo mode, without READ_SMS, or with SMS capture off. Shown before the backup ask, never both at once.
+  Bank accounts get no ask: they use the salary cycle set during first-run setup.
 - **v1.74.2** — versionCode **92**. Backup burst: on 1 Nov 2026 (06:58-07:03 IST) the owner's Drive got 60+ automatic
   backups about 5 s apart, and pruning to the newest 60 deleted every older backup. Cause not proven (a worker
   re-run after the phone killed it mid-upload, or two Spends apps sharing the "Spends Backup" folder). Fix:

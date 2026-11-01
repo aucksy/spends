@@ -1,3 +1,3 @@
-Version: 1.74.2
-• Fixed: on some phones the daily Google Drive backup could run again and again for minutes, and the extra copies pushed your older backups out. Now it runs at most once every 6 hours, and Spends keeps one backup for each of the last 90 days.
-• A repeating payment now shows when Spends added it. If its repeating rule was deleted, the entry says so.
+Version: 1.75.0
+• When Spends finds a new credit card in your SMS, it now asks you to set it up. Set the card's bill date, and its spends count in the same month as your card bill.
+• Spends checks your SMS for new cards once a day. It asks about each card only once. You can also find it later in Settings → Money & Cycles → Banks & Cards.

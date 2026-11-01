@@ -3,6 +3,9 @@ package com.spends.app.ui.navigation
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -15,6 +18,8 @@ import com.spends.app.ui.backup.BackupNudgeDialog
 import com.spends.app.ui.backup.OnboardingRestoreScreen
 import com.spends.app.ui.breakdown.CycleBreakdownScreen
 import com.spends.app.ui.cards.CardsScreen
+import com.spends.app.ui.cards.NewCardsDialog
+import com.spends.app.ui.cards.NewCardsNudgeViewModel
 import com.spends.app.ui.capture.CaptureSettingsScreen
 import com.spends.app.ui.capture.SilencedAlertsScreen
 import com.spends.app.ui.categories.CategoriesScreen
@@ -111,7 +116,14 @@ fun SpendsNavHost(
                 openQuickAddSignal = pendingQuickAdd,
                 onQuickAddConsumed = onQuickAddConsumed,
             )
-            BackupNudgeDialog(onSetUp = { navController.navigate(Routes.SETTINGS_BACKUP) })
+            // One ask at a time: the new-card ask comes first, and the backup ask waits until it is closed.
+            val newCardsVm: NewCardsNudgeViewModel = hiltViewModel()
+            val newCards by newCardsVm.cards.collectAsState()
+            if (newCards.isNotEmpty()) {
+                NewCardsDialog(onSetUp = { navController.navigate(Routes.BANKS_CARDS) }, viewModel = newCardsVm)
+            } else {
+                BackupNudgeDialog(onSetUp = { navController.navigate(Routes.SETTINGS_BACKUP) })
+            }
         }
 
         composable(
