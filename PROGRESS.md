@@ -3,6 +3,11 @@
 Live state pointer. Update this at every phase/release boundary. Read `CONTEXT.md` first
 for how the project works.
 
+## Waiting for release
+Owner rule (1 Nov 2026): never bump the version or tag on your own. Push changes to main, list each one here
+in plain words, and ASK him "Release now?". He decides.
+- (nothing yet — v1.75.1 shipped everything up to commit d9cfbfe)
+
 ## Current release
 - **v1.75.1** — versionCode **94**. (v1.75.0 built but never reached Play: its upload was refused while v1.74.2 was
   still in review. `play_upload.py` now replaces a build still in review with the newer one —
