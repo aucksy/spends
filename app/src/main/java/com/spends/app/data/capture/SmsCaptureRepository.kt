@@ -1002,8 +1002,14 @@ class SmsCaptureRepository @Inject constructor(
 
     /** The editor's "Remember note" tick for this merchant: false only once the user has unticked it
      *  (Amazon, Blinkit — a different thing every order). Unknown merchants default to ticked. */
-    suspend fun noteRememberedFor(merchant: String?): Boolean =
-        learnedFor(merchant, allowFuzzy = true)?.noteOff != true
+    suspend fun noteRememberedFor(merchant: String?): Boolean {
+        // Same order the save uses (learnMerchantCategory): this exact shop's own entry first, only then
+        // the newest similar spelling — so "Amazon Prime" never shows (or inherits) "Amazon"'s untick.
+        val key = MerchantKeys.normalize(merchant) ?: return true
+        val entries = normalizedLearned()
+        val own = entries.filter { (_, n) -> n == key }.maxByOrNull { (e, _) -> e.updatedAt }?.first
+        return (own ?: learnedFor(merchant, allowFuzzy = true, preloaded = entries))?.noteOff != true
+    }
 
     /**
      * G1 (docs/AI-RESEARCH.md): true when this merchant already has a learned category mapping. The AI
@@ -1097,13 +1103,15 @@ class SmsCaptureRepository @Inject constructor(
                 noteOff = noteOff,
             ),
         )
-        if (replaceNote || rememberNote != null) {
+        if (replaceNote || rememberNote == false) {
+            // Only the NOTE spreads to sibling spellings (so the old note can't resurrect under one). The
+            // untick itself stays on this shop: a similar-looking name ("Amazon Fresh") keeps its own choice.
             val previousNote = exactEntry?.note
             val siblings = cluster.map { (e, _) -> e }.filter {
-                it.merchantKey != key && (it.note == previousNote || it.note == null) &&
-                    (it.note != keptNote || it.noteOff != noteOff)
+                it.merchantKey != key && it.noteOff != true && it.note != keptNote &&
+                    (it.note == previousNote || it.note == null)
             }
-            if (siblings.isNotEmpty()) merchantDao.insertAll(siblings.map { it.copy(note = keptNote, noteOff = noteOff) })
+            if (siblings.isNotEmpty()) merchantDao.insertAll(siblings.map { it.copy(note = keptNote) })
         }
     }
 

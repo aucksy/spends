@@ -331,12 +331,17 @@ class AddEditViewModel @Inject constructor(
         viewModelScope.launch {
             // The instrument the user confirmed/corrected (#3) — only meaningful for an expense.
             val pmId = if (kind == TxnKind.EXPENSE) paymentMethodId else null
+            // The "Remember note" tick is sent ONLY when the user flipped it on this screen. Untouched =
+            // null = keep whatever the shop already had — so a tick that merely SHOWS a state (or a shop
+            // renamed in the merchant box) can never switch a shop's memory on or off by itself.
+            val loadedTick = _initial.value?.rememberNote
+            val tickFlip: Boolean? = rememberNote.takeIf { loadedTick != null && it != null && it != loadedTick }
             when {
                 // Confirm a queued capture (#9): keeps TxnSource.SMS + dedupe hash + merchant learning,
                 // then removes the pending row. The ledger write happens HERE, on explicit Save only.
                 isPending -> captureRepository.confirmPendingEdited(
                     pendingId, amountMinor, kind, categoryId, merchant, note, occurredAt, pmId,
-                    rememberNote = rememberNote,
+                    rememberNote = tickFlip,
                 )
                 // Save an unsaved live-capture draft (#4): tags TxnSource.NOTIFICATION + the dedupe hash.
                 isDraft -> captureRepository.commitDraft(
@@ -348,7 +353,7 @@ class AddEditViewModel @Inject constructor(
                     fx = draft!!.let {
                         SmsCaptureRepository.Fx(it.amountMinor, it.fxCurrency, it.fxAmountMinor, it.fxRateMicros)
                     },
-                    rememberNote = rememberNote,
+                    rememberNote = tickFlip,
                 )
                 else -> {
                     val input = TransactionInput(
@@ -369,18 +374,18 @@ class AddEditViewModel @Inject constructor(
                         // erase a remembered note ("field was visible" ≠ "user cleared it").
                         val loaded = _initial.value
                         val categoryChanged = loaded != null && loaded.categoryId != categoryId
-                        val noteChanged = loaded != null && loaded.note.trim() != note.trim()
-                        // The "Remember note" tick counts as a change only when the user flipped it.
-                        val tickChanged = loaded?.rememberNote != null && rememberNote != null &&
-                            loaded.rememberNote != rememberNote
-                        if (categoryChanged || noteChanged || tickChanged) {
+                        // Re-ticking counts as "remember THIS note": the note on screen is stored even
+                        // though the text itself wasn't edited (the untick had erased the old one).
+                        val reTicked = tickFlip == true
+                        val noteChanged = loaded != null && (loaded.note.trim() != note.trim() || reTicked)
+                        if (categoryChanged || noteChanged || tickFlip != null) {
                             // Pass the note/category ONLY as deliberate when the user changed them —
                             // an untouched row note must not displace a newer remembered note, and a
                             // note-only save must not re-learn the row's (possibly guessed) category.
                             captureRepository.learnFromTransaction(
                                 expenseId, categoryId, note.takeIf { noteChanged },
                                 noteShown = noteChanged, categoryDeliberate = categoryChanged,
-                                rememberNote = rememberNote.takeIf { tickChanged },
+                                rememberNote = tickFlip,
                             )
                         }
                     } else {

@@ -107,6 +107,42 @@ class RememberNoteTickTest {
         assertThat(capture.noteRememberedFor("Amazon")).isTrue()
     }
 
+    @Test fun a_similar_shop_keeps_its_own_tick() = runBlocking {
+        val prime = createSmsRow("Amazon Prime")
+        capture.learnFromTransaction(prime, shopping, null, categoryDeliberate = true)
+        capture.learnFromTransaction(amazonRow, shopping, null, categoryDeliberate = false, rememberNote = false)
+
+        // "Amazon Prime" fuzzy-matches "Amazon", but the untick was only for Amazon.
+        assertThat(capture.noteRememberedFor("Amazon Prime")).isTrue()
+        // A later Prime save must not hide Amazon's own untick either.
+        capture.learnFromTransaction(prime, shopping, "Membership", noteShown = true)
+        assertThat(capture.noteRememberedFor("Amazon")).isFalse()
+        assertThat(capture.learnedNoteFor("Amazon")).isNull()
+        assertThat(capture.learnedNoteFor("Amazon Prime")).isEqualTo("Membership")
+    }
+
+    @Test fun a_save_that_leaves_the_tick_alone_keeps_the_shop_off() = runBlocking {
+        capture.learnFromTransaction(amazonRow, shopping, null, categoryDeliberate = false, rememberNote = false)
+        // Review screen saved with the tick untouched (sent as null) and a note typed for this order only.
+        capture.learnFromTransaction(amazonRow, shopping, "Charger", noteShown = true, rememberNote = null)
+        assertThat(capture.noteRememberedFor("Amazon")).isFalse()
+        assertThat(capture.learnedNoteFor("Amazon", allowFuzzy = true)).isNull()
+    }
+
+    private fun createSmsRow(merchant: String): Long = runBlocking {
+        ExpenseRepository(db).create(
+            TransactionInput(
+                amountMinor = 19_900,
+                kind = TxnKind.EXPENSE,
+                occurredAt = DateUtils.nowMillis(),
+                merchantRaw = merchant,
+                note = null,
+                allocations = listOf(AllocationInput(shopping, 19_900)),
+                source = TxnSource.SMS,
+            ),
+        )
+    }
+
     @Test fun another_merchant_is_not_touched() = runBlocking {
         capture.learnFromTransaction(amazonRow, shopping, null, categoryDeliberate = false, rememberNote = false)
         assertThat(capture.noteRememberedFor("Swiggy")).isTrue()

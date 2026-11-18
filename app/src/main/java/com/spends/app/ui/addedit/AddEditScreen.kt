@@ -390,15 +390,20 @@ private fun AddEditForm(
         // "Remember note" tick, right under the note (18 Nov 2026): on by default. Untick it for shops
         // like Amazon or Blinkit, where every order is a different thing — Spends then stops filling in
         // last time's note for that shop (the category is still remembered). Tick it again to undo.
-        rememberNote?.let { remembered ->
+        // Hidden once the shop name is changed: the tick shows the LOADED shop's setting, so it would lie
+        // about a different shop. (Untouched, the save keeps each shop's own setting anyway.)
+        rememberNote?.takeIf { merchant.trim() == initial.merchant.trim() }?.let { remembered ->
             val shop = merchant.trim()
+            Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .toggleable(value = remembered, role = Role.Checkbox, onValueChange = { rememberNote = it }),
+                    .toggleable(value = remembered, role = Role.Checkbox, onValueChange = { rememberNote = it })
+                    .padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Checkbox(checked = remembered, onCheckedChange = null)
+                Spacer(Modifier.width(12.dp))
                 Text(
                     text = if (shop.isNotEmpty()) "Remember this note for $shop" else "Remember this note for this shop",
                     style = MaterialTheme.typography.bodyMedium,
@@ -439,7 +444,8 @@ private fun AddEditForm(
                 val a = amountMinor ?: return@Button
                 val c = selectedCategoryId ?: return@Button
                 val pmId = if (kind == TxnKind.EXPENSE) selectedPaymentMethodId else null
-                onSave(a, kind, c, merchant, note, occurredAt, pmId, rememberNote)
+                val tick = rememberNote.takeIf { merchant.trim() == initial.merchant.trim() }
+                onSave(a, kind, c, merchant, note, occurredAt, pmId, tick)
             },
             enabled = canSave,
             modifier = Modifier.fillMaxWidth().height(52.dp),
