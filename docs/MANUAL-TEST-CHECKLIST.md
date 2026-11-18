@@ -746,6 +746,18 @@ the fastest way to see these** — it has ~14 months of data planted to make eac
 
 ---
 
+## v1.77.0 — widget eye, "Remember this note" tick
+
+- [ ] ⭐ Home-screen widget: tap the eye. The figures show, you feel one short buzz, and the widget does NOT bounce.
+- [ ] Same with the eye set to invisible (Settings): tapping its corner still shows the figures with a buzz.
+- [ ] Tap the widget outside the eye: the app opens as before.
+- [ ] ⭐ Review an Amazon SMS: the tick "Remember this note for Amazon" is on. Untick it, type a note, add. Next Amazon SMS: note box is empty, tick is off, category still filled in.
+- [ ] Tick it again on a later Amazon entry and add: the next Amazon SMS fills that note in again.
+- [ ] A manual "Add transaction" shows no tick.
+- [ ] After a Drive backup + restore, Amazon's tick is still off.
+
+---
+
 ## Conventions
 
 - Every release adds a section here **before** the APK link is posted.

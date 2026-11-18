@@ -1,5 +1,3 @@
-Version: 1.76.0
-• Your months now follow your salary. If your salary comes a few days early or late, that month starts on the day it really came.
-• New setup question: "When did your last salary come?" Pick the day, or say it has not come yet. Spends then spots your salary and sets the day for you.
-• No monthly salary? Choose "I don't get a monthly salary" and Spends uses calendar months.
-• To turn this off, go to Settings → Money & Cycles → "Follow my salary date".
+Version: 1.77.0
+• New tick under the note: "Remember this note for <shop>". It is on at first. For shops like Amazon or Blinkit, where you buy something different each time, untick it. Spends then stops filling in the last note for that shop. It still remembers the category.
+• The eye button on the home-screen widget now shows your figures with a short buzz. The widget does not jump any more.
