@@ -19,6 +19,7 @@ import com.spends.app.data.repo.TransactionInput
 import com.spends.app.data.settings.SettingsRepository
 import com.spends.app.domain.model.CategoryUsage
 import com.spends.app.domain.model.TxnKind
+import com.spends.app.domain.model.TxnSource
 import com.spends.app.ui.cards.PaymentState
 import com.spends.app.ui.cards.toCardOption
 import kotlinx.coroutines.flow.first
@@ -56,6 +57,13 @@ data class AddEditInitial(
      * with the ledger's ₹ made a foreign figure look like an already-correct rupee one.
      */
     val fxCurrency: String? = null,
+    /**
+     * The "Remember note for this merchant" tick under the note field. Null = not shown (manual entries
+     * and rows with no merchant — Spends never learns from those). True/false = shown, in that state:
+     * true unless the user once unticked it for this merchant (Amazon, Blinkit — a different thing every
+     * order, so last time's note is wrong this time).
+     */
+    val rememberNote: Boolean? = null,
 )
 
 /**
@@ -224,6 +232,10 @@ class AddEditViewModel @Inject constructor(
                         // is the figure the user accepted, in the ledger's currency. Only the origin is
                         // carried through, so the row can still say what it arrived as.
                         fxCurrency = e.expense.fxCurrency,
+                        // Only captured rows teach the merchant memory, so only they get the tick.
+                        rememberNote = e.expense.merchantRaw
+                            ?.takeIf { it.isNotBlank() && (e.expense.source == TxnSource.SMS || e.expense.source == TxnSource.NOTIFICATION) }
+                            ?.let { captureRepository.noteRememberedFor(it) },
                     )
                 } else {
                     newInitial()
@@ -254,13 +266,15 @@ class AddEditViewModel @Inject constructor(
                         conversionNote = conversionNoteFor(p.fxCurrency, p.fxAmountMinor, p.fxRateMicros, p.amountMinor),
                         unconvertedForeign = p.isUnconvertedForeign,
                         fxCurrency = p.fxCurrency,
+                        rememberNote = p.merchant?.takeIf { it.isNotBlank() }?.let { captureRepository.noteRememberedFor(it) },
                     )
                 } else {
                     newInitial() // the row was confirmed/rejected elsewhere — fall back to a blank add
                 }
             }
             // Seed from the unsaved live-capture draft (#4); the draft already carries the matched instrument (#3).
-            isDraft -> _initial.value = draft!!.let {
+            isDraft -> viewModelScope.launch {
+                _initial.value = draft!!.let {
                 AddEditInitial(
                     amountText = Money.toEditString(it.amountMinor),
                     kind = it.kind,
@@ -272,7 +286,9 @@ class AddEditViewModel @Inject constructor(
                     conversionNote = conversionNoteFor(it.fxCurrency, it.fxAmountMinor, it.fxRateMicros, it.amountMinor),
                     unconvertedForeign = it.unconvertedForeign,
                     fxCurrency = it.fxCurrency,
+                    rememberNote = it.merchant?.takeIf { m -> m.isNotBlank() }?.let { m -> captureRepository.noteRememberedFor(m) },
                 )
+                }
             }
             // A fresh manual add pre-selects the user's default instrument (#2) when Smart Cycle is on.
             else -> viewModelScope.launch {
@@ -308,6 +324,7 @@ class AddEditViewModel @Inject constructor(
         note: String,
         occurredAt: Long,
         paymentMethodId: Long? = null,
+        rememberNote: Boolean? = null,
     ) {
         if (_saving.value) return
         _saving.value = true
@@ -319,6 +336,7 @@ class AddEditViewModel @Inject constructor(
                 // then removes the pending row. The ledger write happens HERE, on explicit Save only.
                 isPending -> captureRepository.confirmPendingEdited(
                     pendingId, amountMinor, kind, categoryId, merchant, note, occurredAt, pmId,
+                    rememberNote = rememberNote,
                 )
                 // Save an unsaved live-capture draft (#4): tags TxnSource.NOTIFICATION + the dedupe hash.
                 isDraft -> captureRepository.commitDraft(
@@ -330,6 +348,7 @@ class AddEditViewModel @Inject constructor(
                     fx = draft!!.let {
                         SmsCaptureRepository.Fx(it.amountMinor, it.fxCurrency, it.fxAmountMinor, it.fxRateMicros)
                     },
+                    rememberNote = rememberNote,
                 )
                 else -> {
                     val input = TransactionInput(
@@ -351,13 +370,17 @@ class AddEditViewModel @Inject constructor(
                         val loaded = _initial.value
                         val categoryChanged = loaded != null && loaded.categoryId != categoryId
                         val noteChanged = loaded != null && loaded.note.trim() != note.trim()
-                        if (categoryChanged || noteChanged) {
+                        // The "Remember note" tick counts as a change only when the user flipped it.
+                        val tickChanged = loaded?.rememberNote != null && rememberNote != null &&
+                            loaded.rememberNote != rememberNote
+                        if (categoryChanged || noteChanged || tickChanged) {
                             // Pass the note/category ONLY as deliberate when the user changed them —
                             // an untouched row note must not displace a newer remembered note, and a
                             // note-only save must not re-learn the row's (possibly guessed) category.
                             captureRepository.learnFromTransaction(
                                 expenseId, categoryId, note.takeIf { noteChanged },
                                 noteShown = noteChanged, categoryDeliberate = categoryChanged,
+                                rememberNote = rememberNote.takeIf { tickChanged },
                             )
                         }
                     } else {

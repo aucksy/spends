@@ -3,6 +3,7 @@ package com.spends.app.core
 import android.content.Context
 import android.media.AudioAttributes
 import android.os.Build
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -51,6 +52,27 @@ object Haptics {
                 .build()
             vibrator.vibrate(effect, attrs)
         }
+    }
+
+    /**
+     * The same firm 30 ms / full-amplitude buzz as [click], but allowed to fire from a BACKGROUND broadcast —
+     * the summary widget's eye tap. Android's vibrator service drops background vibrations unless their
+     * usage is on its allowlist (VibrationSettings.BACKGROUND_PROCESS_USAGE_ALLOWLIST: ringtone, alarm,
+     * notification, communication request, HARDWARE_FEEDBACK, PHYSICAL_EMULATION). A widget button is a
+     * soft hardware button, so HARDWARE_FEEDBACK is the honest tag. Needs Android 13 (the
+     * vibrate(effect, VibrationAttributes) call); returns false below that so the caller can fall back.
+     */
+    fun widgetClick(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        runCatching {
+            val vibrator = vibrator(context) ?: return true
+            if (!vibrator.hasVibrator()) return true
+            vibrator.vibrate(
+                VibrationEffect.createOneShot(30L, 255),
+                VibrationAttributes.createForUsage(VibrationAttributes.USAGE_HARDWARE_FEEDBACK),
+            )
+        }
+        return true
     }
 
     private fun vibrator(context: Context): Vibrator? =

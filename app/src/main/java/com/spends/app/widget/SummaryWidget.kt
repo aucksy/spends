@@ -7,8 +7,10 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.widget.RemoteViews
 import com.spends.app.R
+import com.spends.app.core.Haptics
 import com.spends.app.core.MainActivity
 import com.spends.app.core.QuickAddActivity
 import com.spends.app.core.calc.CarryForward
@@ -72,8 +74,10 @@ class SummaryWidget : AppWidgetProvider() {
         val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
         when (intent.action) {
             ACTION_TOGGLE_MASK -> if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                // The haptic fires from WidgetEyeToggleActivity (a foreground context) — this broadcast runs
-                // in the background, where many OEMs suppress vibration (#1). Here we just toggle + render.
+                // Android 13+: the eye tap lands HERE directly (no trampoline activity — launching one made
+                // the launcher play its "app opening" scale animation, the widget "bounce"). The buzz uses a
+                // background-allowed vibration usage. Below 13 the trampoline already buzzed (EXTRA_BUZZ off).
+                if (intent.getBooleanExtra(EXTRA_BUZZ, false)) Haptics.widgetClick(context)
                 val store = entryPoint(context).widgetMaskStore()
                 store.toggle(id)
                 // Revealed → auto-hide after 5s (#5); hidden again manually → cancel the pending auto-hide.
@@ -346,8 +350,20 @@ class SummaryWidget : AppWidgetProvider() {
     }
 
     private fun toggleIntent(context: Context, id: Int): PendingIntent {
-        // The eye launches an invisible FOREGROUND trampoline so it can actually vibrate (#1 — a background
-        // broadcast can't on many OEMs); the trampoline fires the haptic, then sends the toggle broadcast.
+        // Android 13+: a plain broadcast. An ACTIVITY PendingIntent (even an invisible one) makes the launcher
+        // play its app-launch animation on the whole widget — the "bounce" the owner saw on 18 Nov 2026. The
+        // broadcast buzzes itself via Haptics.widgetClick (a background-allowed vibration usage).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val broadcast = Intent(context, SummaryWidget::class.java).apply {
+                action = ACTION_TOGGLE_MASK
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                putExtra(EXTRA_BUZZ, true)
+                addFlags(Intent.FLAG_RECEIVER_FOREGROUND) // run at once, not in the slow background queue
+            }
+            return PendingIntent.getBroadcast(context, EYE_REQ_BASE + id, broadcast, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
+        // Android 12 and below: the vibration API above does not exist, so keep the invisible FOREGROUND
+        // trampoline (#1) — it fires the haptic, then sends the toggle broadcast. It still bounces there.
         val intent = Intent(context, WidgetEyeToggleActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
             putExtra(WidgetEyeToggleActivity.EXTRA_WIDGET_ID, id)
@@ -362,6 +378,8 @@ class SummaryWidget : AppWidgetProvider() {
         private const val MASK = "••••"
         private const val AUTO_HIDE_MS = 5_000L
         private const val AUTO_HIDE_REQ_BASE = 90_000 // distinct PendingIntent request-code space per widget id
+        private const val EYE_REQ_BASE = 70_000 // eye broadcast request codes, apart from auto-hide's
+        private const val EXTRA_BUZZ = "com.spends.app.widget.BUZZ"
 
         /** Send the eye's mask-toggle broadcast — called by [WidgetEyeToggleActivity] after it fires the
          *  haptic from the foreground (the broadcast itself can't vibrate from the background, #1). The

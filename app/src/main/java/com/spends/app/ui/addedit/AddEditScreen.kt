@@ -27,7 +27,10 @@ import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -133,8 +136,8 @@ fun AddEditScreen(
                 ruleEntryCreatedAt = ruleEntryCreatedAt,
                 onOpenRule = onOpenRule,
                 onAddCategory = { name, usage, iconKey, onCreated -> viewModel.addCategory(name, usage, iconKey, onCreated) },
-                onSave = { amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId ->
-                    viewModel.save(amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId)
+                onSave = { amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId, rememberNote ->
+                    viewModel.save(amount, kind, categoryId, merchant, note, occurredAt, paymentMethodId, rememberNote)
                 },
             )
         }
@@ -228,13 +231,15 @@ private fun AddEditForm(
     ruleEntryCreatedAt: Long?,
     onOpenRule: (Long) -> Unit,
     onAddCategory: (String, CategoryUsage, String?, (Long) -> Unit) -> Unit,
-    onSave: (Long, TxnKind, Long, String, String, Long, Long?) -> Unit,
+    onSave: (Long, TxnKind, Long, String, String, Long, Long?, Boolean?) -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf(initial.amountText) }
     var kind by rememberSaveable { mutableStateOf(initial.kind) }
     var selectedCategoryId by rememberSaveable { mutableStateOf(initial.categoryId) }
     var merchant by rememberSaveable { mutableStateOf(initial.merchant) }
     var note by rememberSaveable { mutableStateOf(initial.note) }
+    // Null = the tick isn't shown (manual entries; Spends doesn't learn from those).
+    var rememberNote by rememberSaveable { mutableStateOf(initial.rememberNote) }
     var occurredAt by rememberSaveable { mutableStateOf(initial.occurredAt) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showAddCategory by remember { mutableStateOf(false) }
@@ -382,6 +387,26 @@ private fun AddEditForm(
             singleLine = true,
         )
 
+        // "Remember note" tick, right under the note (18 Nov 2026): on by default. Untick it for shops
+        // like Amazon or Blinkit, where every order is a different thing — Spends then stops filling in
+        // last time's note for that shop (the category is still remembered). Tick it again to undo.
+        rememberNote?.let { remembered ->
+            val shop = merchant.trim()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = remembered, role = Role.Checkbox, onValueChange = { rememberNote = it }),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = remembered, onCheckedChange = null)
+                Text(
+                    text = if (shop.isNotEmpty()) "Remember this note for $shop" else "Remember this note for this shop",
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                )
+            }
+        }
+
         // "Paid with" — only when Smart Cycle is on and this isn't a capture review (those auto-tag from the
         // SMS last4 on save), and only for expenses.
         if (paymentState.enabled && showPaidWith && kind == TxnKind.EXPENSE) {
@@ -414,7 +439,7 @@ private fun AddEditForm(
                 val a = amountMinor ?: return@Button
                 val c = selectedCategoryId ?: return@Button
                 val pmId = if (kind == TxnKind.EXPENSE) selectedPaymentMethodId else null
-                onSave(a, kind, c, merchant, note, occurredAt, pmId)
+                onSave(a, kind, c, merchant, note, occurredAt, pmId, rememberNote)
             },
             enabled = canSave,
             modifier = Modifier.fillMaxWidth().height(52.dp),

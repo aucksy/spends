@@ -355,11 +355,11 @@ private fun SnapshotRecurring.toEntity() = RecurringRuleEntity(
 )
 
 private fun MerchantCategoryEntity.toSnapshot() = SnapshotMerchantCategory(
-    merchantKey = merchantKey, categoryId = categoryId, updatedAt = updatedAt, note = note,
+    merchantKey = merchantKey, categoryId = categoryId, updatedAt = updatedAt, note = note, noteOff = noteOff,
 )
 
 private fun SnapshotMerchantCategory.toEntity() = MerchantCategoryEntity(
-    merchantKey = merchantKey, categoryId = categoryId, updatedAt = updatedAt, note = note,
+    merchantKey = merchantKey, categoryId = categoryId, updatedAt = updatedAt, note = note, noteOff = noteOff,
 )
 
 private fun PaymentMethodEntity.toSnapshot() = SnapshotPaymentMethod(

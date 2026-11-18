@@ -6,7 +6,15 @@ for how the project works.
 ## Waiting for release
 Owner rule (1 Nov 2026): never bump the version or tag on your own. Push changes to main, list each one here
 in plain words, and ASK him "Release now?". He decides.
-(nothing waiting)
+- **Widget eye no longer bounces** (owner video, 18 Nov 2026). The eye opened an invisible screen to buzz, so the
+  launcher played its "app opening" animation on the whole widget. Android 13+: the eye is now a plain broadcast
+  that buzzes itself (`Haptics.widgetClick`, vibration usage HARDWARE_FEEDBACK, which Android lets a background
+  app use). Android 12 and older keep the old invisible screen. NOT yet seen on his phone: check no bounce + buzz still felt.
+- **"Remember this note for <shop>" tick** under the note field (owner, 18 Nov 2026: Amazon/Blinkit notes are wrong
+  next time). On by default; untick = that shop's note is forgotten and never pre-filled again (category still
+  remembered); tick again to undo. Shown only on captured (SMS/notification) rows with a merchant. DB v18
+  (`merchant_categories.noteOff`), travels in the backup. Test: `RememberNoteTickTest`.
+  Draft What's new: "Shops like Amazon? Untick 'Remember this note' and Spends stops filling in last order's note."
 
 ## Current release
 - **v1.76.0** — versionCode **95**. Salary cycles follow the real salary day (owner, 1 Nov 2026: "what happens if salary doesn't come on the

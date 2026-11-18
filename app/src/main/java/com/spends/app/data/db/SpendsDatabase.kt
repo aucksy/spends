@@ -33,7 +33,7 @@ import com.spends.app.data.seed.CategorySeed
         PaymentMethodEntity::class,
         IgnoredPatternEntity::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -320,6 +320,15 @@ abstract class SpendsDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE pending_captures ADD COLUMN fxCurrency TEXT")
                 db.execSQL("ALTER TABLE pending_captures ADD COLUMN fxAmountMinor INTEGER")
                 db.execSQL("ALTER TABLE pending_captures ADD COLUMN fxRateMicros INTEGER")
+            }
+        }
+
+        /** v17 -> v18: a per-merchant "Remember note" switch (`merchant_categories.noteOff`, nullable
+         *  `Boolean?` → bare `INTEGER`, no NOT NULL, no default — matching Room's generated DDL). Existing
+         *  rows stay NULL = notes remembered, exactly as before. */
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE merchant_categories ADD COLUMN noteOff INTEGER")
             }
         }
     }

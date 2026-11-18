@@ -152,6 +152,8 @@ data class SnapshotMerchantCategory(
     val categoryId: Long,
     val updatedAt: Long,
     val note: String? = null,
+    /** "Remember note" unticked for this merchant (DB v18). Absent in older backups = remembered. */
+    val noteOff: Boolean? = null,
 )
 
 @Serializable

@@ -212,6 +212,7 @@ class SmsCaptureRepository @Inject constructor(
         relaxedHash: String? = null,
         fromNotification: Boolean = false,
         fx: Fx? = null,
+        rememberNote: Boolean? = null,
     ): Long = captureMutex.withLock {
         // Same guard the silent "Add" path has: never double-count an SMS already in the ledger (e.g. a
         // re-delivered alert, or one the user already added). Returns a sentinel; the editor only needs
@@ -250,7 +251,7 @@ class SmsCaptureRepository @Inject constructor(
             ),
         )
         // The user saw + saved the note field here, so their note (or a deliberate clear) is learned too.
-        learnMerchantCategory(merchant?.ifBlank { null }, categoryId, note, replaceNote = true)
+        learnMerchantCategory(merchant?.ifBlank { null }, categoryId, note, replaceNote = true, rememberNote = rememberNote)
         newId
     }
 
@@ -744,6 +745,7 @@ class SmsCaptureRepository @Inject constructor(
         note: String?,
         occurredAt: Long,
         paymentMethodId: Long? = null,
+        rememberNote: Boolean? = null,
     ): Long? = captureMutex.withLock {
         val p = pendingDao.getById(id) ?: return@withLock null
         // Same twin guard as confirmPending: this capture (or its differently-hashed twin) was
@@ -782,7 +784,7 @@ class SmsCaptureRepository @Inject constructor(
             ),
         )
         // Full-editor confirm: the user saw + saved the note field, so it's learned (a clear clears).
-        learnMerchantCategory(merchant?.ifBlank { null } ?: p.merchant, categoryId, note, replaceNote = true)
+        learnMerchantCategory(merchant?.ifBlank { null } ?: p.merchant, categoryId, note, replaceNote = true, rememberNote = rememberNote)
         pendingDao.deleteById(id)
         newId
     }
@@ -996,7 +998,12 @@ class SmsCaptureRepository @Inject constructor(
 
     /** The note the user last gave this merchant, or null. Fuzzy only for editor pre-fills. */
     suspend fun learnedNoteFor(merchant: String?, allowFuzzy: Boolean = false): String? =
-        learnedFor(merchant, allowFuzzy)?.note?.takeIf { it.isNotBlank() }
+        learnedFor(merchant, allowFuzzy)?.takeIf { it.noteOff != true }?.note?.takeIf { it.isNotBlank() }
+
+    /** The editor's "Remember note" tick for this merchant: false only once the user has unticked it
+     *  (Amazon, Blinkit — a different thing every order). Unknown merchants default to ticked. */
+    suspend fun noteRememberedFor(merchant: String?): Boolean =
+        learnedFor(merchant, allowFuzzy = true)?.noteOff != true
 
     /**
      * G1 (docs/AI-RESEARCH.md): true when this merchant already has a learned category mapping. The AI
@@ -1059,14 +1066,23 @@ class SmsCaptureRepository @Inject constructor(
         note: String? = null,
         replaceNote: Boolean = false,
         categoryDeliberate: Boolean = true,
+        rememberNote: Boolean? = null,
     ) {
         val key = MerchantKeys.normalize(merchant) ?: return
         val cluster = normalizedLearned().filter { (_, n) -> n == key || MerchantKeys.sameMerchant(key, n) }
         val exactEntry = cluster.filter { (_, n) -> n == key }.maxByOrNull { (e, _) -> e.updatedAt }?.first
         val newestEntry = cluster.maxByOrNull { (e, _) -> e.updatedAt }?.first
         val finalCategory = if (categoryDeliberate) categoryId else newestEntry?.categoryId ?: categoryId
+        // "Remember note" tick: the user's explicit choice wins; otherwise keep what this merchant had
+        // (its own entry first, else the cluster's newest — same inheritance as the note itself).
+        val noteOff: Boolean? = when (rememberNote) {
+            true -> null
+            false -> true
+            null -> (exactEntry ?: newestEntry)?.noteOff?.takeIf { it }
+        }
         val newNote = note?.trim()?.takeIf { it.isNotBlank() }
         val keptNote = when {
+            noteOff == true -> null // unticked: never store this merchant's note
             replaceNote -> newNote
             newNote != null -> newNote
             exactEntry != null -> exactEntry.note // the key's own note (even a cleared one) wins
@@ -1078,14 +1094,16 @@ class SmsCaptureRepository @Inject constructor(
                 categoryId = finalCategory,
                 updatedAt = DateUtils.nowMillis(),
                 note = keptNote,
+                noteOff = noteOff,
             ),
         )
-        if (replaceNote) {
+        if (replaceNote || rememberNote != null) {
             val previousNote = exactEntry?.note
             val siblings = cluster.map { (e, _) -> e }.filter {
-                it.merchantKey != key && it.note != keptNote && (it.note == previousNote || it.note == null)
+                it.merchantKey != key && (it.note == previousNote || it.note == null) &&
+                    (it.note != keptNote || it.noteOff != noteOff)
             }
-            if (siblings.isNotEmpty()) merchantDao.insertAll(siblings.map { it.copy(note = keptNote) })
+            if (siblings.isNotEmpty()) merchantDao.insertAll(siblings.map { it.copy(note = keptNote, noteOff = noteOff) })
         }
     }
 
@@ -1102,12 +1120,13 @@ class SmsCaptureRepository @Inject constructor(
         note: String? = null,
         noteShown: Boolean = false,
         categoryDeliberate: Boolean = true,
+        rememberNote: Boolean? = null,
     ) {
         val expense = expenseDao.getByIdWithAllocations(expenseId)?.expense ?: return
         if (expense.source == TxnSource.SMS || expense.source == TxnSource.NOTIFICATION) {
             learnMerchantCategory(
                 expense.merchantRaw, categoryId, note,
-                replaceNote = noteShown, categoryDeliberate = categoryDeliberate,
+                replaceNote = noteShown, categoryDeliberate = categoryDeliberate, rememberNote = rememberNote,
             )
         }
     }

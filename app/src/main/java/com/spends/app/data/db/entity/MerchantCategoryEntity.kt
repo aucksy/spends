@@ -16,4 +16,8 @@ data class MerchantCategoryEntity(
     val updatedAt: Long,
     // The user's last note for this merchant (DB v15). Nullable String? -> TEXT, no NOT NULL.
     val note: String? = null,
+    // DB v18: true = the user unticked "Remember note" for this merchant (Amazon, Blinkit — every order is a
+    // different thing), so its note is never stored or pre-filled; the category is still learned. Null or
+    // false = notes remembered (the default). Nullable Boolean? -> bare INTEGER, no NOT NULL, no default.
+    val noteOff: Boolean? = null,
 )
